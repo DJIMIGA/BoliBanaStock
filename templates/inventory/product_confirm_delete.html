@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Supprimer {{ product.nom }} - BoliBana Stock{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8">
+    <div class="sm:flex sm:items-center">
+        <div class="sm:flex-auto">
+            <h1 class="text-2xl font-semibold text-gray-900">Supprimer {{ product.nom }}</h1>
+            <p class="mt-2 text-sm text-gray-700">
+                Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible.
+            </p>
+        </div>
+    </div>
+
+    <div class="mt-8 bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="mt-2 max-w-xl text-sm text-gray-500">
+                <p>Les informations suivantes seront définitivement supprimées :</p>
+                <ul class="mt-4 list-disc list-inside space-y-2">
+                    <li>Nom : {{ product.nom }}</li>
+                    <li>Catégorie : {{ product.categorie }}</li>
+                    <li>Prix de vente : {{ product.prix_vente }} €</li>
+                    <li>Quantité en stock : {{ product.quantite_stock }}</li>
+                    <li>Historique des mouvements associés</li>
+                </ul>
+            </div>
+            <form method="post" class="mt-5">
+                {% csrf_token %}
+                <div class="flex justify-end space-x-3">
+                    <a href="{% url 'inventory:product_detail' product.pk %}" class="rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-bolibana-500 focus:ring-offset-2">
+                        Annuler
+                    </a>
+                    <button type="submit" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                        Supprimer définitivement
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

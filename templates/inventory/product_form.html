@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+    {% if form.instance.pk %}
+        Modifier {{ form.instance.nom }} - BoliBana Stock
+    {% else %}
+        Nouveau produit - BoliBana Stock
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8">
+    <div class="sm:flex sm:items-center">
+        <div class="sm:flex-auto">
+            <h1 class="text-2xl font-semibold text-gray-900">
+                {% if form.instance.pk %}
+                    Modifier {{ form.instance.nom }}
+                {% else %}
+                    Nouveau produit
+                {% endif %}
+            </h1>
+            <p class="mt-2 text-sm text-gray-700">
+                {% if form.instance.pk %}
+                    Modifiez les informations du produit ci-dessous.
+                {% else %}
+                    Remplissez le formulaire ci-dessous pour ajouter un nouveau produit.
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <form method="post" class="mt-8 space-y-8 divide-y divide-gray-200">
+        {% csrf_token %}
+        
+        <div class="space-y-8 divide-y divide-gray-200">
+            <div>
+                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    <div class="sm:col-span-4">
+                        <label for="{{ form.nom.id_for_label }}" class="block text-sm font-medium text-gray-700">Nom</label>
+                        <div class="mt-1">
+                            <input type="text" name="{{ form.nom.name }}" id="{{ form.nom.id_for_label }}" 
+                                value="{{ form.nom.value|default:'' }}"
+                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
+                                {% if form.nom.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
+                                {% if form.nom.field.required %}required{% endif %}>
+                            {% if form.nom.errors %}
+                                <p class="mt-2 text-sm text-red-600">{{ form.nom.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-3">
+                        <label for="{{ form.categorie.id_for_label }}" class="block text-sm font-medium text-gray-700">Catégorie</label>
+                        <div class="mt-1">
+                            <select name="{{ form.categorie.name }}" id="{{ form.categorie.id_for_label }}"
+                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
+                                {% if form.categorie.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
+                                {% if form.categorie.field.required %}required{% endif %}>
+                                {% for value, label in form.categorie.field.choices %}
+                                    <option value="{{ value }}" {% if form.categorie.value == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            {% if form.categorie.errors %}
+                                <p class="mt-2 text-sm text-red-600">{{ form.categorie.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-3">
+                        <label for="{{ form.prix_vente.id_for_label }}" class="block text-sm font-medium text-gray-700">Prix de vente</label>
+                        <div class="mt-1">
+                            <div class="relative rounded-md shadow-sm">
+                                <input type="number" name="{{ form.prix_vente.name }}" id="{{ form.prix_vente.id_for_label }}"
+                                    value="{{ form.prix_vente.value|default:'' }}"
+                                    step="0.01"
+                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
+                                    {% if form.prix_vente.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
+                                    {% if form.prix_vente.field.required %}required{% endif %}>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                    <span class="text-gray-500 sm:text-sm">€</span>
+                                </div>
+                            </div>
+                            {% if form.prix_vente.errors %}
+                                <p class="mt-2 text-sm text-red-600">{{ form.prix_vente.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-3">
+                        <label for="{{ form.quantite_stock.id_for_label }}" class="block text-sm font-medium text-gray-700">Quantité en stock</label>
+                        <div class="mt-1">
+                            <input type="number" name="{{ form.quantite_stock.name }}" id="{{ form.quantite_stock.id_for_label }}"
+                                value="{{ form.quantite_stock.value|default:'' }}"
+                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
+                                {% if form.quantite_stock.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
+                                {% if form.quantite_stock.field.required %}required{% endif %}>
+                            {% if form.quantite_stock.errors %}
+                                <p class="mt-2 text-sm text-red-600">{{ form.quantite_stock.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-3">
+                        <label for="{{ form.seuil_alerte.id_for_label }}" class="block text-sm font-medium text-gray-700">Seuil d'alerte</label>
+                        <div class="mt-1">
+                            <input type="number" name="{{ form.seuil_alerte.name }}" id="{{ form.seuil_alerte.id_for_label }}"
+                                value="{{ form.seuil_alerte.value|default:'' }}"
+                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
+                                {% if form.seuil_alerte.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
+                                {% if form.seuil_alerte.field.required %}required{% endif %}>
+                            {% if form.seuil_alerte.errors %}
+                                <p class="mt-2 text-sm text-red-600">{{ form.seuil_alerte.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-5">
+            <div class="flex justify-end">
+                <a href="{% url 'inventory:product_list' %}" class="rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-bolibana-500 focus:ring-offset-2">
+                    Annuler
+                </a>
+                <button type="submit" class="ml-3 inline-flex justify-center rounded-md border border-transparent bg-bolibana-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-bolibana-500 focus:ring-offset-2">
+                    {% if form.instance.pk %}
+                        Enregistrer les modifications
+                    {% else %}
+                        Créer le produit
+                    {% endif %}
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %} 

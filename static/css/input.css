@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    html {
+        font-family: "Inter var", system-ui, sans-serif;
+    }
+}
+
+@layer components {
+    .btn {
+        @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+    }
+    
+    .btn-primary {
+        @apply bg-bolibana-600 text-white hover:bg-bolibana-700;
+    }
+    
+    .btn-secondary {
+        @apply bg-secondary-600 text-white hover:bg-secondary-700;
+    }
+    
+    .btn-outline {
+        @apply border-2 border-bolibana-600 text-bolibana-600 hover:bg-bolibana-50;
+    }
+    
+    .card {
+        @apply bg-white rounded-xl shadow-md overflow-hidden;
+    }
+    
+    .form-input {
+        @apply block w-full rounded-lg border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500;
+    }
+    
+    .form-label {
+        @apply block text-sm font-medium text-gray-700 mb-1;
+    }
+    
+    .form-error {
+        @apply text-red-600 text-sm mt-1;
+    }
+} 

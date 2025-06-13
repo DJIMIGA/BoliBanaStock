@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ product.nom }} - BoliBana Stock{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8">
+    <div class="sm:flex sm:items-center">
+        <div class="sm:flex-auto">
+            <h1 class="text-2xl font-semibold text-gray-900">{{ product.nom }}</h1>
+            <p class="mt-2 text-sm text-gray-700">Détails du produit et historique des mouvements de stock.</p>
+        </div>
+        <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none space-x-3">
+            <a href="{% url 'inventory:product_update' product.pk %}" class="block rounded-md bg-bolibana-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-bolibana-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bolibana-600">
+                Modifier
+            </a>
+            <a href="{% url 'inventory:product_delete' product.pk %}" class="block rounded-md bg-red-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600">
+                Supprimer
+            </a>
+        </div>
+    </div>
+
+    <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <!-- Informations du produit -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Informations du produit</h3>
+                <div class="mt-5 border-t border-gray-200">
+                    <dl class="divide-y divide-gray-200">
+                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+                            <dt class="text-sm font-medium text-gray-500">Catégorie</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">{{ product.categorie }}</dd>
+                        </div>
+                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+                            <dt class="text-sm font-medium text-gray-500">Prix de vente</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">{{ product.prix_vente }} €</dd>
+                        </div>
+                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+                            <dt class="text-sm font-medium text-gray-500">Quantité en stock</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">{{ product.quantite_stock }}</dd>
+                        </div>
+                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+                            <dt class="text-sm font-medium text-gray-500">Seuil d'alerte</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">{{ product.seuil_alerte }}</dd>
+                        </div>
+                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+                            <dt class="text-sm font-medium text-gray-500">Statut</dt>
+                            <dd class="mt-1 text-sm sm:col-span-2 sm:mt-0">
+                                {% if product.quantite_stock > product.seuil_alerte %}
+                                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">En stock</span>
+                                {% elif product.quantite_stock > 0 %}
+                                    <span class="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 ring-1 ring-inset ring-yellow-600/20">Stock faible</span>
+                                {% else %}
+                                    <span class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">Rupture</span>
+                                {% endif %}
+                            </dd>
+                        </div>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historique des mouvements -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Historique des mouvements</h3>
+                <div class="mt-5 flow-root">
+                    <ul role="list" class="-mb-8">
+                        {% for mouvement in product.mouvements.all %}
+                        <li>
+                            <div class="relative pb-8">
+                                {% if not forloop.last %}
+                                <span class="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true"></span>
+                                {% endif %}
+                                <div class="relative flex space-x-3">
+                                    <div>
+                                        <span class="h-8 w-8 rounded-full bg-bolibana-500 flex items-center justify-center ring-8 ring-white">
+                                            <svg class="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14a6 6 0 100-12 6 6 0 000 12z" clip-rule="evenodd" />
+                                            </svg>
+                                        </span>
+                                    </div>
+                                    <div class="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
+                                        <div>
+                                            <p class="text-sm text-gray-500">
+                                                {{ mouvement.type_mouvement }} de {{ mouvement.quantite }} unités
+                                            </p>
+                                        </div>
+                                        <div class="whitespace-nowrap text-right text-sm text-gray-500">
+                                            <time datetime="{{ mouvement.date_mouvement|date:'Y-m-d' }}">{{ mouvement.date_mouvement|date:"d/m/Y H:i" }}</time>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </li>
+                        {% empty %}
+                        <li class="text-sm text-gray-500">Aucun mouvement enregistré</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
