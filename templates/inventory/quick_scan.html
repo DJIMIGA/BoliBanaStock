@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Scan Rapide - Produit{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto">
+        <!-- En-tête -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-neutral-900 mb-2">
+                🔍 Scan Rapide
+            </h1>
+            <p class="text-neutral-600">
+                Recherchez rapidement un produit par CUG, EAN ou nom
+            </p>
+        </div>
+
+        <!-- Formulaire de recherche -->
+        <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+            <form method="get" class="space-y-4">
+                <div>
+                    <label for="searchInput" class="block text-sm font-medium text-neutral-700 mb-2">
+                        Scanner ou saisir
+                    </label>
+                    <div class="relative">
+                        <input type="text" 
+                               id="searchInput"
+                               name="q" 
+                               value="{{ search_query }}"
+                               placeholder="Scannez un code-barres ou saisissez CUG, EAN ou nom..."
+                               class="block w-full rounded-lg border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 text-lg px-4 py-3"
+                               autocomplete="off"
+                               autofocus>
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+                            <button type="submit" 
+                                    class="text-bolibana-600 hover:text-bolibana-700">
+                                <i class="fas fa-search text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex space-x-3">
+                    <button type="submit" 
+                            class="flex-1 bg-bolibana-600 text-white px-4 py-2 rounded-lg hover:bg-bolibana-700 transition-colors">
+                        <i class="fas fa-search mr-2"></i>
+                        Rechercher
+                    </button>
+                    <button type="button" 
+                            onclick="startBarcodeScanner()"
+                            class="px-4 py-2 border border-bolibana-600 text-bolibana-600 rounded-lg hover:bg-bolibana-50 transition-colors">
+                        <i class="fas fa-camera mr-2"></i>
+                        Scanner
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Messages d'erreur -->
+        {% if error %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-red-400"></i>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-red-800">
+                        Produit non trouvé
+                    </h3>
+                    <div class="mt-2 text-sm text-red-700">
+                        <p>{{ error }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Suggestions -->
+        {% if suggestions %}
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 class="text-sm font-medium text-blue-800 mb-3">
+                Suggestions de produits similaires
+            </h3>
+            <div class="space-y-2">
+                {% for product in suggestions %}
+                <a href="{% url 'inventory:product_detail' product.pk %}" 
+                   class="block p-3 bg-white rounded-lg border border-blue-200 hover:border-blue-300 hover:shadow-sm transition-all">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="font-medium text-neutral-900">{{ product.name }}</h4>
+                            <p class="text-sm text-neutral-600">CUG: {{ product.cug }}</p>
+                            {% if product.get_primary_barcode %}
+                            <p class="text-sm text-neutral-600">EAN: {{ product.get_primary_barcode.ean }}</p>
+                            {% endif %}
+                        </div>
+                        <i class="fas fa-chevron-right text-blue-400"></i>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Instructions -->
+        <div class="bg-neutral-50 rounded-lg p-4 mt-6">
+            <h3 class="font-medium text-neutral-900 mb-2">Comment utiliser le scan rapide ?</h3>
+            <ul class="text-sm text-neutral-600 space-y-1">
+                <li>• <strong>CUG :</strong> Saisissez les 5 chiffres du CUG</li>
+                <li>• <strong>EAN :</strong> Scannez le code-barres ou saisissez le code EAN</li>
+                <li>• <strong>Nom :</strong> Tapez le nom du produit (recherche partielle)</li>
+                <li>• <strong>Scanner :</strong> Utilisez la caméra pour scanner un code-barres</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Scanner de code-barres modal -->
+<div id="barcodeScannerModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 class="text-lg font-medium text-neutral-900 mb-4">
+                Scanner Code-barres
+            </h3>
+            <div id="scannerContainer" class="w-full h-64 bg-neutral-100 rounded-lg mb-4">
+                <!-- Le scanner sera initialisé ici -->
+            </div>
+            <div class="flex space-x-3">
+                <button type="button" 
+                        onclick="closeBarcodeScanner()"
+                        class="flex-1 px-4 py-2 border border-neutral-300 text-neutral-700 rounded-lg hover:bg-neutral-50">
+                    Annuler
+                </button>
+                <button type="button" 
+                        onclick="manualInput()"
+                        class="flex-1 px-4 py-2 bg-bolibana-600 text-white rounded-lg hover:bg-bolibana-700">
+                    Saisie manuelle
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function startBarcodeScanner() {
+    // Afficher le modal
+    document.getElementById('barcodeScannerModal').classList.remove('hidden');
+    
+    // Ici vous pouvez initialiser le scanner de code-barres
+    // Par exemple avec QuaggaJS ou une autre bibliothèque
+    console.log('Scanner de code-barres initialisé');
+}
+
+function closeBarcodeScanner() {
+    document.getElementById('barcodeScannerModal').classList.add('hidden');
+}
+
+function manualInput() {
+    closeBarcodeScanner();
+    const searchInput = document.getElementById('searchInput');
+    searchInput.focus();
+    searchInput.select();
+}
+
+// Gestion de la soumission du formulaire
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    
+    // Focus automatique sur le champ de recherche
+    searchInput.focus();
+    
+    // Recherche automatique après saisie (avec délai)
+    let searchTimeout;
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(function() {
+            if (searchInput.value.trim().length >= 3) {
+                document.querySelector('form').submit();
+            }
+        }, 500);
+    });
+    
+    // Recherche sur Entrée
+    searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            document.querySelector('form').submit();
+        }
+    });
+});
+</script>
+{% endblock %}

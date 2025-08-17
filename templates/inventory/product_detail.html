@@ -1,105 +1,165 @@
 {% extends "base.html" %}
 {% load static %}
+{% load humanize %}
+{% load inventory_filters %}
 
-{% block title %}{{ product.nom }} - BoliBana Stock{% endblock %}
+{% block title %}{{ product.name }}{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8">
-    <div class="sm:flex sm:items-center">
-        <div class="sm:flex-auto">
-            <h1 class="text-2xl font-semibold text-gray-900">{{ product.nom }}</h1>
-            <p class="mt-2 text-sm text-gray-700">Détails du produit et historique des mouvements de stock.</p>
+<div class="container mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
+    <!-- En-tête avec statistiques -->
+    <div class="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 mb-6 sm:mb-8 lg:mb-10">
+        <!-- Informations principales -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Produit</p>
+                        <p class="text-xl sm:text-2xl font-bold text-neutral-900">{{ product.name }}</p>
+                        <p class="text-sm text-neutral-500 mt-1">CUG: {{ product.cug }}</p>
+                        {% with primary_barcode=product.get_primary_barcode %}
+                        {% if primary_barcode %}
+                        <p class="text-sm text-neutral-500 mt-1">EAN: {{ primary_barcode.ean }}</p>
+                        {% endif %}
+                        {% endwith %}
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-bolibana-100/80 backdrop-blur-sm">
+                        <i class="fas fa-box text-bolibana-500 text-lg sm:text-xl"></i>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none space-x-3">
-            <a href="{% url 'inventory:product_update' product.pk %}" class="block rounded-md bg-bolibana-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-bolibana-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bolibana-600">
-                Modifier
-            </a>
-            <a href="{% url 'inventory:product_delete' product.pk %}" class="block rounded-md bg-red-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600">
-                Supprimer
-            </a>
+
+        <!-- Prix d'achat -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Prix d'achat</p>
+                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ product.formatted_purchase_price }} / {{ product.purchase_price|divisibleby:5|intcomma }} wari</p>
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-forest-100/80 backdrop-blur-sm">
+                        <i class="fas fa-shopping-cart text-forest-500 text-lg sm:text-xl"></i>
+                            </div>
+                            </div>
+                            </div>
+                        </div>
+
+        <!-- Prix de vente -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Prix de vente</p>
+                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ product.formatted_selling_price }} / {{ product.selling_price|divisibleby:5|intcomma }} wari</p>
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-gold-100/80 backdrop-blur-sm">
+                        <i class="fas fa-tag text-gold-500 text-lg sm:text-xl"></i>
+                    </div>
+                            </div>
+                            </div>
+                        </div>
+
+        <!-- Statut du stock -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Statut du stock</p>
+                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ product.quantity }}</p>
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                            {% if product.quantity == 0 %}bg-red-100 text-red-800
+                            {% elif product.quantity <= product.alert_threshold %}bg-gold-100 text-gold-800
+                            {% else %}bg-forest-100 text-forest-800{% endif %}">
+                            {% if product.quantity == 0 %}Rupture
+                            {% elif product.quantity <= product.alert_threshold %}Stock bas
+                            {% else %}En stock{% endif %}
+                                </span>
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full 
+                        {% if product.quantity == 0 %}bg-red-100/80
+                        {% elif product.quantity <= product.alert_threshold %}bg-gold-100/80
+                        {% else %}bg-forest-100/80{% endif %} backdrop-blur-sm">
+                        <i class="fas 
+                            {% if product.quantity == 0 %}fa-times-circle text-red-500
+                            {% elif product.quantity <= product.alert_threshold %}fa-exclamation-triangle text-gold-500
+                            {% else %}fa-check-circle text-forest-500{% endif %} text-lg sm:text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    <!-- Détails du produit -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Informations détaillées -->
+        <div class="card">
+            <div class="p-4 sm:p-6">
+                <h3 class="text-lg sm:text-xl font-semibold text-neutral-800 mb-6">Informations détaillées</h3>
+                <div class="space-y-4">
+                    <p class="text-sm font-medium text-neutral-500">Catégorie: <span class="text-neutral-900 ml-2">{{ product.category.name|default:"Non catégorisé" }}</span></p>
+                    <p class="text-sm font-medium text-neutral-500">Marque: <span class="text-neutral-900 ml-2">{{ product.brand.name|default:"Non spécifié" }}</span></p>
+                    <p class="text-sm font-medium text-neutral-500">Marge: <span class="text-neutral-900 ml-2">{{ product.formatted_margin }} / {{ product.margin|divisibleby:5|intcomma }} wari</span></p>
+                    <p class="text-sm font-medium text-neutral-500">Seuil d'alerte: <span class="text-neutral-900 ml-2">{{ product.alert_threshold }}</span></p>
+                    <p class="text-sm font-medium text-neutral-500">Description: <span class="text-neutral-900 ml-2">{{ product.description|default:"Non renseignée" }}</span></p>
+                    {% if product.barcodes.exists %}
+                    <p class="text-sm font-medium text-neutral-500">EAN: 
+                        {% for barcode in product.barcodes.all %}
+                        <span class="text-neutral-900 ml-2">{{ barcode.ean }}</span>
+                        {% if barcode.is_primary %}
+                        <span class="px-2 py-1 text-xs font-medium text-bolibana-700 bg-bolibana-50 rounded-full ml-2">Principal</span>
+                        {% endif %}
+                        {% if not forloop.last %}, {% endif %}
+                                    {% endfor %}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Historique des transactions -->
+        <div class="card">
+            <div class="p-4 sm:p-6">
+                <h3 class="text-lg sm:text-xl font-semibold text-neutral-800 mb-4">Historique des transactions</h3>
+                {% if transactions %}
+                    <div class="space-y-2">
+                        {% for transaction in transactions %}
+                        <div class="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-neutral-50 transition-colors duration-200">
+                            <span class="text-neutral-900">{{ transaction.get_type_display }}</span>
+                            <span class="text-neutral-600">{{ transaction.quantity }}</span>
+                            <span class="text-neutral-500">{{ transaction.transaction_date|date:"d/m/Y H:i" }}</span>
+                        </div>
+                                    {% endfor %}
+                        </div>
+                    {% else %}
+                    <p class="text-sm text-neutral-500">Aucune transaction récente</p>
+                    {% endif %}
+            </div>
         </div>
     </div>
 
-    <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <!-- Informations du produit -->
-        <div class="bg-white shadow sm:rounded-lg">
-            <div class="px-4 py-5 sm:p-6">
-                <h3 class="text-lg font-medium leading-6 text-gray-900">Informations du produit</h3>
-                <div class="mt-5 border-t border-gray-200">
-                    <dl class="divide-y divide-gray-200">
-                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-                            <dt class="text-sm font-medium text-gray-500">Catégorie</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">{{ product.categorie }}</dd>
-                        </div>
-                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-                            <dt class="text-sm font-medium text-gray-500">Prix de vente</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">{{ product.prix_vente }} €</dd>
-                        </div>
-                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-                            <dt class="text-sm font-medium text-gray-500">Quantité en stock</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">{{ product.quantite_stock }}</dd>
-                        </div>
-                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-                            <dt class="text-sm font-medium text-gray-500">Seuil d'alerte</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">{{ product.seuil_alerte }}</dd>
-                        </div>
-                        <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4">
-                            <dt class="text-sm font-medium text-gray-500">Statut</dt>
-                            <dd class="mt-1 text-sm sm:col-span-2 sm:mt-0">
-                                {% if product.quantite_stock > product.seuil_alerte %}
-                                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">En stock</span>
-                                {% elif product.quantite_stock > 0 %}
-                                    <span class="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 ring-1 ring-inset ring-yellow-600/20">Stock faible</span>
-                                {% else %}
-                                    <span class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">Rupture</span>
-                                {% endif %}
-                            </dd>
-                        </div>
-                    </dl>
-                </div>
-            </div>
-        </div>
-
-        <!-- Historique des mouvements -->
-        <div class="bg-white shadow sm:rounded-lg">
-            <div class="px-4 py-5 sm:p-6">
-                <h3 class="text-lg font-medium leading-6 text-gray-900">Historique des mouvements</h3>
-                <div class="mt-5 flow-root">
-                    <ul role="list" class="-mb-8">
-                        {% for mouvement in product.mouvements.all %}
-                        <li>
-                            <div class="relative pb-8">
-                                {% if not forloop.last %}
-                                <span class="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true"></span>
-                                {% endif %}
-                                <div class="relative flex space-x-3">
-                                    <div>
-                                        <span class="h-8 w-8 rounded-full bg-bolibana-500 flex items-center justify-center ring-8 ring-white">
-                                            <svg class="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
-                                                <path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14a6 6 0 100-12 6 6 0 000 12z" clip-rule="evenodd" />
-                                            </svg>
-                                        </span>
-                                    </div>
-                                    <div class="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
-                                        <div>
-                                            <p class="text-sm text-gray-500">
-                                                {{ mouvement.type_mouvement }} de {{ mouvement.quantite }} unités
-                                            </p>
-                                        </div>
-                                        <div class="whitespace-nowrap text-right text-sm text-gray-500">
-                                            <time datetime="{{ mouvement.date_mouvement|date:'Y-m-d' }}">{{ mouvement.date_mouvement|date:"d/m/Y H:i" }}</time>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </li>
-                        {% empty %}
-                        <li class="text-sm text-gray-500">Aucun mouvement enregistré</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-        </div>
+    <!-- Actions -->
+    <div class="mt-6 flex flex-col sm:flex-row gap-4">
+        <a href="{% url 'inventory:product_list' %}" 
+           class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-neutral-600 hover:text-neutral-100 bg-white hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-neutral-600">
+            <i class="fas fa-arrow-left mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Retour à la liste
+        </a>
+        <a href="{% url 'inventory:barcode_list' product_id=product.pk %}" 
+           class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-bolibana-600 hover:text-white bg-transparent hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-bolibana-600">
+            <i class="fas fa-barcode mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Gérer les codes-barres
+        </a>
+        <a href="{% url 'inventory:product_update' pk=product.pk %}" 
+           class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-gold-600 hover:text-white bg-transparent hover:bg-gold-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-gold-600">
+            <i class="fas fa-edit mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Modifier
+        </a>
+        <a href="{% url 'inventory:product_delete' pk=product.pk %}" 
+           class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-red-600 hover:text-white bg-transparent hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-red-600">
+            <i class="fas fa-trash-alt mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Supprimer
+        </a>
     </div>
 </div>
 {% endblock %} 

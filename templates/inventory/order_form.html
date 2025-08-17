@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block title %}
+    {% if form.instance.pk %}
+        Modifier la Commande #{{ form.instance.pk }}
+    {% else %}
+        Nouvelle Commande
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <!-- En-tête -->
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-xl font-bold text-gray-800">
+                {% if form.instance.pk %}
+                    Modifier la Commande #{{ form.instance.pk }}
+                {% else %}
+                    Nouvelle Commande
+                {% endif %}
+            </h2>
+        </div>
+
+        <!-- Formulaire -->
+        <form method="post" class="p-6">
+            {% csrf_token %}
+            
+            <!-- Informations de base -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <label for="{{ form.customer.id_for_label }}" class="block text-sm font-medium text-gray-700">
+                        Client *
+                    </label>
+                    <select name="{{ form.customer.name }}" id="{{ form.customer.id_for_label }}" 
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                            required>
+                        <option value="">Sélectionnez un client</option>
+                        {% for customer in form.fields.customer.queryset %}
+                            <option value="{{ customer.id }}" {% if form.customer.value == customer.id %}selected{% endif %}>
+                                {{ customer.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if form.customer.errors %}
+                        <p class="mt-1 text-sm text-red-600">{{ form.customer.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.status.id_for_label }}" class="block text-sm font-medium text-gray-700">
+                        Statut *
+                    </label>
+                    <select name="{{ form.status.name }}" id="{{ form.status.id_for_label }}" 
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                            required>
+                        {% for value, label in form.fields.status.choices %}
+                            <option value="{{ value }}" {% if form.status.value == value %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if form.status.errors %}
+                        <p class="mt-1 text-sm text-red-600">{{ form.status.errors.0 }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Articles de la commande -->
+            <div class="mb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Articles de la commande</h3>
+                
+                {{ formset.management_form }}
+                <div id="order-items">
+                    {% for form in formset %}
+                        <div class="order-item bg-gray-50 p-4 rounded-lg mb-4">
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Produit *</label>
+                                    <select name="{{ form.product.html_name }}" 
+                                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm product-select"
+                                            required>
+                                        <option value="">Sélectionnez un produit</option>
+                                        {% for product in form.fields.product.queryset %}
+                                            <option value="{{ product.id }}" 
+                                                    data-price="{{ product.selling_price }}"
+                                                    data-stock="{{ product.quantity }}"
+                                                    {% if form.product.value == product.id %}selected{% endif %}>
+                                                {{ product.name }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Quantité *</label>
+                                    <input type="number" name="{{ form.quantity.html_name }}" 
+                                           value="{{ form.quantity.value|default:'1' }}"
+                                           min="1"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm quantity-input"
+                                           required>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Prix unitaire (FCFA) *</label>
+                                    <input type="number" name="{{ form.unit_price.html_name }}" 
+                                           value="{{ form.unit_price.value|default:'0' }}"
+                                           min="0"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm price-input"
+                                           required>
+                                </div>
+
+                                <div class="flex items-end">
+                                    {% if form.instance.pk %}
+                                        <input type="hidden" name="{{ form.DELETE.html_name }}" class="delete-input">
+                                        <button type="button" class="delete-item text-red-600 hover:text-red-900">
+                                            <i class="fas fa-trash"></i> Supprimer
+                                        </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <button type="button" id="add-item" 
+                        class="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500">
+                    <i class="fas fa-plus mr-2"></i>
+                    Ajouter un article
+                </button>
+            </div>
+
+            <!-- Boutons d'action -->
+            <div class="flex justify-end space-x-4">
+                <a href="{% url 'inventory:order_list' %}" 
+                   class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500">
+                    <i class="fas fa-times mr-2"></i>
+                    Annuler
+                </a>
+                <button type="submit" 
+                        class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500">
+                    <i class="fas fa-save mr-2"></i>
+                    {% if form.instance.pk %}
+                        Enregistrer les modifications
+                    {% else %}
+                        Créer la commande
+                    {% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const orderItems = document.getElementById('order-items');
+    const addItemButton = document.getElementById('add-item');
+    const totalForms = document.getElementById('id_items-TOTAL_FORMS');
+    let formCount = parseInt(totalForms.value);
+
+    // Fonction pour mettre à jour le prix unitaire
+    function updateUnitPrice(select) {
+        const option = select.options[select.selectedIndex];
+        const priceInput = select.closest('.order-item').querySelector('.price-input');
+        if (option && option.dataset.price) {
+            priceInput.value = option.dataset.price;
+        }
+    }
+
+    // Fonction pour vérifier le stock
+    function checkStock(select, quantityInput) {
+        const option = select.options[select.selectedIndex];
+        const quantity = parseInt(quantityInput.value);
+        if (option && option.dataset.stock) {
+            const stock = parseInt(option.dataset.stock);
+            if (quantity > stock) {
+                alert(`Stock insuffisant. Quantité disponible : ${stock}`);
+                quantityInput.value = stock;
+            }
+        }
+    }
+
+    // Écouteurs d'événements pour les champs existants
+    document.querySelectorAll('.product-select').forEach(select => {
+        select.addEventListener('change', function() {
+            updateUnitPrice(this);
+            const quantityInput = this.closest('.order-item').querySelector('.quantity-input');
+            checkStock(this, quantityInput);
+        });
+    });
+
+    document.querySelectorAll('.quantity-input').forEach(input => {
+        input.addEventListener('change', function() {
+            const select = this.closest('.order-item').querySelector('.product-select');
+            checkStock(select, this);
+        });
+    });
+
+    // Gestion de la suppression d'articles
+    document.querySelectorAll('.delete-item').forEach(button => {
+        button.addEventListener('click', function() {
+            const item = this.closest('.order-item');
+            const deleteInput = item.querySelector('.delete-input');
+            if (deleteInput) {
+                deleteInput.value = 'on';
+                item.style.display = 'none';
+            } else {
+                item.remove();
+            }
+        });
+    });
+
+    // Ajout d'un nouvel article
+    addItemButton.addEventListener('click', function() {
+        const template = document.querySelector('.order-item').cloneNode(true);
+        const newFormNum = formCount++;
+        totalForms.value = formCount;
+
+        // Mise à jour des noms des champs
+        template.querySelectorAll('[name*="-"]').forEach(input => {
+            input.name = input.name.replace(/-\d+-/, `-${newFormNum}-`);
+            input.id = input.id.replace(/-\d+-/, `-${newFormNum}-`);
+            input.value = '';
+        });
+
+        // Réinitialisation des sélecteurs
+        template.querySelector('.product-select').selectedIndex = 0;
+        template.querySelector('.quantity-input').value = '1';
+        template.querySelector('.price-input').value = '0';
+
+        // Ajout des écouteurs d'événements
+        template.querySelector('.product-select').addEventListener('change', function() {
+            updateUnitPrice(this);
+            const quantityInput = this.closest('.order-item').querySelector('.quantity-input');
+            checkStock(this, quantityInput);
+        });
+
+        template.querySelector('.quantity-input').addEventListener('change', function() {
+            const select = this.closest('.order-item').querySelector('.product-select');
+            checkStock(select, this);
+        });
+
+        orderItems.appendChild(template);
+    });
+});
+</script>
+{% endblock %}
+{% endblock %} 

@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Supprimer le mouvement de stock{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="bg-white shadow rounded-lg p-6">
+            <h1 class="text-2xl font-bold text-gray-900 mb-6">Supprimer le mouvement de stock</h1>
+            
+            <p class="text-gray-600 mb-6">
+                Êtes-vous sûr de vouloir supprimer ce mouvement de stock ? Cette action est irréversible.
+            </p>
+
+            <div class="bg-gray-50 p-4 rounded-md mb-6">
+                <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Produit</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ object.produit.nom }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Type de mouvement</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ object.get_type_mouvement_display }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Quantité</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ object.quantite }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Date</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ object.date_mouvement|date:"d/m/Y H:i" }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="flex justify-end space-x-3">
+                    <a href="{% url 'inventory:cadencier_view' %}" class="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500">
+                        Annuler
+                    </a>
+                    <button type="submit" class="bg-red-600 border border-transparent rounded-md shadow-sm py-2 px-4 inline-flex justify-center text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                        Supprimer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

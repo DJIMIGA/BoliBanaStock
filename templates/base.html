@@ -1,68 +1,147 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="fr" class="h-full bg-gray-50">
+<html lang="fr" class="h-full bg-neutral-100">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}BoliBana Stock{% endblock %}</title>
     
-    <!-- Tailwind CSS -->
-    <link href="{% static 'css/output.css' %}" rel="stylesheet">
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon.svg' %}">
+    <link rel="icon" type="image/png" href="{% static 'img/favicon.png' %}">
     
-    <!-- Inter font -->
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <!-- Google Fonts - Montserrat -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Tailwind CSS -->
+    <link href="{% static 'css/dist/output.css' %}" rel="stylesheet">
     
     {% block extra_css %}{% endblock %}
 </head>
-<body class="h-full">
-    <div class="min-h-full">
+<body class="h-full font-sans flex flex-col min-h-screen">
+    <div class="flex flex-col min-h-screen">
         <!-- Navigation -->
-        <nav class="bg-bolibana-600">
+        <nav class="bg-bolibana-500 shadow-lg">
             <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div class="flex h-16 items-center justify-between">
-                    <div class="flex items-center">
-                        <div class="flex-shrink-0">
-                            <img class="h-8 w-8" src="{% static 'img/logo.png' %}" alt="BoliBana Stock">
-                        </div>
-                        <div class="hidden md:block">
-                            <div class="ml-10 flex items-baseline space-x-4">
-                                <a href="{% url 'home' %}" class="text-white hover:bg-bolibana-500 hover:bg-opacity-75 rounded-md px-3 py-2 text-sm font-medium">Accueil</a>
-                                <a href="{% url 'inventory:product_list' %}" class="text-white hover:bg-bolibana-500 hover:bg-opacity-75 rounded-md px-3 py-2 text-sm font-medium">Produits</a>
-                                <a href="{% url 'sales:sale_list' %}" class="text-white hover:bg-bolibana-500 hover:bg-opacity-75 rounded-md px-3 py-2 text-sm font-medium">Ventes</a>
+                    <!-- Logo -->
+                    <div class="flex-shrink-0">
+                        <a href="{% url 'theme:home' %}" class="flex items-center space-x-3 group">
+                            <img class="h-12 w-12 transform group-hover:scale-105 transition-transform duration-200" src="{% static 'img/logo.svg' %}" alt="BoliBana Stock">
+                            <span class="text-xl font-semibold text-white group-hover:text-gold-300 transition-colors duration-200">BoliBana Stock</span>
+                        </a>
+                    </div>
+                    
+                    <!-- Navigation desktop -->
+                    <div class="hidden md:block">
+                        <div class="flex items-center justify-between space-x-8">
+                            <!-- Navigation links -->
+                            <div class="flex items-center space-x-2">
+                                <a href="{% url 'theme:home' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                    <i class="fas fa-home mr-1"></i>Accueil
+                                </a>
+                                {% if user.is_authenticated %}
+                                                                    <a href="{% url 'inventory:product_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                    <i class="fas fa-box mr-1"></i>Produits
+                                </a>
+                                <a href="{% url 'inventory:quick_scan' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                    <i class="fas fa-search mr-1"></i>Scan Rapide
+                                </a>
+                                <a href="{% url 'inventory:label_generator' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                    <i class="fas fa-barcode mr-1"></i>Étiquettes
+                                </a>
+                                    <a href="{% url 'inventory:order_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                        <i class="fas fa-shopping-cart mr-1"></i>Commandes
+                                    </a>
+                                    <a href="{% url 'inventory:transaction_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                        <i class="fas fa-exchange-alt mr-1"></i>Transactions
+                                    </a>
+                                    <a href="{% url 'sales:sale_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                        <i class="fas fa-cash-register mr-1"></i>Ventes
+                                    </a>
+                                    <a href="{% url 'sales:cash_register_scanner' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                        <i class="fas fa-barcode mr-1"></i>Caisse Scanner
+                                    </a>
+                                    <a href="{% url 'inventory:cadencier_view' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                        <i class="fas fa-calendar-alt mr-1"></i>Cadencier
+                                    </a>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- User actions -->
+                            <div class="flex items-center space-x-4">
+                                {% if user.is_authenticated %}
+                                    <!-- Notifications -->
+                                    <button type="button" class="relative rounded-full bg-bolibana-600 p-2 text-white hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-bolibana-600 transition-colors duration-200" id="notifications-button">
+                                        <span class="sr-only">Voir les notifications</span>
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                                        </svg>
+                                        <!-- Notification badge -->
+                                        <span class="absolute -top-0.5 -right-0.5 h-3 w-3 bg-red-500 rounded-full border border-white"></span>
+                                    </button>
+
+                                    <!-- Profile dropdown -->
+                                    <div class="relative">
+                                        <button type="button" class="flex items-center rounded-full bg-bolibana-600 text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-bolibana-600 transition-colors duration-200" id="user-menu-button">
+                                            <span class="sr-only">Ouvrir le menu utilisateur</span>
+                                            <img class="h-8 w-8 rounded-full" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="">
+                                        </button>
+                                        <!-- Dropdown menu -->
+                                        <div class="absolute right-0 z-50 mt-2 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none hidden" id="user-menu-dropdown">
+                                            <a href="{% url 'core:configuration' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
+                                                <i class="fas fa-building mr-2"></i>Configuration
+                                            </a>
+                                            {% if user.is_superuser or user.is_site_admin %}
+                                            <a href="{% url 'core:user_list' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
+                                                <i class="fas fa-users mr-2"></i>Gestion utilisateurs
+                                            </a>
+                                            {% endif %}
+                                            {% if user.is_superuser %}
+                                            <a href="{% url 'core:settings' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
+                                                <i class="fas fa-cog mr-2"></i>Paramètres avancés
+                                            </a>
+                                            {% endif %}
+                                            <div class="border-t border-gray-100 my-1"></div>
+                                            <a href="{% url 'logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150">
+                                                <i class="fas fa-sign-out-alt mr-2"></i>Déconnexion
+                                            </a>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <!-- Login button -->
+                                    <a href="{% url 'login' %}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 transition-colors duration-200">
+                                        <i class="fas fa-sign-in-alt mr-2"></i>Connexion
+                                    </a>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
-                    <div class="hidden md:block">
-                        <div class="ml-4 flex items-center md:ml-6">
-                            <!-- Notifications -->
-                            <button type="button" class="relative rounded-full bg-bolibana-500 p-1 text-white hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-bolibana-600">
-                                <span class="absolute -inset-1.5"></span>
-                                <span class="sr-only">Voir les notifications</span>
-                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                                </svg>
-                            </button>
-
-                            <!-- Profile dropdown -->
-                            <div class="relative ml-3">
-                                <div>
-                                    <button type="button" class="flex max-w-xs items-center rounded-full bg-bolibana-500 text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-bolibana-600" id="user-menu-button">
-                                        <span class="sr-only">Ouvrir le menu utilisateur</span>
-                                        <img class="h-8 w-8 rounded-full" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="">
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                    
+                    <!-- Bouton hamburger pour mobile -->
+                    <div class="flex md:hidden">
+                        <button type="button" 
+                                id="mobile-menu-button"
+                                class="inline-flex items-center justify-center p-2 rounded text-white hover:text-white hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white transition-transform duration-200"
+                                aria-controls="mobile-menu" 
+                                aria-expanded="false">
+                            <span class="sr-only">Ouvrir le menu</span>
+                            <i class="fas fa-bars transition-transform duration-200" id="mobile-menu-icon"></i>
+                        </button>
                     </div>
                 </div>
             </div>
         </nav>
 
         <!-- Main content -->
-        <main>
-            <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+        <main class="flex-grow">
+            <div class="mx-auto max-w-[1920px] py-6 sm:px-6 lg:px-8">
                 {% if messages %}
                     {% for message in messages %}
-                        <div class="rounded-md p-4 mb-4 {% if message.tags == 'success' %}bg-green-50 text-green-700{% elif message.tags == 'error' %}bg-red-50 text-red-700{% elif message.tags == 'warning' %}bg-yellow-50 text-yellow-700{% else %}bg-blue-50 text-blue-700{% endif %}">
+                        <div class="rounded-md p-4 mb-4 {% if message.tags == 'success' %}bg-forest-50 text-forest-700{% elif message.tags == 'error' %}bg-red-50 text-red-700{% elif message.tags == 'warning' %}bg-gold-50 text-gold-700{% else %}bg-bolibana-50 text-bolibana-700{% endif %}">
                             {{ message }}
                         </div>
                     {% endfor %}
@@ -71,8 +150,242 @@
                 {% block content %}{% endblock %}
             </div>
         </main>
+
+        <!-- Footer -->
+        <footer class="bg-bolibana-500 text-white mt-auto">
+            <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <!-- À propos -->
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-semibold text-gold-300">Notre Mission</h3>
+                        <p class="text-sm text-neutral-200">
+                            BoliBana Stock est une solution de gestion d'entreprise innovante,
+                            spécialisée dans la gestion de stock et de caisse pour les commerçants maliens.
+                        </p>
+                    </div>
+
+                    <!-- Fonctionnalités -->
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-semibold text-gold-300">Fonctionnalités</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li class="flex items-center space-x-2 text-neutral-200">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                </svg>
+                                <span>Gestion des stocks en temps réel</span>
+                            </li>
+                            <li class="flex items-center space-x-2 text-neutral-200">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                </svg>
+                                <span>Suivi des ventes et analyses</span>
+                            </li>
+                            <li class="flex items-center space-x-2 text-neutral-200">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <span>Alertes de stock bas</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Contact -->
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-semibold text-gold-300">Contact</h3>
+                        <ul class="space-y-2 text-sm text-neutral-200">
+                            <li class="flex items-center space-x-2">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                                <span>contact@bolibana-stock.com</span>
+                            </li>
+                            <li class="flex items-center space-x-2">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                                </svg>
+                                <span>+223 XX XX XX XX</span>
+                            </li>
+                            <li class="flex items-center space-x-2">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                                <span>Bamako, Mali</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Copyright -->
+                <div class="mt-8 pt-4 border-t border-bolibana-400">
+                    <p class="text-center text-sm text-neutral-200">
+                        © {% now "Y" %} BoliBana Stock - Solution de gestion d'entreprise • Stock • Caisse
+                    </p>
+                </div>
+            </div>
+        </footer>
     </div>
 
-    {% block extra_js %}{% endblock %}
+    <!-- Menu mobile -->
+    {% include 'partials/mobile_menu.html' %}
+
+    {% block extra_js %}
+    <script>
+    // Animation de rotation sur l'icône lors du switch
+    (function() {
+        const btn = document.getElementById('mobile-menu-button');
+        if (!btn) return;
+        const icon = btn.querySelector('i');
+        btn.addEventListener('click', function() {
+            icon.classList.add('rotate-90');
+            setTimeout(() => icon.classList.remove('rotate-90'), 200);
+        });
+    })();
+    
+    // Menu déroulant du profil utilisateur
+    (function() {
+        const userMenuButton = document.getElementById('user-menu-button');
+        const userMenuDropdown = document.getElementById('user-menu-dropdown');
+        
+        if (userMenuButton && userMenuDropdown) {
+            userMenuButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const isHidden = userMenuDropdown.classList.contains('hidden');
+                
+                if (isHidden) {
+                    userMenuDropdown.classList.remove('hidden');
+                } else {
+                    userMenuDropdown.classList.add('hidden');
+                }
+            });
+            
+            // Fermer le menu en cliquant ailleurs
+            document.addEventListener('click', function(event) {
+                if (!userMenuButton.contains(event.target) && !userMenuDropdown.contains(event.target)) {
+                    userMenuDropdown.classList.add('hidden');
+                }
+            });
+            
+            // Fermer avec la touche Escape
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    userMenuDropdown.classList.add('hidden');
+                }
+            });
+        }
+    })();
+
+    // Fonctionnalité des notifications
+    (function() {
+        const notificationsButton = document.getElementById('notifications-button');
+        
+        if (notificationsButton) {
+            notificationsButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Supprimer les notifications existantes
+                const existingNotifications = document.querySelectorAll('.notification-toast');
+                existingNotifications.forEach(notification => notification.remove());
+                
+                // Calculer la position optimale
+                const buttonRect = notificationsButton.getBoundingClientRect();
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                
+                // Position par défaut
+                let top = Math.max(20, buttonRect.bottom + 10);
+                let right = Math.max(16, viewportWidth - buttonRect.right);
+                
+                // Ajuster si la notification dépasse en bas
+                if (top + 120 > viewportHeight) {
+                    top = Math.max(20, buttonRect.top - 130);
+                }
+                
+                // Ajuster si la notification dépasse à droite
+                if (right + 320 > viewportWidth) {
+                    right = 16;
+                }
+                
+                // Créer la notification
+                const notification = document.createElement('div');
+                notification.className = 'notification-toast fixed bg-white border border-neutral-200 rounded-lg shadow-xl p-4 z-50 max-w-sm';
+                notification.style.top = top + 'px';
+                notification.style.right = right + 'px';
+                notification.style.maxWidth = '320px';
+                notification.style.minWidth = '280px';
+                
+                notification.innerHTML = `
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-bolibana-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div class="ml-3 w-0 flex-1">
+                            <p class="text-sm font-medium text-neutral-900">Notifications</p>
+                            <p class="mt-1 text-sm text-neutral-500">Aucune nouvelle notification pour le moment.</p>
+                        </div>
+                        <div class="ml-4 flex flex-shrink-0">
+                            <button type="button" class="inline-flex text-neutral-400 hover:text-neutral-600 focus:outline-none focus:text-neutral-600 transition-colors duration-150" onclick="this.closest('.notification-toast').remove()">
+                                <span class="sr-only">Fermer</span>
+                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                // Ajouter l'animation d'entrée
+                notification.style.opacity = '0';
+                notification.style.transform = 'translateY(-10px) scale(0.95)';
+                notification.style.transition = 'all 0.2s ease-out';
+                
+                document.body.appendChild(notification);
+                
+                // Animer l'entrée
+                requestAnimationFrame(() => {
+                    notification.style.opacity = '1';
+                    notification.style.transform = 'translateY(0) scale(1)';
+                });
+                
+                // Auto-remove après 5 secondes
+                setTimeout(() => {
+                    if (notification.parentElement) {
+                        notification.style.opacity = '0';
+                        notification.style.transform = 'translateY(-10px) scale(0.95)';
+                        setTimeout(() => {
+                            if (notification.parentElement) {
+                                notification.remove();
+                            }
+                        }, 200);
+                    }
+                }, 5000);
+                
+                // Fermer en cliquant sur l'arrière-plan
+                notification.addEventListener('click', function(e) {
+                    if (e.target === notification) {
+                        notification.remove();
+                    }
+                });
+                
+                // Fermer avec Escape
+                const handleEscape = function(e) {
+                    if (e.key === 'Escape') {
+                        notification.remove();
+                        document.removeEventListener('keydown', handleEscape);
+                    }
+                };
+                document.addEventListener('keydown', handleEscape);
+            });
+        }
+    })();
+
+
+    </script>
+    {% endblock %}
 </body>
 </html> 

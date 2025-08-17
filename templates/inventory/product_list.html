@@ -1,72 +1,676 @@
 {% extends "base.html" %}
 {% load static %}
+{% load humanize %}
+{% load inventory_filters %}
 
-{% block title %}Produits - BoliBana Stock{% endblock %}
+{% block title %}Gestion du Stock{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8">
-    <div class="sm:flex sm:items-center">
-        <div class="sm:flex-auto">
-            <h1 class="text-2xl font-semibold text-gray-900">Produits</h1>
-            <p class="mt-2 text-sm text-gray-700">Liste complète des produits en stock avec leurs détails et niveaux de stock.</p>
+<div class="container mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
+    <!-- En-tête avec statistiques et actions -->
+    <div class="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 mb-6 sm:mb-8 lg:mb-10">
+        <!-- Total des produits -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Total Produits</p>
+                        <p class="text-xl sm:text-2xl font-bold text-neutral-900">{{ total_products }}</p>
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-bolibana-100/80 backdrop-blur-sm">
+                        <i class="fas fa-box text-bolibana-500 text-lg sm:text-xl"></i>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                    <a href="{% url 'inventory:product_create' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-forest-600 hover:text-white bg-transparent hover:bg-forest-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-forest-600">
+                        <i class="fas fa-plus mr-1.5 sm:mr-2 text-base"></i>
+                        Nouveau
+                    </a>
+                    <a href="{% url 'inventory:cadencier_view' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-gold-600 hover:text-white bg-transparent hover:bg-gold-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-gold-600">
+                        <i class="fas fa-clipboard-list mr-1.5 sm:mr-2 text-base"></i>
+                        Cadencier
+                    </a>
+                    <button type="button" 
+                            onclick="window.location.href='{% url 'inventory:check_price' %}'"
+                            class="btn-primary w-full">
+                        <i class="fas fa-barcode mr-2"></i>
+                        Scan Prix
+                    </button>
+                </div>
+            </div>
         </div>
-        <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
-            <a href="{% url 'inventory:product_create' %}" class="block rounded-md bg-bolibana-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-bolibana-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bolibana-600">
-                Ajouter un produit
-            </a>
-        </div>
-    </div>
 
-    <!-- Filtres -->
-    <div class="mt-8 flow-root">
-        <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-            <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
-                    <table class="min-w-full divide-y divide-gray-300">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Nom</th>
-                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Catégorie</th>
-                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Prix</th>
-                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Stock</th>
-                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Statut</th>
-                                <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                                    <span class="sr-only">Actions</span>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-200 bg-white">
-                            {% for product in products %}
-                            <tr>
-                                <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                                    {{ product.nom }}
-                                </td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ product.categorie }}</td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ product.prix_vente }} €</td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ product.quantite_stock }}</td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm">
-                                    {% if product.quantite_stock > product.seuil_alerte %}
-                                        <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">En stock</span>
-                                    {% elif product.quantite_stock > 0 %}
-                                        <span class="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 ring-1 ring-inset ring-yellow-600/20">Stock faible</span>
-                                    {% else %}
-                                        <span class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">Rupture</span>
-                                    {% endif %}
-                                </td>
-                                <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                                    <a href="{% url 'inventory:product_detail' product.pk %}" class="text-bolibana-600 hover:text-bolibana-900">Voir<span class="sr-only">, {{ product.nom }}</span></a>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="6" class="px-3 py-4 text-sm text-gray-500 text-center">Aucun produit trouvé</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+        <!-- Régularisations -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Régularisations</p>
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-purple-100/80 backdrop-blur-sm">
+                        <i class="fas fa-balance-scale text-purple-500 text-lg sm:text-xl"></i>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <a href="{% url 'inventory:transaction_create' %}?type=loss" 
+                       class="inline-flex items-center px-3 py-2 text-sm font-bold rounded-full text-red-600 hover:text-white bg-transparent hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-red-600">
+                        <i class="fas fa-trash-alt mr-2 text-base"></i>
+                        Casse
+                    </a>
+                    <a href="{% url 'inventory:transaction_create' %}?type=in" 
+                       class="inline-flex items-center px-3 py-2 text-sm font-bold rounded-full text-forest-600 hover:text-white bg-transparent hover:bg-forest-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-forest-600">
+                        <i class="fas fa-plus mr-2 text-base"></i>
+                        Entrée
+                    </a>
+                    <a href="{% url 'inventory:inventory_count' %}" 
+                       class="inline-flex items-center px-3 py-2 text-sm font-bold rounded-full text-gold-600 hover:text-white bg-transparent hover:bg-gold-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-gold-600">
+                        <i class="fas fa-clipboard-check mr-2 text-base"></i>
+                        Inventaire
+                    </a>
+                    <a href="{% url 'inventory:stock_count' %}" 
+                       class="inline-flex items-center px-3 py-2 text-sm font-bold rounded-full text-bolibana-600 hover:text-white bg-transparent hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-bolibana-600">
+                        <i class="fas fa-calculator mr-2 text-base"></i>
+                        Comptage
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Valeur du stock -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zMCAxNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjE1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik0xNSAzNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjM1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik00NSAzNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjM1eiIgZmlsbD0iIzIwMjAyMCIvPjwvZz48L3N2Zz4=')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Valeur du Stock</p>
+                        <p class="text-xl sm:text-2xl font-bold text-neutral-900">{{ total_stock_value|format_currency }}</p>
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-forest-100/80 backdrop-blur-sm">
+                        <i class="fas fa-coins text-forest-500 text-lg sm:text-xl"></i>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                    <a href="{% url 'inventory:stock_report' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-forest-600 hover:text-white bg-transparent hover:bg-forest-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-forest-600">
+                        <i class="fas fa-file-alt mr-1.5 sm:mr-2 text-base"></i>
+                        Rapport
+                    </a>
+                    <a href="{% url 'inventory:stock_valuation' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-forest-600 hover:text-white bg-transparent hover:bg-forest-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-forest-600">
+                        <i class="fas fa-calculator mr-1.5 sm:mr-2 text-base"></i>
+                        Évaluation
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alertes Stock -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Alertes Stock</p>
+                        <div class="flex items-center space-x-4 mt-2">
+                            <div>
+                                <p class="text-sm text-neutral-500">En Alerte</p>
+                                <p class="text-xl sm:text-2xl font-bold text-gold-600">{{ low_stock_count }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-neutral-500">En Rupture</p>
+                                <p class="text-xl sm:text-2xl font-bold text-red-600">{{ out_of_stock_count }}</p>
+                            </div>
+                        </div>
+                </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-red-100/80 backdrop-blur-sm">
+                        <i class="fas fa-exclamation-triangle text-red-500 text-lg sm:text-xl"></i>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <a href="{% url 'inventory:product_list' %}?filter=low_stock" 
+                       class="inline-flex items-center px-3 py-2 text-sm font-bold rounded-full text-gold-600 hover:text-white bg-transparent hover:bg-gold-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-gold-600">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        Alertes
+                    </a>
+                    <a href="{% url 'inventory:product_list' %}?filter=out_of_stock" 
+                       class="inline-flex items-center px-3 py-2 text-sm font-bold rounded-full text-red-600 hover:text-white bg-transparent hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-red-600">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        Ruptures
+                    </a>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Liste des produits -->
+    <div class="card">
+        <div class="p-4 sm:p-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 gap-4">
+                <h2 class="text-lg sm:text-xl font-semibold text-neutral-800">Liste des Produits</h2>
+                
+                <!-- Filtres -->
+                <div class="w-full sm:w-2/3 lg:w-1/2 flex flex-col sm:flex-row gap-3">
+                    <!-- Filtre par catégorie -->
+                    <div class="flex-1">
+                        <select id="categoryFilter" class="form-input w-full text-sm">
+                            <option value="">Toutes les catégories</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}" {% if request.GET.category == category.id|stringformat:"i" %}selected{% endif %}>
+                                {{ category.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Filtre par marque -->
+                    <div class="flex-1">
+                        <select id="brandFilter" class="form-input w-full text-sm">
+                            <option value="">Toutes les marques</option>
+                            {% for brand in brands %}
+                            <option value="{{ brand.id }}" {% if request.GET.brand == brand.id|stringformat:"i" %}selected{% endif %}>
+                                {{ brand.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Filtre par statut de stock -->
+                    <div class="flex-1">
+                        <select id="stockFilter" class="form-input w-full text-sm">
+                            <option value="">Tous les statuts</option>
+                            <option value="out_of_stock" {% if request.GET.filter == 'out_of_stock' %}selected{% endif %}>En rupture</option>
+                            <option value="low_stock" {% if request.GET.filter == 'low_stock' %}selected{% endif %}>Stock faible</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Barre de recherche -->
+                <div class="w-full sm:w-2/3 lg:w-1/2 relative">
+                    <form method="get" class="flex">
+                        <input type="text" 
+                               id="searchInput"
+                               name="search"
+                               value="{{ search_query }}"
+                               placeholder="Rechercher par CUG, EAN ou nom..." 
+                               class="form-input w-full text-sm sm:text-base rounded-r-none">
+                        <button type="submit" 
+                                class="px-4 py-2 bg-bolibana-600 text-white rounded-r-lg hover:bg-bolibana-700 transition-colors">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </form>
+                    <!-- Lien vers le scan rapide -->
+                    <a href="{% url 'inventory:quick_scan' %}" 
+                       class="absolute right-3 top-1/2 transform -translate-y-1/2 text-bolibana-500 hover:text-bolibana-700"
+                       title="Scan rapide">
+                        <i class="fas fa-camera text-lg"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Vue Desktop -->
+            <div class="hidden xl:block table-container overflow-x-auto">
+                <table class="table min-w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                                    </svg>
+                                    CUG
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                    </svg>
+                                    Nom
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                    </svg>
+                                    Catégorie
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                                    </svg>
+                                    Marque
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                                <div class="flex items-center">
+                                    <i class="fas fa-shopping-cart mr-1"></i>
+                                    PA
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                                <div class="flex items-center">
+                                    <i class="fas fa-tag mr-1"></i>
+                                    PV
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Marge
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                    </svg>
+                                    Quantité
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Statut
+                                </div>
+                            </th>
+                            <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                    </svg>
+                                    Actions
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-neutral-100">
+                        {% for product in products %}
+                        <tr class="hover:bg-neutral-50 transition-colors duration-150">
+                            <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-900">{{ product.cug }}</td>
+                            <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    {% if product.image %}
+                                    <img class="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-cover" src="{{ product.image.url }}" alt="{{ product.name }}">
+                                    {% else %}
+                                    <div class="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                                        <span class="text-gray-500 text-xs sm:text-sm">{{ product.name|make_list|first|upper }}</span>
+                                    </div>
+                                    {% endif %}
+                                    <div class="ml-3 sm:ml-4">
+                                        <div class="text-sm font-medium text-gray-900">{{ product.name }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-900">{{ product.category.name }}</td>
+                            <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-900">{{ product.brand.name }}</td>
+                            <td class="px-4 py-3 text-sm text-neutral-900">{{ product.purchase_price|format_currency }}</td>
+                            <td class="px-4 py-3 text-sm text-neutral-900">{{ product.selling_price|format_currency }}</td>
+                            <td class="px-4 py-3 text-sm text-neutral-900">{{ product.margin|format_currency }}</td>
+                            <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ product.quantity }}</td>
+                            <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                    {% if product.quantity == 0 %}bg-red-100 text-red-800
+                                    {% elif product.quantity <= product.alert_threshold %}bg-gold-100 text-gold-800
+                                    {% else %}bg-forest-100 text-forest-800{% endif %}">
+                                    {% if product.quantity == 0 %}Rupture
+                                    {% elif product.quantity <= product.alert_threshold %}Stock bas
+                                    {% else %}En stock{% endif %}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-neutral-900">
+                                <div class="flex items-center space-x-3">
+                                    <a href="{% url 'inventory:product_detail' product.pk %}" 
+                                       class="p-2 rounded-full text-bolibana-600 hover:text-bolibana-700 hover:bg-bolibana-50 transition-colors duration-200"
+                                       title="Voir les détails">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <a href="{% url 'inventory:product_update' product.pk %}" 
+                                       class="p-2 rounded-full text-gold-600 hover:text-gold-700 hover:bg-gold-50 transition-colors duration-200"
+                                       title="Modifier">
+                                        <i class="fas fa-pen"></i>
+                                    </a>
+                                    <a href="{% url 'inventory:product_delete' product.pk %}" 
+                                       class="p-2 rounded-full text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors duration-200"
+                                       title="Supprimer">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="11" class="px-3 sm:px-4 py-6 text-center text-sm text-gray-500 bg-white rounded-lg border border-neutral-100">
+                                <div class="flex flex-col items-center justify-center space-y-2">
+                                    <i class="fas fa-search text-4xl text-neutral-300 mb-2"></i>
+                                    <p class="text-lg font-medium text-neutral-700">Aucun produit trouvé</p>
+                                    <p class="text-sm text-neutral-500">Essayez de modifier vos critères de recherche</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Vue Mobile et Tablette -->
+            <div class="xl:hidden space-y-6">
+                {% for product in products %}
+                <div class="bg-white rounded-lg shadow-lg p-4 border border-neutral-100 hover:border-neutral-200 transition-all duration-200">
+                    <div class="flex items-center space-x-4 mb-4">
+                        {% if product.image %}
+                        <img class="h-12 w-12 rounded-full object-cover" src="{{ product.image.url }}" alt="{{ product.name }}">
+                        {% else %}
+                        <div class="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center">
+                            <span class="text-gray-500 text-sm">{{ product.name|make_list|first|upper }}</span>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <h3 class="font-medium text-neutral-900">{{ product.name }}</h3>
+                            <p class="text-sm text-neutral-500">CUG: {{ product.cug }}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                            <span class="text-neutral-500">Catégorie:</span>
+                            <span class="font-medium">{{ product.category.name }}</span>
+                        </div>
+                        <div>
+                            <span class="text-neutral-500">Marque:</span>
+                            <span class="font-medium">{{ product.brand.name }}</span>
+                        </div>
+                        <div>
+                            <span class="text-neutral-500">Prix d'achat:</span>
+                            <span class="font-medium amount">{{ product.purchase_price }}</span>
+                        </div>
+                        <div>
+                            <span class="text-neutral-500">Prix de vente:</span>
+                            <span class="font-medium amount">{{ product.selling_price }}</span>
+                        </div>
+                        <div>
+                            <span class="text-neutral-500">Quantité:</span>
+                            <span class="font-medium">{{ product.quantity }}</span>
+                        </div>
+                        <div>
+                            <span class="text-neutral-500">Statut:</span>
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                {% if product.quantity == 0 %}bg-red-100 text-red-800
+                                {% elif product.quantity <= product.alert_threshold %}bg-gold-100 text-gold-800
+                                {% else %}bg-forest-100 text-forest-800{% endif %}">
+                                {% if product.quantity == 0 %}Rupture
+                                {% elif product.quantity <= product.alert_threshold %}Stock bas
+                                {% else %}En stock{% endif %}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex flex-wrap justify-end gap-3">
+                        <a href="{% url 'inventory:product_detail' product.pk %}" 
+                           class="p-2 rounded-full text-bolibana-600 hover:text-bolibana-700 hover:bg-bolibana-50 transition-colors duration-200"
+                           title="Voir les détails">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        <a href="{% url 'inventory:product_update' product.pk %}" 
+                           class="p-2 rounded-full text-gold-600 hover:text-gold-700 hover:bg-gold-50 transition-colors duration-200"
+                           title="Modifier">
+                            <i class="fas fa-pen"></i>
+                        </a>
+                        <a href="{% url 'inventory:product_delete' product.pk %}" 
+                           class="p-2 rounded-full text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors duration-200"
+                           title="Supprimer">
+                            <i class="fas fa-trash-alt"></i>
+                        </a>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-center text-gray-500 py-8 bg-white rounded-lg shadow-lg border border-neutral-100">
+                    <div class="flex flex-col items-center justify-center space-y-2">
+                        <i class="fas fa-search text-4xl text-neutral-300 mb-2"></i>
+                        <p class="text-lg font-medium text-neutral-700">Aucun produit trouvé</p>
+                        <p class="text-sm text-neutral-500">Essayez de modifier vos critères de recherche</p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if is_paginated %}
+            <div class="px-4 sm:px-6 py-6 flex items-center justify-between border-t border-neutral-200">
+                <div class="flex-1 flex justify-between sm:hidden">
+                    {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}" 
+                       class="inline-flex items-center px-4 py-2 rounded-full border border-neutral-300 bg-white text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-1 focus:ring-bolibana-500 focus:border-bolibana-500">
+                        <i class="fas fa-chevron-left mr-2"></i>Précédent
+                    </a>
+                    {% endif %}
+                    {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}" 
+                       class="inline-flex items-center px-4 py-2 rounded-full border border-neutral-300 bg-white text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-1 focus:ring-bolibana-500 focus:border-bolibana-500">
+                        Suivant<i class="fas fa-chevron-right ml-2"></i>
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                        <p class="text-sm text-neutral-700">
+                            Affichage de <span class="font-medium">{{ page_obj.start_index }}</span> à 
+                            <span class="font-medium">{{ page_obj.end_index }}</span> sur 
+                            <span class="font-medium">{{ page_obj.paginator.count }}</span> résultats
+                        </p>
+                    </div>
+                    <div class="mt-4 sm:mt-0">
+                        <nav class="relative z-0 inline-flex rounded-full shadow-sm -space-x-px" aria-label="Pagination">
+                            {% if page_obj.has_previous %}
+                            <a href="?page={{ page_obj.previous_page_number }}" 
+                               class="relative inline-flex items-center px-4 py-2 rounded-l-full border border-neutral-300 bg-white text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-1 focus:ring-bolibana-500 focus:border-bolibana-500">
+                                <span class="sr-only">Précédent</span>
+                                <i class="fas fa-chevron-left"></i>
+                            </a>
+                            {% endif %}
+
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                <span class="relative inline-flex items-center px-4 py-2 border border-bolibana-500 bg-bolibana-50 text-sm font-medium text-bolibana-600">
+                                    {{ num }}
+                                </span>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                <a href="?page={{ num }}" 
+                                   class="relative inline-flex items-center px-4 py-2 border border-neutral-300 bg-white text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-1 focus:ring-bolibana-500 focus:border-bolibana-500">
+                                    {{ num }}
+                                </a>
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if page_obj.has_next %}
+                            <a href="?page={{ page_obj.next_page_number }}" 
+                               class="relative inline-flex items-center px-4 py-2 rounded-r-full border border-neutral-300 bg-white text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-1 focus:ring-bolibana-500 focus:border-bolibana-500">
+                                <span class="sr-only">Suivant</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </a>
+                            {% endif %}
+                        </nav>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
 </div>
+
+<!-- Modal pour le mouvement de stock -->
+<div id="stockModal" class="fixed inset-0 bg-neutral-600 bg-opacity-50 hidden overflow-y-auto h-full w-full">
+    <div class="relative top-20 mx-auto p-4 sm:p-5 border w-11/12 sm:w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium leading-6 text-neutral-900 mb-4">Mouvement de Stock</h3>
+            <form id="stockMovementForm" class="space-y-4">
+                <div>
+                    <label for="product" class="form-label text-sm sm:text-base">Produit</label>
+                    <select id="product" name="product" class="form-input text-sm sm:text-base">
+                        <option value="">Sélectionner un produit</option>
+                        {% for product in products %}
+                        <option value="{{ product.id }}">{{ product.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label for="movementType" class="form-label text-sm sm:text-base">Type de mouvement</label>
+                    <select id="movementType" name="movementType" class="form-input text-sm sm:text-base">
+                        <option value="in">Entrée</option>
+                        <option value="out">Sortie</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="quantity" class="form-label text-sm sm:text-base">Quantité</label>
+                    <input type="number" id="quantity" name="quantity" min="1" class="form-input text-sm sm:text-base">
+                </div>
+
+                <div>
+                    <label for="notes" class="form-label text-sm sm:text-base">Notes</label>
+                    <textarea id="notes" name="notes" rows="3" class="form-input text-sm sm:text-base"></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeStockModal()" class="btn-secondary text-sm sm:text-base">
+                        Annuler
+                    </button>
+                    <button type="submit" class="btn-primary text-sm sm:text-base">
+                        Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openStockModal() {
+    document.getElementById('stockModal').classList.remove('hidden');
+}
+
+function closeStockModal() {
+    document.getElementById('stockModal').classList.add('hidden');
+}
+
+// Fermer le modal si on clique en dehors
+document.getElementById('stockModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeStockModal();
+    }
+});
+
+// Amélioration de la recherche pour la vue mobile
+document.getElementById('searchInput').addEventListener('input', function(e) {
+    const searchValue = e.target.value.toLowerCase();
+    const desktopRows = document.querySelectorAll('.table-container tbody tr');
+    const mobileCards = document.querySelectorAll('.xl\\:hidden > div');
+    let hasResults = false;
+    
+    // Supprimer les messages existants
+    const existingMessages = document.querySelectorAll('.no-results-message');
+    existingMessages.forEach(msg => msg.remove());
+    
+    // Si la recherche est vide ou trop courte, afficher tous les résultats
+    if (searchValue.length < 2) {
+        desktopRows.forEach(row => row.style.display = '');
+        mobileCards.forEach(card => card.style.display = '');
+        return;
+    }
+    
+    // Recherche dans la vue desktop
+    desktopRows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const isVisible = text.includes(searchValue);
+        row.style.display = isVisible ? '' : 'none';
+        if (isVisible) hasResults = true;
+    });
+    
+    // Recherche dans la vue mobile
+    mobileCards.forEach(card => {
+        const text = card.textContent.toLowerCase();
+        const isVisible = text.includes(searchValue);
+        card.style.display = isVisible ? '' : 'none';
+        if (isVisible) hasResults = true;
+    });
+
+    // Afficher le message "aucun résultat" seulement si la recherche a au moins 2 caractères
+    if (!hasResults && searchValue.length >= 2) {
+        const noResultsMessage = `
+            <div class="text-center text-gray-500 py-8 bg-white rounded-lg shadow-lg border border-neutral-100">
+                <div class="flex flex-col items-center justify-center space-y-2">
+                    <i class="fas fa-search text-4xl text-neutral-300 mb-2"></i>
+                    <p class="text-lg font-medium text-neutral-700">Aucun produit trouvé</p>
+                    <p class="text-sm text-neutral-500">Essayez de modifier vos critères de recherche</p>
+                </div>
+            </div>
+        `;
+
+        // Gérer l'affichage du message pour la vue desktop
+        const tbody = document.querySelector('.table-container tbody');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="11" class="px-3 sm:px-4 py-6 text-center text-sm text-gray-500 bg-white rounded-lg border border-neutral-100">
+            <div class="flex flex-col items-center justify-center space-y-2">
+                <i class="fas fa-search text-4xl text-neutral-300 mb-2"></i>
+                <p class="text-lg font-medium text-neutral-700">Aucun produit trouvé</p>
+                <p class="text-sm text-neutral-500">Essayez de modifier vos critères de recherche</p>
+            </div>
+        </td>`;
+        tr.classList.add('no-results-message');
+        tbody.appendChild(tr);
+
+        // Gérer l'affichage du message pour la vue mobile
+        const mobileContainer = document.querySelector('.xl\\:hidden');
+        const div = document.createElement('div');
+        div.innerHTML = noResultsMessage;
+        div.classList.add('no-results-message');
+        mobileContainer.appendChild(div);
+    }
+});
+
+// Gestion des filtres
+document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+document.getElementById('brandFilter').addEventListener('change', applyFilters);
+document.getElementById('stockFilter').addEventListener('change', applyFilters);
+
+function applyFilters() {
+    const category = document.getElementById('categoryFilter').value;
+    const brand = document.getElementById('brandFilter').value;
+    const stock = document.getElementById('stockFilter').value;
+    
+    // Construire l'URL avec les paramètres de filtrage
+    let url = new URL(window.location.href);
+    let params = new URLSearchParams(url.search);
+    
+    // Mettre à jour les paramètres
+    if (category) params.set('category', category);
+    else params.delete('category');
+    
+    if (brand) params.set('brand', brand);
+    else params.delete('brand');
+    
+    if (stock) params.set('filter', stock);
+    else params.delete('filter');
+    
+    // Mettre à jour l'URL et recharger la page
+    url.search = params.toString();
+    window.location.href = url.toString();
+}
+</script>
 {% endblock %} 

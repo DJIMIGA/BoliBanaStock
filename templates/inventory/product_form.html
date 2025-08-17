@@ -1,137 +1,473 @@
 {% extends "base.html" %}
 {% load static %}
+{% load crispy_forms_tags %}
 
 {% block title %}
     {% if form.instance.pk %}
-        Modifier {{ form.instance.nom }} - BoliBana Stock
+        Modifier {{ form.instance.name }}
     {% else %}
-        Nouveau produit - BoliBana Stock
+        Nouveau Produit
     {% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8">
-    <div class="sm:flex sm:items-center">
-        <div class="sm:flex-auto">
-            <h1 class="text-2xl font-semibold text-gray-900">
+<div class="container mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
+    <div class="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+        <div class="px-6 py-4 border-b border-neutral-200">
+            <h2 class="text-xl sm:text-2xl font-bold text-neutral-800">
                 {% if form.instance.pk %}
-                    Modifier {{ form.instance.nom }}
+                    Modifier {{ form.instance.name }}
                 {% else %}
-                    Nouveau produit
+                    Nouveau Produit
                 {% endif %}
-            </h1>
-            <p class="mt-2 text-sm text-gray-700">
-                {% if form.instance.pk %}
-                    Modifiez les informations du produit ci-dessous.
-                {% else %}
-                    Remplissez le formulaire ci-dessous pour ajouter un nouveau produit.
-                {% endif %}
-            </p>
+            </h2>
         </div>
-    </div>
-
-    <form method="post" class="mt-8 space-y-8 divide-y divide-gray-200">
-        {% csrf_token %}
-        
-        <div class="space-y-8 divide-y divide-gray-200">
-            <div>
-                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                    <div class="sm:col-span-4">
-                        <label for="{{ form.nom.id_for_label }}" class="block text-sm font-medium text-gray-700">Nom</label>
-                        <div class="mt-1">
-                            <input type="text" name="{{ form.nom.name }}" id="{{ form.nom.id_for_label }}" 
-                                value="{{ form.nom.value|default:'' }}"
-                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
-                                {% if form.nom.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
-                                {% if form.nom.field.required %}required{% endif %}>
-                            {% if form.nom.errors %}
-                                <p class="mt-2 text-sm text-red-600">{{ form.nom.errors.0 }}</p>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <div class="sm:col-span-3">
-                        <label for="{{ form.categorie.id_for_label }}" class="block text-sm font-medium text-gray-700">Catégorie</label>
-                        <div class="mt-1">
-                            <select name="{{ form.categorie.name }}" id="{{ form.categorie.id_for_label }}"
-                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
-                                {% if form.categorie.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
-                                {% if form.categorie.field.required %}required{% endif %}>
-                                {% for value, label in form.categorie.field.choices %}
-                                    <option value="{{ value }}" {% if form.categorie.value == value %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                            {% if form.categorie.errors %}
-                                <p class="mt-2 text-sm text-red-600">{{ form.categorie.errors.0 }}</p>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <div class="sm:col-span-3">
-                        <label for="{{ form.prix_vente.id_for_label }}" class="block text-sm font-medium text-gray-700">Prix de vente</label>
-                        <div class="mt-1">
-                            <div class="relative rounded-md shadow-sm">
-                                <input type="number" name="{{ form.prix_vente.name }}" id="{{ form.prix_vente.id_for_label }}"
-                                    value="{{ form.prix_vente.value|default:'' }}"
-                                    step="0.01"
-                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
-                                    {% if form.prix_vente.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
-                                    {% if form.prix_vente.field.required %}required{% endif %}>
-                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                                    <span class="text-gray-500 sm:text-sm">€</span>
-                                </div>
+        <div class="p-6">
+            <form method="post" enctype="multipart/form-data" class="space-y-6">
+                {% csrf_token %}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-4">
+                        <div class="form-group">
+                            <label for="{{ form.name.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.name.label }}{% if form.name.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="text" name="{{ form.name.name }}" id="{{ form.name.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.name.value|default:'' }}"
+                                       {% if form.name.field.required %}required{% endif %}>
                             </div>
-                            {% if form.prix_vente.errors %}
-                                <p class="mt-2 text-sm text-red-600">{{ form.prix_vente.errors.0 }}</p>
+                            {% if form.name.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.name.help_text }}</p>
+                            {% endif %}
+                            {% if form.name.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.name.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.scan_field.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.scan_field.label }}{% if form.scan_field.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="text" name="{{ form.scan_field.name }}" id="{{ form.scan_field.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.scan_field.value|default:'' }}"
+                                       placeholder="Scannez ou saisissez CUG, EAN ou nom du produit"
+                                       {% if form.scan_field.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.scan_field.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.scan_field.help_text }}</p>
+                            {% endif %}
+                            {% if form.scan_field.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.scan_field.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.cug.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.cug.label }}{% if form.cug.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1 flex space-x-2">
+                                <input type="text" name="{{ form.cug.name }}" id="{{ form.cug.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.cug.value|default:'' }}"
+                                       {% if form.cug.field.required %}required{% endif %}>
+                                {% if not form.instance.pk %}
+                                <button type="button" 
+                                        onclick="generateCUG()"
+                                        class="inline-flex items-center px-3 py-2 border border-bolibana-600 text-sm font-medium rounded-md text-bolibana-600 bg-white hover:bg-bolibana-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500">
+                                    <i class="fas fa-sync-alt mr-2"></i>
+                                    Générer
+                                </button>
+                                {% endif %}
+                            </div>
+                            {% if form.cug.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.cug.help_text }}</p>
+                            {% endif %}
+                            {% if form.cug.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.cug.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.description.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.description.label }}{% if form.description.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <textarea name="{{ form.description.name }}" id="{{ form.description.id_for_label }}" 
+                                          rows="3"
+                                          class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                          {% if form.description.field.required %}required{% endif %}>{{ form.description.value|default:'' }}</textarea>
+                            </div>
+                            {% if form.description.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.description.help_text }}</p>
+                            {% endif %}
+                            {% if form.description.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.description.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.category.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.category.label }}{% if form.category.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <select name="{{ form.category.name }}" id="{{ form.category.id_for_label }}" 
+                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                        {% if form.category.field.required %}required{% endif %}>
+                                    <option value="">Sélectionnez une catégorie</option>
+                                    {% for value, label in form.category.field.choices %}
+                                        <option value="{{ value }}" {% if form.category.value == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% if form.category.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.category.help_text }}</p>
+                            {% endif %}
+                            {% if form.category.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.category.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.brand.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.brand.label }}{% if form.brand.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <select name="{{ form.brand.name }}" id="{{ form.brand.id_for_label }}" 
+                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                        {% if form.brand.field.required %}required{% endif %}>
+                                    <option value="">Sélectionnez une marque</option>
+                                    {% for value, label in form.brand.field.choices %}
+                                        <option value="{{ value }}" {% if form.brand.value == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% if form.brand.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.brand.help_text }}</p>
+                            {% endif %}
+                            {% if form.brand.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.brand.errors.0 }}</p>
                             {% endif %}
                         </div>
                     </div>
 
-                    <div class="sm:col-span-3">
-                        <label for="{{ form.quantite_stock.id_for_label }}" class="block text-sm font-medium text-gray-700">Quantité en stock</label>
-                        <div class="mt-1">
-                            <input type="number" name="{{ form.quantite_stock.name }}" id="{{ form.quantite_stock.id_for_label }}"
-                                value="{{ form.quantite_stock.value|default:'' }}"
-                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
-                                {% if form.quantite_stock.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
-                                {% if form.quantite_stock.field.required %}required{% endif %}>
-                            {% if form.quantite_stock.errors %}
-                                <p class="mt-2 text-sm text-red-600">{{ form.quantite_stock.errors.0 }}</p>
+                    <div class="space-y-4">
+                        <div class="form-group">
+                            <label for="{{ form.purchase_price.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.purchase_price.label }}{% if form.purchase_price.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="number" name="{{ form.purchase_price.name }}" id="{{ form.purchase_price.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.purchase_price.value|default:'' }}"
+                                       min="0"
+                                       {% if form.purchase_price.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.purchase_price.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.purchase_price.help_text }}</p>
+                            {% endif %}
+                            {% if form.purchase_price.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.purchase_price.errors.0 }}</p>
                             {% endif %}
                         </div>
-                    </div>
 
-                    <div class="sm:col-span-3">
-                        <label for="{{ form.seuil_alerte.id_for_label }}" class="block text-sm font-medium text-gray-700">Seuil d'alerte</label>
-                        <div class="mt-1">
-                            <input type="number" name="{{ form.seuil_alerte.name }}" id="{{ form.seuil_alerte.id_for_label }}"
-                                value="{{ form.seuil_alerte.value|default:'' }}"
-                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm
-                                {% if form.seuil_alerte.errors %}border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500{% endif %}"
-                                {% if form.seuil_alerte.field.required %}required{% endif %}>
-                            {% if form.seuil_alerte.errors %}
-                                <p class="mt-2 text-sm text-red-600">{{ form.seuil_alerte.errors.0 }}</p>
+                        <div class="form-group">
+                            <label for="{{ form.selling_price.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.selling_price.label }}{% if form.selling_price.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="number" name="{{ form.selling_price.name }}" id="{{ form.selling_price.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.selling_price.value|default:'' }}"
+                                       min="0"
+                                       {% if form.selling_price.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.selling_price.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.selling_price.help_text }}</p>
+                            {% endif %}
+                            {% if form.selling_price.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.selling_price.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.alert_threshold.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.alert_threshold.label }}{% if form.alert_threshold.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="number" name="{{ form.alert_threshold.name }}" id="{{ form.alert_threshold.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.alert_threshold.value|default:'' }}"
+                                       min="0"
+                                       {% if form.alert_threshold.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.alert_threshold.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.alert_threshold.help_text }}</p>
+                            {% endif %}
+                            {% if form.alert_threshold.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.alert_threshold.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.quantity.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.quantity.label }}{% if form.quantity.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="number" name="{{ form.quantity.name }}" id="{{ form.quantity.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.quantity.value|default:'' }}"
+                                       min="0"
+                                       {% if form.quantity.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.quantity.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.quantity.help_text }}</p>
+                            {% endif %}
+                            {% if form.quantity.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.quantity.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.image.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.image.label }}{% if form.image.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="file" name="{{ form.image.name }}" id="{{ form.image.id_for_label }}" 
+                                       class="block w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-bolibana-50 file:text-bolibana-700 hover:file:bg-bolibana-100"
+                                       accept="image/*" capture="environment"
+                                       {% if form.image.field.required %}required{% endif %}>
+                            </div>
+                            <div class="mt-2 flex space-x-2">
+                                <button type="button" onclick="openCamera()" class="inline-flex items-center px-3 py-2 border border-bolibana-600 text-sm font-medium rounded-md text-bolibana-600 bg-white hover:bg-bolibana-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500">
+                                    <i class="fas fa-camera mr-2"></i>Appareil photo
+                                </button>
+                                <button type="button" onclick="openGallery()" class="inline-flex items-center px-3 py-2 border border-neutral-600 text-sm font-medium rounded-md text-neutral-600 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-500">
+                                    <i class="fas fa-images mr-2"></i>Galerie
+                                </button>
+                            </div>
+                            {% if form.image.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.image.help_text }}</p>
+                            {% endif %}
+                            {% if form.image.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.image.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <div class="flex items-center space-x-2">
+                                <input type="checkbox" name="{{ form.is_active.name }}" id="{{ form.is_active.id_for_label }}" 
+                                       class="h-4 w-4 text-bolibana-600 focus:ring-bolibana-500 border-neutral-300 rounded"
+                                       {% if form.is_active.value %}checked{% endif %}>
+                                <label for="{{ form.is_active.id_for_label }}" class="text-sm font-medium text-neutral-700">
+                                    {{ form.is_active.label }}
+                                </label>
+                            </div>
+                            {% if form.is_active.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.is_active.help_text }}</p>
+                            {% endif %}
+                            {% if form.is_active.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.is_active.errors.0 }}</p>
                             {% endif %}
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <div class="pt-5">
-            <div class="flex justify-end">
-                <a href="{% url 'inventory:product_list' %}" class="rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-bolibana-500 focus:ring-offset-2">
-                    Annuler
-                </a>
-                <button type="submit" class="ml-3 inline-flex justify-center rounded-md border border-transparent bg-bolibana-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-bolibana-500 focus:ring-offset-2">
-                    {% if form.instance.pk %}
-                        Enregistrer les modifications
-                    {% else %}
-                        Créer le produit
-                    {% endif %}
-                </button>
-            </div>
+                <div class="flex justify-end space-x-4 mt-8">
+                    <a href="{% url 'inventory:product_list' %}" 
+                       class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-neutral-600 hover:text-neutral-100 bg-white hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-neutral-600">
+                        <i class="fas fa-times mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Annuler
+                    </a>
+                    <button type="submit" 
+                            class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5">
+                        <i class="fas fa-save mr-2 sm:mr-2.5 text-base sm:text-lg"></i>
+                        {% if form.instance.pk %}
+                            Enregistrer les modifications
+                        {% else %}
+                            Créer le produit
+                        {% endif %}
+                    </button>
+                </div>
+            </form>
         </div>
-    </form>
+    </div>
 </div>
+
+<script>
+function generateCUG() {
+    // Générer un CUG de 5 chiffres
+    let cug = '';
+    for (let i = 0; i < 5; i++) {
+        cug += Math.floor(Math.random() * 10);
+    }
+    document.getElementById('{{ form.cug.id_for_label }}').value = cug;
+}
+
+function openCamera() {
+    // Créer un input temporaire pour l'appareil photo
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment'; // Utilise la caméra arrière par défaut
+    
+    input.onchange = function(e) {
+        if (e.target.files && e.target.files[0]) {
+            // Transférer le fichier vers l'input principal
+            const mainInput = document.getElementById('{{ form.image.id_for_label }}');
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(e.target.files[0]);
+            mainInput.files = dataTransfer.files;
+            
+            // Déclencher un événement change pour mettre à jour l'interface
+            mainInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    };
+    
+    input.click();
+}
+
+function openGallery() {
+    // Créer un input temporaire pour la galerie
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    // Pas de capture pour permettre la sélection depuis la galerie
+    
+    input.onchange = function(e) {
+        if (e.target.files && e.target.files[0]) {
+            // Transférer le fichier vers l'input principal
+            const mainInput = document.getElementById('{{ form.image.id_for_label }}');
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(e.target.files[0]);
+            mainInput.files = dataTransfer.files;
+            
+            // Déclencher un événement change pour mettre à jour l'interface
+            mainInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    };
+    
+    input.click();
+}
+
+// Fonction pour afficher un aperçu de l'image sélectionnée
+document.addEventListener('DOMContentLoaded', function() {
+    const imageInput = document.getElementById('{{ form.image.id_for_label }}');
+    if (imageInput) {
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Supprimer l'ancien aperçu s'il existe
+                const oldPreview = document.querySelector('.image-preview');
+                if (oldPreview) {
+                    oldPreview.remove();
+                }
+                
+                // Créer un aperçu de l'image
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.createElement('div');
+                    preview.className = 'image-preview mt-2';
+                    preview.innerHTML = `
+                        <img src="${e.target.result}" alt="Aperçu" class="max-w-xs rounded-lg shadow-md">
+                        <p class="text-sm text-neutral-500 mt-1">Fichier sélectionné: ${file.name}</p>
+                    `;
+                    
+                    // Insérer l'aperçu après les boutons
+                    const buttonsContainer = document.querySelector('.mt-2.flex.space-x-2');
+                    if (buttonsContainer) {
+                        buttonsContainer.parentNode.insertBefore(preview, buttonsContainer.nextSibling);
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+});
+</script>
+
+<style>
+    /* Styles personnalisés pour les champs du formulaire */
+    .form-group {
+        @apply mb-4;
+    }
+    
+    .form-group label {
+        @apply block text-sm font-medium text-neutral-700 mb-1;
+    }
+    
+    .form-group input[type="text"],
+    .form-group input[type="number"],
+    .form-group textarea,
+    .form-group select {
+        @apply block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm;
+    }
+
+    /* Styles spécifiques pour les select */
+    .form-group select {
+        @apply appearance-none bg-white bg-no-repeat bg-right pr-10;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+        background-size: 1.5em 1.5em;
+        background-position: right 0.5rem center;
+    }
+
+    .form-group select:focus {
+        @apply border-bolibana-500 ring-1 ring-bolibana-500;
+    }
+
+    .form-group select option {
+        @apply py-2 px-3 text-sm text-neutral-700;
+    }
+
+    .form-group select option:checked {
+        @apply bg-bolibana-50 text-bolibana-900;
+    }
+
+    .form-group select option:hover {
+        @apply bg-neutral-50;
+    }
+
+    /* Style pour le select en état disabled */
+    .form-group select:disabled {
+        @apply bg-neutral-50 cursor-not-allowed opacity-75;
+    }
+    
+    .form-group input[type="file"] {
+        @apply block w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-bolibana-50 file:text-bolibana-700 hover:file:bg-bolibana-100;
+    }
+    
+    .form-group input[type="checkbox"] {
+        @apply h-4 w-4 text-bolibana-600 focus:ring-bolibana-500 border-neutral-300 rounded;
+    }
+    
+    .form-group .help-text {
+        @apply mt-1 text-sm text-neutral-500;
+    }
+    
+    .form-group .error-message {
+        @apply mt-1 text-sm text-red-600;
+    }
+    
+    /* Style pour les champs en lecture seule */
+    .form-group input[readonly] {
+        @apply bg-neutral-50 cursor-not-allowed;
+    }
+    
+    /* Style pour les champs obligatoires */
+    .form-group label.required:after {
+        content: " *";
+        @apply text-red-500;
+    }
+
+    /* Style pour les messages d'erreur de validation */
+    .invalid-feedback {
+        @apply mt-1 text-sm text-red-600;
+    }
+
+    /* Style pour les champs invalides */
+    .is-invalid {
+        @apply border-red-500 focus:border-red-500 focus:ring-red-500;
+    }
+</style>
 {% endblock %} 

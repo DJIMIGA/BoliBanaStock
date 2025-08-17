@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Générateur d'Étiquettes - Codes-Barres CUG{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<style>
+    .label-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 20px;
+        padding: 20px;
+    }
+    
+    .label-card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        background: white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .label-preview {
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin: 10px 0;
+        background: #f9f9f9;
+        text-align: center;
+    }
+    
+    .barcode-container {
+        margin: 10px 0;
+        text-align: center;
+    }
+    
+    .controls {
+        background: #f5f5f5;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+    }
+    
+    .print-button {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 5px;
+    }
+    
+    .print-button:hover {
+        background: #0056b3;
+    }
+    
+    .filter-section {
+        margin: 10px 0;
+    }
+    
+    .filter-section label {
+        margin-right: 10px;
+        font-weight: bold;
+    }
+    
+    .filter-section select {
+        padding: 5px;
+        border-radius: 3px;
+        border: 1px solid #ddd;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">🏷️ Générateur d'Étiquettes avec Codes-Barres CUG</h1>
+    
+    <div class="controls">
+        <h4>⚙️ Contrôles d'Impression</h4>
+        <div class="filter-section">
+            <label>Catégorie:</label>
+            <select id="categoryFilter">
+                <option value="">Toutes les catégories</option>
+                {% for category in categories %}
+                <option value="{{ category.id }}">{{ category.name }}</option>
+                {% endfor %}
+            </select>
+            
+            <label>Marque:</label>
+            <select id="brandFilter">
+                <option value="">Toutes les marques</option>
+                {% for brand in brands %}
+                <option value="{{ brand.id }}">{{ brand.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <button class="print-button" onclick="printAllLabels()">🖨️ Imprimer Toutes les Étiquettes</button>
+        <button class="print-button" onclick="printSelectedLabels()">🖨️ Imprimer Étiquettes Sélectionnées</button>
+        <button class="print-button" onclick="exportToPDF()">📄 Exporter en PDF</button>
+    </div>
+    
+    <div class="label-container" id="labelContainer">
+        {% for product in products %}
+        <div class="label-card" data-category="{{ product.category.id|default:'' }}" data-brand="{{ product.brand.id|default:'' }}">
+            <h5>{{ product.name }}</h5>
+            <p><strong>CUG:</strong> {{ product.cug }}</p>
+            <p><strong>Prix:</strong> {{ product.selling_price|floatformat:0 }} FCFA</p>
+            <p><strong>Stock:</strong> {{ product.quantity }}</p>
+            {% if product.category %}
+            <p><strong>Catégorie:</strong> {{ product.category.name }}</p>
+            {% endif %}
+            {% if product.brand %}
+            <p><strong>Marque:</strong> {{ product.brand.name }}</p>
+            {% endif %}
+            
+            <div class="label-preview">
+                <div class="barcode-container">
+                    <svg id="barcode-{{ product.id }}"></svg>
+                </div>
+                <p><strong>Code: {{ product.barcodes.first.ean }}</strong></p>
+            </div>
+            
+            <label>
+                <input type="checkbox" class="label-selector" value="{{ product.id }}">
+                Sélectionner pour impression
+            </label>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+// Générer les codes-barres pour tous les produits
+document.addEventListener('DOMContentLoaded', function() {
+    generateAllBarcodes();
+    setupFilters();
+});
+
+function generateAllBarcodes() {
+    {% for product in products %}
+    {% if product.barcodes.first %}
+    try {
+        JsBarcode("#barcode-{{ product.id }}", "{{ product.barcodes.first.ean }}", {
+            format: "EAN13",
+            width: 2,
+            height: 50,
+            displayValue: false,
+            background: "#ffffff",
+            lineColor: "#000000"
+        });
+    } catch (e) {
+        console.error("Erreur génération code-barres pour {{ product.id }}:", e);
+    }
+    {% endif %}
+    {% endfor %}
+}
+
+function setupFilters() {
+    const categoryFilter = document.getElementById('categoryFilter');
+    const brandFilter = document.getElementById('brandFilter');
+    
+    function applyFilters() {
+        const selectedCategory = categoryFilter.value;
+        const selectedBrand = brandFilter.value;
+        
+        document.querySelectorAll('.label-card').forEach(card => {
+            const category = card.dataset.category;
+            const brand = card.dataset.brand;
+            
+            let show = true;
+            
+            if (selectedCategory && category !== selectedCategory) {
+                show = false;
+            }
+            
+            if (selectedBrand && brand !== selectedBrand) {
+                show = false;
+            }
+            
+            card.style.display = show ? 'block' : 'none';
+        });
+    }
+    
+    categoryFilter.addEventListener('change', applyFilters);
+    brandFilter.addEventListener('change', applyFilters);
+}
+
+function printAllLabels() {
+    window.print();
+}
+
+function printSelectedLabels() {
+    const selectedLabels = document.querySelectorAll('.label-selector:checked');
+    if (selectedLabels.length === 0) {
+        alert('Veuillez sélectionner au moins une étiquette');
+        return;
+    }
+    
+    // Masquer les étiquettes non sélectionnées
+    document.querySelectorAll('.label-card').forEach(card => {
+        const checkbox = card.querySelector('.label-selector');
+        if (!checkbox.checked) {
+            card.style.display = 'none';
+        }
+    });
+    
+    window.print();
+    
+    // Remettre toutes les étiquettes visibles
+    document.querySelectorAll('.label-card').forEach(card => {
+        card.style.display = 'block';
+    });
+}
+
+function exportToPDF() {
+    // Utiliser la commande Django existante
+    window.open('/inventory/labels/export/', '_blank');
+}
+
+// Améliorer l'impression
+window.addEventListener('beforeprint', function() {
+    // Masquer les contrôles lors de l'impression
+    document.querySelector('.controls').style.display = 'none';
+    document.querySelectorAll('.label-selector').forEach(cb => cb.style.display = 'none');
+});
+
+window.addEventListener('afterprint', function() {
+    // Remettre les contrôles après l'impression
+    document.querySelector('.controls').style.display = 'block';
+    document.querySelectorAll('.label-selector').forEach(cb => cb.style.display = 'block');
+});
+</script>
+
+<style media="print">
+    .controls, .label-selector {
+        display: none !important;
+    }
+    
+    .label-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin: 10px;
+    }
+    
+    .label-preview {
+        border: 1px solid #000;
+        background: white !important;
+    }
+</style>
+{% endblock %}

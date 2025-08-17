@@ -2,6 +2,98 @@ from django.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.conf import settings
+from django.contrib.auth.models import AbstractUser
+from django.utils.translation import gettext_lazy as _
+from bolibanastock.local_storage import LocalSiteLogoStorage
+
+class User(AbstractUser):
+    """
+    Modèle utilisateur personnalisé avec support multi-sites
+    """
+    groups = models.ManyToManyField('auth.Group', related_name='core_user_set')
+    user_permissions = models.ManyToManyField('auth.Permission', related_name='core_user_set')
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+    adresse = models.TextField(blank=True, null=True)
+    poste = models.CharField(max_length=100, blank=True, null=True)
+    photo = models.ImageField(upload_to='users/', blank=True, null=True)
+    est_actif = models.BooleanField(default=True)
+    derniere_connexion = models.DateTimeField(null=True, blank=True)
+    
+    # Nouveaux champs pour le système multi-sites
+    site_configuration = models.ForeignKey(
+        'Configuration', 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True,
+        related_name='users',
+        verbose_name=_('Configuration du site')
+    )
+    is_site_admin = models.BooleanField(
+        default=False,
+        verbose_name=_('Administrateur du site'),
+        help_text=_('Cet utilisateur est administrateur de son site')
+    )
+
+    class Meta:
+        verbose_name = _('Utilisateur')
+        verbose_name_plural = _('Utilisateurs')
+
+    def __str__(self):
+        return f"{self.get_full_name() or self.username}"
+
+    def get_derniere_connexion_display(self):
+        """
+        Retourne la dernière connexion formatée de manière lisible
+        """
+        if self.derniere_connexion:
+            from django.utils import timezone
+            now = timezone.now()
+            diff = now - self.derniere_connexion
+            
+            if diff.days == 0:
+                if diff.seconds < 3600:  # moins d'1 heure
+                    minutes = diff.seconds // 60
+                    return f"Il y a {minutes} minute{'s' if minutes > 1 else ''}"
+                else:  # plus d'1 heure
+                    hours = diff.seconds // 3600
+                    return f"Il y a {hours} heure{'s' if hours > 1 else ''}"
+            elif diff.days == 1:
+                return "Hier"
+            elif diff.days < 7:
+                return f"Il y a {diff.days} jour{'s' if diff.days > 1 else ''}"
+            else:
+                return self.derniere_connexion.strftime("%d/%m/%Y à %H:%M")
+        return "Jamais connecté"
+
+    def get_derniere_connexion_date(self):
+        """
+        Retourne seulement la date de la dernière connexion
+        """
+        if self.derniere_connexion:
+            return self.derniere_connexion.strftime("%d/%m/%Y")
+        return "Jamais"
+
+    def get_derniere_connexion_time(self):
+        """
+        Retourne seulement l'heure de la dernière connexion
+        """
+        if self.derniere_connexion:
+            return self.derniere_connexion.strftime("%H:%M")
+        return ""
+
+    def is_admin_of_site(self, site_config=None):
+        """
+        Vérifie si l'utilisateur est admin de son site ou d'un site spécifique
+        """
+        if site_config is None:
+            site_config = self.site_configuration
+        return self.is_site_admin and self.site_configuration == site_config
+
+    def can_manage_users(self):
+        """
+        Vérifie si l'utilisateur peut gérer les utilisateurs de son site
+        """
+        return self.is_superuser or self.is_site_admin
 
 class BaseModel(models.Model):
     """
@@ -27,29 +119,100 @@ class BaseModel(models.Model):
 
 class Configuration(BaseModel):
     """
-    Configuration globale de l'application
+    Configuration de site - Support multi-sites
     """
-    nom_societe = models.CharField(max_length=100)
-    adresse = models.TextField()
-    telephone = models.CharField(max_length=20)
-    email = models.EmailField()
-    devise = models.CharField(max_length=10, default='€')
-    tva = models.DecimalField(max_digits=5, decimal_places=2, default=20.00)
-    logo = models.ImageField(upload_to='config/', blank=True, null=True)
-    site_web = models.URLField(blank=True, null=True)
-    description = models.TextField(blank=True, null=True)
+    # Champs d'identification du site
+    site_name = models.CharField(
+        max_length=100, 
+        unique=True,
+        verbose_name=_('Nom du site'),
+        help_text=_('Nom unique du site/entreprise')
+    )
+    site_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='owned_sites',
+        verbose_name=_('Propriétaire du site')
+    )
+    
+    # Champs de configuration existants
+    nom_societe = models.CharField(max_length=100, verbose_name=_('Nom de la société'))
+    adresse = models.TextField(verbose_name=_('Adresse'))
+    telephone = models.CharField(max_length=20, verbose_name=_('Téléphone'))
+    email = models.EmailField(verbose_name=_('Email'))
+    devise = models.CharField(max_length=10, default='FCFA', verbose_name=_('Devise'))
+    tva = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name=_('TVA (%)'))
+    logo = models.ImageField(
+        upload_to='config/', 
+        storage=LocalSiteLogoStorage(),  # Stockage local multisite
+        blank=True, 
+        null=True, 
+        verbose_name=_('Logo')
+    )
+    description = models.TextField(blank=True, null=True, verbose_name=_('Description'))
 
     class Meta:
         verbose_name = "Configuration"
         verbose_name_plural = "Configurations"
 
     def __str__(self):
-        return self.nom_societe
+        return f"{self.site_name} - {self.nom_societe}"
 
     def save(self, *args, **kwargs):
-        if not self.pk and Configuration.objects.exists():
-            raise ValidationError('Il ne peut y avoir qu\'une seule configuration')
-        return super().save(*args, **kwargs)
+        # Pour la première configuration, on garde la logique singleton
+        if not Configuration.objects.exists():
+            super().save(*args, **kwargs)
+        else:
+            # Pour les nouvelles configurations (multi-sites), on permet la création
+            super().save(*args, **kwargs)
+
+    def get_created_by_display(self):
+        """Retourne le nom d'affichage du créateur"""
+        return self.created_by.get_full_name() or self.created_by.username if self.created_by else "Système"
+
+    def get_updated_by_display(self):
+        """Retourne le nom d'affichage du dernier modificateur"""
+        return self.updated_by.get_full_name() or self.updated_by.username if self.updated_by else "Système"
+
+    def get_last_modification_info(self):
+        """Retourne les informations de dernière modification"""
+        if self.updated_by:
+            return f"Modifié par {self.get_updated_by_display()} le {self.updated_at.strftime('%d/%m/%Y à %H:%M')}"
+        return f"Créé le {self.created_at.strftime('%d/%m/%Y à %H:%M')}"
+
+    @classmethod
+    def get_site_configuration(cls, user=None):
+        """
+        Retourne la configuration du site pour un utilisateur donné
+        ou la configuration par défaut si aucune n'est spécifiée
+        """
+        if user and user.site_configuration:
+            return user.site_configuration
+        
+        # Fallback vers la première configuration (pour la compatibilité)
+        return cls.objects.first()
+
+    def get_site_info(self):
+        """Retourne les informations de base du site"""
+        return {
+            'site_name': self.site_name,
+            'nom_societe': self.nom_societe,
+            'adresse': self.adresse,
+            'telephone': self.telephone,
+            'email': self.email,
+            'devise': self.devise,
+            'tva': self.tva,
+            'logo': self.logo,
+            'owner': self.site_owner.get_full_name() or self.site_owner.username,
+        }
+
+    def get_users_count(self):
+        """Retourne le nombre d'utilisateurs sur ce site"""
+        return self.users.count()
+
+    def get_admins_count(self):
+        """Retourne le nombre d'administrateurs sur ce site"""
+        return self.users.filter(is_site_admin=True).count()
 
 class Activite(BaseModel):
     """

@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+    .btn-primary {
+        @apply px-4 py-2 bg-bolibana-500 text-white rounded-md hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-bolibana-400 focus:ring-offset-2;
+    }
+    
+    .btn-secondary {
+        @apply px-4 py-2 bg-gold-500 text-bolibana-900 rounded-md hover:bg-gold-600 focus:outline-none focus:ring-2 focus:ring-gold-400 focus:ring-offset-2;
+    }
+    
+    .btn-success {
+        @apply px-4 py-2 bg-forest-500 text-white rounded-md hover:bg-forest-600 focus:outline-none focus:ring-2 focus:ring-forest-400 focus:ring-offset-2;
+    }
+    
+    .form-input {
+        @apply block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500;
+    }
+    
+    .form-label {
+        @apply block text-sm font-medium text-neutral-700;
+    }
+    
+    .form-error {
+        @apply mt-2 text-sm text-red-600;
+    }
+
+    .card {
+        @apply bg-white shadow rounded-lg overflow-hidden border border-neutral-200;
+    }
+
+    .card-header {
+        @apply px-4 py-5 sm:px-6 border-b border-neutral-200 bg-neutral-50;
+    }
+
+    .card-body {
+        @apply px-4 py-5 sm:p-6;
+    }
+
+    .card-footer {
+        @apply px-4 py-4 sm:px-6 bg-neutral-50 border-t border-neutral-200;
+    }
+
+    .table-container {
+        @apply overflow-x-auto;
+    }
+
+    .table {
+        @apply min-w-full divide-y divide-neutral-200;
+    }
+
+    .table-header {
+        @apply bg-neutral-50;
+    }
+
+    .table-header-cell {
+        @apply px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider;
+    }
+
+    .table-body {
+        @apply bg-white divide-y divide-neutral-200;
+    }
+
+    .table-row {
+        @apply hover:bg-neutral-50;
+    }
+
+    .table-cell {
+        @apply px-6 py-4 whitespace-nowrap text-sm text-neutral-500;
+    }
+
+    .badge {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    }
+
+    .badge-success {
+        @apply bg-forest-100 text-forest-800;
+    }
+
+    .badge-warning {
+        @apply bg-gold-100 text-gold-800;
+    }
+
+    .badge-error {
+        @apply bg-red-100 text-red-800;
+    }
+
+    .badge-info {
+        @apply bg-bolibana-100 text-bolibana-800;
+    }
+} 

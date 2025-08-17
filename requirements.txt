@@ -1,4 +1,45 @@
+# Base essentielle
 Django>=4.2.0,<5.0.0
 django-tailwind>=3.6.0
 python-dotenv>=1.0.0
 Pillow>=10.0.0
+openpyxl>=3.1.0
+xhtml2pdf>=0.2.13
+reportlab>=4.0.0  # Dépendance de xhtml2pdf
+
+# Packages utiles
+django-widget-tweaks>=1.5.0
+django-simple-history>=3.4.0
+django-extensions>=3.2.0
+whitenoise>=6.6.0
+django-filter>=23.5
+django-debug-toolbar>=4.2.0
+djangorestframework==3.14.0
+celery>=5.3.0
+redis>=5.0.0
+django-crispy-forms>=2.1
+crispy-tailwind>=0.5.0
+django-import-export>=3.3.0
+
+# Développement et tests
+coverage>=7.4.0
+pytest-django>=4.7.0
+
+# Production
+gunicorn>=21.2.0
+
+# Nouvelles dépendances
+django-storages>=1.14.0  # Pour le stockage externe
+python-magic>=0.4.27  # Pour la détection des types de fichiers
+django-cleanup>=8.0.0  # Pour le nettoyage automatique des fichiers
+django-cacheops>=5.1.0  # Pour l'optimisation du cache
+psutil>=5.9.0  # Pour le monitoring système
+boto3>=1.26.0  # Pour AWS S3
+cryptography>=41.0.0  # Pour le chiffrement
+django-storages[s3]>=1.14.0  # Pour le stockage S3
+django-celery-beat>=2.5.0  # Pour les tâches planifiées
+
+# API Mobile
+django-cors-headers==4.3.1
+djangorestframework-simplejwt==5.3.0
+drf-yasg==1.21.7  # Documentation API Swagger

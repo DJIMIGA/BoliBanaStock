@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+    {% if form.instance.pk %}
+        Modifier la Transaction
+    {% else %}
+        {% if request.GET.type == 'in' %}
+            Entrée de Stock
+        {% elif request.GET.type == 'out' %}
+            Sortie de Stock
+        {% elif request.GET.type == 'loss' %}
+            Casse
+        {% else %}
+            Nouvelle Transaction
+        {% endif %}
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="p-6">
+                <h1 class="text-2xl font-bold text-neutral-800 mb-6">
+                    {% if form.instance.pk %}
+                        Modifier la Transaction #{{ form.instance.id }}
+                    {% else %}
+                        {% if request.GET.type == 'in' %}
+                            Entrée de Stock
+                        {% elif request.GET.type == 'out' %}
+                            Sortie de Stock
+                        {% elif request.GET.type == 'loss' %}
+                            Casse
+                        {% else %}
+                            Nouvelle Transaction
+                        {% endif %}
+                    {% endif %}
+                </h1>
+                
+                <form method="post" id="transactionForm" class="space-y-6">
+                    {% csrf_token %}
+                    <input type="hidden" name="type" value="{{ request.GET.type }}">
+                    <input type="hidden" name="product" id="id_product">
+                    
+                    <div id="scanField" class="space-y-4">
+                        <div>
+                            <label for="scan_code" class="block text-sm font-medium text-neutral-700 mb-2">
+                                Code CUG ou EAN
+                            </label>
+                            <div class="relative">
+                                <input type="text" 
+                                       id="scan_code" 
+                                       class="block w-full rounded-lg border-neutral-300 pl-12 pr-4 py-3 text-lg focus:border-bolibana-500 focus:ring-bolibana-500"
+                                       placeholder="Scanner ou entrer le code produit"
+                                       autofocus
+                                       required>
+                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                                    <i class="fas fa-barcode text-neutral-400 text-lg"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="productDetails" class="hidden space-y-6">
+                        {% if is_loss %}
+                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-yellow-700">
+                                        {{ loss_warning }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <div class="relative">
+                                <div class="block w-full rounded-lg border-neutral-300 pl-12 pr-4 py-1 text-lg">
+                                    <span id="productName" class="text-neutral-800"></span>
+                                </div>
+                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                                    <i class="fas fa-box text-neutral-400 text-lg"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="relative">
+                                <input type="number" 
+                                       name="quantity" 
+                                       id="id_quantity" 
+                                       class="block w-full rounded-lg border-neutral-300 pl-12 pr-4 py-3 text-lg focus:border-bolibana-500 focus:ring-bolibana-500" 
+                                       value="1" 
+                                       min="1" 
+                                       required>
+                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                                    <i class="fas fa-calculator text-neutral-400 text-lg"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="relative">
+                                <input type="number" 
+                                       name="unit_price" 
+                                       id="id_unit_price" 
+                                       class="block w-full rounded-lg border-neutral-300 pl-12 pr-4 py-3 text-lg focus:border-bolibana-500 focus:ring-bolibana-500" 
+                                       step="0.01" 
+                                       required>
+                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                                    <i class="fas fa-money-bill text-neutral-400 text-lg"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end space-x-3">
+                        <a href="{% url 'inventory:transaction_list' %}" 
+                           class="btn-secondary">
+                            Annuler
+                        </a>
+                        <button type="submit" 
+                                class="btn-primary"
+                                id="submitButton">
+                            <i class="fas fa-save mr-2"></i>
+                            Enregistrer
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const scanInput = document.getElementById('scan_code');
+    const productInput = document.getElementById('id_product');
+    const productDetails = document.getElementById('productDetails');
+    const scanField = document.getElementById('scanField');
+    const submitButton = document.getElementById('submitButton');
+    const quantityInput = document.getElementById('id_quantity');
+    const unitPriceInput = document.getElementById('id_unit_price');
+    let lastScanned = null;
+    let isSubmitting = false;
+
+    // S'assurer que les champs sont masqués au départ
+    productDetails.classList.add('hidden');
+
+    // Fonction pour réinitialiser le formulaire
+    function resetForm() {
+        scanInput.value = '';
+        quantityInput.value = '1';
+        productInput.value = '';
+        productDetails.classList.add('hidden');
+        scanField.classList.remove('hidden');
+        scanInput.focus();
+        lastScanned = null;
+    }
+
+    // Gestion des touches pour la quantité
+    document.addEventListener('keydown', function(e) {
+        if (productDetails.classList.contains('hidden')) return;
+        
+        if (e.key === 'ArrowUp' || e.key === '+') {
+            e.preventDefault();
+            const currentValue = parseInt(quantityInput.value);
+            quantityInput.value = currentValue + 1;
+        } else if (e.key === 'ArrowDown' || e.key === '-') {
+            e.preventDefault();
+            const currentValue = parseInt(quantityInput.value);
+            if (currentValue > 1) {
+                quantityInput.value = currentValue - 1;
+            }
+        }
+    });
+
+    // Écouteur pour la soumission sur Entrée dans le champ quantité
+    quantityInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (productInput.value && quantityInput.value > 0) {
+                document.getElementById('transactionForm').submit();
+            }
+        }
+    });
+
+    // Écouteur pour le scan de produit
+    scanInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (lastScanned && !isSubmitting) {
+                document.getElementById('transactionForm').submit();
+            }
+            searchProduct(this.value);
+            lastScanned = this.value;
+        }
+    });
+
+    function updateProductInfo(product) {
+        if (product) {
+            const productNameElement = document.getElementById('productName');
+            if (productNameElement) {
+                productNameElement.textContent = product.name || 'Produit non trouvé';
+            }
+
+            productInput.value = product.id;
+            quantityInput.value = 1;
+            productDetails.classList.remove('hidden');
+            scanField.classList.add('hidden');
+            quantityInput.focus();
+        } else {
+            productDetails.classList.add('hidden');
+            scanField.classList.remove('hidden');
+            productInput.value = '';
+        }
+    }
+
+    function searchProduct(code) {
+        if (!code.trim()) return;
+        
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('code', code);
+        window.location.href = currentUrl.toString();
+    }
+
+    // Si un produit est déjà scanné (chargement initial)
+    {% if scanned_product %}
+        updateProductInfo({{ scanned_product|safe }});
+        {% if scanned_product.purchase_price %}
+            unitPriceInput.value = {{ scanned_product.purchase_price }};
+        {% endif %}
+    {% endif %}
+
+    // Gérer la validation du formulaire
+    document.getElementById('transactionForm').addEventListener('submit', function(e) {
+        if (!productInput.value) {
+            e.preventDefault();
+            alert('Veuillez scanner un produit valide');
+            return false;
+        }
+        if (!quantityInput.value || quantityInput.value <= 0) {
+            e.preventDefault();
+            alert('Veuillez entrer une quantité valide');
+            return false;
+        }
+        if (!unitPriceInput.value || unitPriceInput.value <= 0) {
+            e.preventDefault();
+            alert('Veuillez entrer un prix unitaire valide');
+            return false;
+        }
+    });
+
+    scanInput.focus();
+});
+</script>
+{% endblock %} 

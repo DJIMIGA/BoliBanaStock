@@ -7,6 +7,8 @@ class User(AbstractUser):
     """
     Modèle utilisateur personnalisé
     """
+    groups = models.ManyToManyField('auth.Group', related_name='users_user_set')
+    user_permissions = models.ManyToManyField('auth.Permission', related_name='users_user_set')
     phone_regex = RegexValidator(
         regex=r'^\+?1?\d{9,15}$',
         message="Le numéro de téléphone doit être au format: '+999999999'."

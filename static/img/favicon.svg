@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+    <!-- Fond arrondi bleu foncé -->
+    <rect width="32" height="32" rx="8" fill="#2B3A67"/>
+    <!-- Lettre B stylisée -->
+    <path d="M8 8h12c2.2 0 4 1.8 4 4s-1.8 4-4 4h-8v4h8c2.2 0 4 1.8 4 4s-1.8 4-4 4H8V8z" fill="#FFD700"/>
+    <!-- Étoile -->
+    <path d="M24 8l1 2h2l-1.5 1 0.5 2-1.5-1-1.5 1 0.5-2-1.5-1h2z" fill="#FFD700"/>
+</svg> 

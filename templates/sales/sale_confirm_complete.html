@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block title %}Valider la vente{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-body">
+            <h2 class="card-title">Valider la vente #{{ object.reference }}</h2>
+            
+            <p class="text-muted mb-4">
+                Êtes-vous sûr de vouloir valider cette vente ? Cette action va :
+            </p>
+            
+            <ul class="list-group mb-4">
+                <li class="list-group-item">
+                    <i class="fas fa-check-circle text-success"></i>
+                    Mettre à jour le stock pour chaque article
+                </li>
+                <li class="list-group-item">
+                    <i class="fas fa-check-circle text-success"></i>
+                    Créer les transactions correspondantes
+                </li>
+                <li class="list-group-item">
+                    <i class="fas fa-check-circle text-success"></i>
+                    Marquer la vente comme terminée
+                </li>
+            </ul>
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'sales:sale_detail' object.pk %}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check"></i> Valider la vente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

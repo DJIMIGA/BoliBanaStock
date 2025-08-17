@@ -1,0 +1,1976 @@
+from rest_framework import viewsets, status, permissions
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.exceptions import ValidationError
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate
+from django.shortcuts import get_object_or_404
+from django.db.models import Q, Sum, F
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django.utils import timezone
+from app.core.forms import CustomUserUpdateForm, PublicSignUpForm
+from app.core.models import User, Configuration, Parametre, Activite
+from app.core.views import PublicSignUpView
+
+from .serializers import (
+    ProductSerializer, ProductListSerializer, CategorySerializer, BrandSerializer,
+    TransactionSerializer, SaleSerializer, BarcodeSerializer,
+    LabelTemplateSerializer, LabelBatchSerializer, UserSerializer,
+    LoginSerializer, RefreshTokenSerializer, ProductScanSerializer,
+    StockUpdateSerializer, SaleCreateSerializer, LabelBatchCreateSerializer
+)
+from app.inventory.models import Product, Category, Brand, Transaction, LabelTemplate, LabelBatch, LabelItem, Barcode
+from app.sales.models import Sale, SaleItem
+from app.core.views import ConfigurationUpdateView, ParametreListView, ParametreUpdateView
+from django.http import JsonResponse
+import json
+from django.http import Http404
+from app.inventory.printing.pdf import render_label_batch_pdf
+from app.inventory.printing.tsc import render_label_batch_tsc
+from django.shortcuts import get_object_or_404
+
+
+class LoginView(APIView):
+    """Vue pour l'authentification mobile"""
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if serializer.is_valid():
+            username = serializer.validated_data['username']
+            password = serializer.validated_data['password']
+            
+            user = authenticate(username=username, password=password)
+            
+            if user:
+                refresh = RefreshToken.for_user(user)
+                return Response({
+                    'access_token': str(refresh.access_token),
+                    'refresh_token': str(refresh),
+                    'user': UserSerializer(user).data
+                })
+            else:
+                return Response(
+                    {'error': 'Identifiants invalides'}, 
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class RefreshTokenView(APIView):
+    """Vue pour le refresh token"""
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        serializer = RefreshTokenSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                refresh = RefreshToken(serializer.validated_data['refresh'])
+                return Response({
+                    'access_token': str(refresh.access_token),
+                })
+            except Exception:
+                return Response(
+                    {'error': 'Token invalide'}, 
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LogoutView(APIView):
+    """Vue pour la déconnexion mobile"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            # Log de la déconnexion
+            print(f"🔐 Déconnexion de l'utilisateur: {request.user.username}")
+            
+            # Invalider le token de rafraîchissement si fourni
+            refresh_token = request.data.get('refresh')
+            if refresh_token:
+                try:
+                    RefreshToken(refresh_token).blacklist()
+                    print(f"✅ Token refresh invalidé pour: {request.user.username}")
+                except Exception as e:
+                    print(f"⚠️ Erreur invalidation token: {e}")
+            
+            # Invalider tous les tokens de l'utilisateur (optionnel)
+            # Cette option force la déconnexion sur tous les appareils
+            force_logout_all = request.data.get('force_logout_all', False)
+            if force_logout_all:
+                # Blacklister tous les tokens de l'utilisateur
+                from rest_framework_simplejwt.tokens import OutstandingToken
+                OutstandingToken.objects.filter(user=request.user).update(blacklisted=True)
+                print(f"🚫 Tous les tokens invalidés pour: {request.user.username}")
+            
+            return Response({
+                'message': 'Déconnexion réussie',
+                'user': request.user.username,
+                'timestamp': timezone.now().isoformat(),
+                'tokens_invalidated': bool(refresh_token),
+                'all_devices_logged_out': force_logout_all
+            })
+        except Exception as e:
+            print(f"❌ Erreur lors de la déconnexion: {e}")
+            return Response(
+                {'error': 'Erreur lors de la déconnexion'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ForceLogoutAllView(APIView):
+    """Vue pour forcer la déconnexion sur tous les appareils"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            print(f"🚫 Force déconnexion tous appareils pour: {request.user.username}")
+            
+            # Version robuste qui fonctionne avec la configuration actuelle
+            tokens_count = 0
+            
+            # Méthode 1 : Essayer OutstandingToken (si configuré)
+            try:
+                from rest_framework_simplejwt.tokens import OutstandingToken
+                print("✅ OutstandingToken importé avec succès")
+                tokens_count = OutstandingToken.objects.filter(user=request.user).update(blacklisted=True)
+                print(f"✅ {tokens_count} tokens invalidés via OutstandingToken")
+            except ImportError:
+                print("⚠️ OutstandingToken non disponible")
+            except Exception as e:
+                print(f"⚠️ Erreur OutstandingToken: {e}")
+            
+            # Méthode 2 : Blacklister le refresh token actuel
+            refresh_token = request.data.get('refresh')
+            if refresh_token:
+                try:
+                    RefreshToken(refresh_token).blacklist()
+                    tokens_count += 1
+                    print(f"✅ Refresh token blacklisté")
+                except Exception as e:
+                    print(f"⚠️ Erreur blacklist refresh token: {e}")
+            
+            # Méthode 3 : Invalider la session Django (pour le desktop)
+            try:
+                from django.contrib.auth import logout
+                logout(request)
+                print("✅ Session Django invalidée")
+            except Exception as e:
+                print(f"⚠️ Erreur invalidation session: {e}")
+            
+            # Méthode 4 : Marquer l'utilisateur comme déconnecté
+            try:
+                request.user.is_active = False
+                request.user.save()
+                print("✅ Utilisateur marqué comme inactif")
+                # Remettre actif pour permettre les futures connexions
+                request.user.is_active = True
+                request.user.save()
+            except Exception as e:
+                print(f"⚠️ Erreur marquage utilisateur: {e}")
+            
+            print(f"✅ Total: {tokens_count} tokens invalidés pour: {request.user.username}")
+            
+            return Response({
+                'message': 'Déconnexion forcée sur tous les appareils',
+                'user': request.user.username,
+                'tokens_invalidated': tokens_count,
+                'timestamp': timezone.now().isoformat()
+            })
+        except Exception as e:
+            print(f"❌ Erreur lors de la déconnexion forcée: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Erreur lors de la déconnexion forcée: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ProductViewSet(viewsets.ModelViewSet):
+    """ViewSet pour les produits"""
+    # Support explicite du multipart pour upload d'images
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['category', 'brand', 'is_active']
+    search_fields = ['name', 'cug', 'description']
+    ordering_fields = ['name', 'selling_price', 'quantity', 'created_at']
+    ordering = ['-updated_at']
+    
+    def get_queryset(self):
+        """Filtrer les produits par site de l'utilisateur"""
+        try:
+            user_site = getattr(self.request.user, 'site_configuration', None)
+        except:
+            user_site = None
+        
+        if self.request.user.is_superuser:
+            # Superuser voit tout
+            return Product.objects.select_related('category', 'brand').all()
+        elif user_site:
+            # Utilisateur avec site configuré voit seulement son site
+            return Product.objects.filter(site_configuration=user_site).select_related('category', 'brand')
+        else:
+            # Utilisateur sans site configuré (comme mobile) voit tous les produits
+            # C'est une solution temporaire pour permettre l'accès mobile
+            print(f"⚠️  Utilisateur {self.request.user.username} sans site configuré - accès à tous les produits")
+            return Product.objects.select_related('category', 'brand').all()
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ProductListSerializer
+        return ProductSerializer
+    
+    def get_serializer_context(self):
+        """Ajouter le contexte de la requête aux serializers"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+    def update(self, request, *args, **kwargs):
+        # Log de debug pour suivre les mises à jour complètes (PUT)
+        try:
+            print("📝 Update Product (PUT) - payload:", request.data)
+            try:
+                print("📎 Fichiers reçus (PUT):", list(request.FILES.keys()))
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # Autoriser une mise à jour partielle même via PUT pour simplifier côté mobile
+        kwargs['partial'] = True
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        # Log de debug pour suivre les mises à jour partielles (PATCH)
+        try:
+            print("📝 Update Product (PATCH) - payload:", request.data)
+            try:
+                print("📎 Fichiers reçus (PATCH):", list(request.FILES.keys()))
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return super().partial_update(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='upload_image')
+    def upload_image(self, request, pk=None):
+        """Action dédiée pour uploader/mettre à jour l'image (POST multipart) et champs associés.
+        Contourne les soucis de certains clients avec PUT multipart.
+        """
+        try:
+            print("🖼️  Upload image (POST) - payload:", dict(request.data))
+            try:
+                print("📎 Fichiers reçus (POST):", list(request.FILES.keys()))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        product = get_object_or_404(Product, pk=pk)
+        serializer = self.get_serializer(product, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'])
+    def scan(self, request):
+        """Scanner un produit par code"""
+        serializer = ProductScanSerializer(data=request.data, context={"request": request})
+        if serializer.is_valid():
+            code = serializer.validated_data['code']
+            
+            # Debug: afficher les informations de l'utilisateur
+            print(f"🔍 Scan demandé pour le code: {code}")
+            print(f"👤 Utilisateur: {request.user.username}")
+            print(f"🏢 Site configuré: {getattr(request.user, 'site_configuration', 'Aucun')}")
+            
+            # Filtrer par site de l'utilisateur
+            user_site = getattr(request.user, 'site_configuration', None)
+            
+            if request.user.is_superuser:
+                # Superuser peut scanner tous les produits
+                print("🔑 Superuser - recherche globale")
+                # 1. Chercher par CUG (champ qui existe encore)
+                product = Product.objects.filter(cug=code).first()
+                print(f"🔍 Recherche par CUG: {'✅ Trouvé' if product else '❌ Non trouvé'}")
+                
+                # 2. Si pas trouvé, chercher dans le modèle Barcode lié
+                if not product:
+                    product = Product.objects.filter(barcodes__ean=code).first()
+                    print(f"🔍 Recherche modèle Barcode lié: {'✅ Trouvé' if product else '❌ Non trouvé'}")
+                
+            else:
+                # Utilisateur normal ne peut scanner que ses produits
+                if not user_site:
+                    print("❌ Aucun site configuré pour l'utilisateur")
+                    return Response(
+                        {
+                            'error': 'Aucun site configuré pour cet utilisateur',
+                            'message': 'Veuillez contacter l\'administrateur pour configurer votre site'
+                        }, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                print(f"🏢 Recherche dans le site: {user_site}")
+                # 1. Chercher par CUG (champ qui existe encore)
+                product = Product.objects.filter(
+                    site_configuration=user_site,
+                    cug=code
+                ).first()
+                print(f"🔍 Recherche par CUG: {'✅ Trouvé' if product else '❌ Non trouvé'}")
+                
+                # 2. Si pas trouvé, chercher dans le modèle Barcode lié
+                if not product:
+                    product = Product.objects.filter(
+                        site_configuration=user_site,
+                        barcodes__ean=code
+                    ).first()
+                    print(f"🔍 Recherche modèle Barcode lié: {'✅ Trouvé' if product else '❌ Non trouvé'}")
+            
+            if product:
+                print(f"✅ Produit trouvé: {product.name}")
+                return Response(ProductSerializer(product).data)
+            else:
+                print(f"❌ Produit non trouvé pour le code: {code}")
+                # Vérifier si le produit existe ailleurs (pour les utilisateurs non-superuser)
+                if not request.user.is_superuser:
+                    global_product = Product.objects.filter(cug=code).first()
+                    if not global_product:
+                        global_product = Product.objects.filter(barcodes__ean=code).first()
+                    
+                    if global_product:
+                        return Response(
+                            {
+                                'error': 'Produit non trouvé dans votre site',
+                                'message': f'Le produit "{global_product.name}" existe mais n\'est pas accessible depuis votre site',
+                                'product_exists': True,
+                                'product_name': global_product.name
+                            }, 
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                
+                return Response(
+                    {
+                        'error': 'Produit non trouvé',
+                        'message': f'Aucun produit trouvé avec le code "{code}" dans la base de données',
+                        'product_exists': False,
+                        'suggestions': 'Vérifiez le code ou ajoutez le produit'
+                    }, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        print(f"❌ Erreur de validation: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def perform_create(self, serializer):
+        """Assigner automatiquement le site de l'utilisateur lors de la création"""
+        if self.request.user.is_superuser:
+            serializer.save()
+            return
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        if not user_site:
+            raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur. Veuillez contacter l'administrateur."})
+        serializer.save(site_configuration=user_site)
+    
+    @action(detail=False, methods=['get'])
+    def low_stock(self, request):
+        """Produits en stock faible"""
+        products = self.get_queryset().filter(
+            quantity__gt=0,
+            quantity__lte=F('alert_threshold')
+        )
+        serializer = ProductListSerializer(products, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def out_of_stock(self, request):
+        """Produits en rupture de stock"""
+        products = self.get_queryset().filter(quantity=0)
+        serializer = ProductListSerializer(products, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def update_stock(self, request, pk=None):
+        """Mettre à jour le stock d'un produit"""
+        product = self.get_object()
+        serializer = StockUpdateSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            quantity = serializer.validated_data['quantity']
+            notes = serializer.validated_data.get('notes', '')
+            
+            # Créer une transaction
+            old_quantity = product.quantity
+            product.quantity = quantity
+            product.save()
+            
+            if quantity != old_quantity:
+                transaction_type = 'in' if quantity > old_quantity else 'loss'
+                Transaction.objects.create(
+                    product=product,
+                    type=transaction_type,
+                    quantity=abs(quantity - old_quantity),
+                    unit_price=product.purchase_price,
+                    notes=notes or f'Mise à jour stock: {old_quantity} -> {quantity}',
+                    user=request.user
+                )
+            
+            return Response(ProductSerializer(product).data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'])
+    def stock_movements(self, request, pk=None):
+        """Récupérer les mouvements de stock d'un produit avec avant/après"""
+        product = self.get_object()
+        
+        # Récupérer les transactions pour ce produit (plus récentes d'abord)
+        transactions = (
+            Transaction.objects
+            .filter(product=product)
+            .select_related('user')
+            .order_by('-transaction_date')[:50]
+        )
+        
+        movements = []
+        current_stock = product.quantity
+        
+        for transaction in transactions:
+            # Déterminer stock_before et stock_after en remontant le temps
+            stock_after = current_stock
+            if transaction.type == 'in':
+                stock_before = stock_after - transaction.quantity
+            elif transaction.type == 'out':
+                stock_before = stock_after + transaction.quantity
+            elif transaction.type == 'adjustment':
+                stock_before = stock_after - transaction.quantity
+            else:
+                stock_before = None
+                stock_after = None
+            
+            # Mettre à jour le curseur pour la prochaine itération
+            if stock_before is not None:
+                current_stock = stock_before
+            
+            movements.append({
+                'id': transaction.id,
+                'type': transaction.type,
+                'quantity': transaction.quantity,
+                'stock_before': stock_before,
+                'stock_after': stock_after,
+                'date': transaction.transaction_date.isoformat(),
+                'notes': transaction.notes,
+                'user': transaction.user.username if transaction.user else 'Système',
+            })
+        
+        return Response({
+            'product_id': product.id,
+            'product_name': product.name,
+            'current_stock': product.quantity,
+            'movements': movements,
+        })
+
+    @action(detail=True, methods=['post'])
+    def add_stock(self, request, pk=None):
+        """Ajouter du stock à un produit"""
+        product = self.get_object()
+        quantity = request.data.get('quantity')
+        notes = request.data.get('notes', 'Ajout de stock')
+        
+        if not quantity or quantity <= 0:
+            return Response(
+                {'error': 'La quantité doit être positive'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Mettre à jour le stock
+        old_quantity = product.quantity
+        product.quantity += quantity
+        product.save()
+        
+        # Créer la transaction
+        Transaction.objects.create(
+            product=product,
+            type='in',
+            quantity=quantity,
+            unit_price=product.purchase_price,
+            notes=notes,
+            user=request.user
+        )
+        
+        return Response({
+            'success': True,
+            'message': f'{quantity} unités ajoutées au stock',
+            'old_quantity': old_quantity,
+            'new_quantity': product.quantity,
+            'product': ProductSerializer(product).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def remove_stock(self, request, pk=None):
+        """Retirer du stock d'un produit"""
+        product = self.get_object()
+        quantity = request.data.get('quantity')
+        notes = request.data.get('notes', 'Retrait de stock')
+        
+        if not quantity or quantity <= 0:
+            return Response(
+                {'error': 'La quantité doit être positive'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if product.quantity < quantity:
+            return Response(
+                {'error': 'Stock insuffisant'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Mettre à jour le stock
+        old_quantity = product.quantity
+        product.quantity -= quantity
+        product.save()
+        
+        # Créer la transaction
+        Transaction.objects.create(
+            product=product,
+            type='out',
+            quantity=quantity,
+            unit_price=product.purchase_price,
+            notes=notes,
+            user=request.user
+        )
+        
+        return Response({
+            'success': True,
+            'message': f'{quantity} unités retirées du stock',
+            'old_quantity': old_quantity,
+            'new_quantity': product.quantity,
+            'product': ProductSerializer(product).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def adjust_stock(self, request, pk=None):
+        """Ajuster le stock d'un produit (correction)"""
+        product = self.get_object()
+        try:
+            new_quantity = int(request.data.get('quantity'))
+        except (TypeError, ValueError):
+            return Response({'error': 'Quantité invalide'}, status=status.HTTP_400_BAD_REQUEST)
+        notes = request.data.get('notes', 'Ajustement de stock')
+        
+        if new_quantity is None or new_quantity < 0:
+            return Response(
+                {'error': 'La quantité doit être positive ou nulle'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Mettre à jour le stock
+        old_quantity = product.quantity
+        product.quantity = new_quantity
+        product.save()
+        
+        # Créer la transaction d'ajustement
+        if new_quantity != old_quantity:
+            adjustment_quantity = new_quantity - old_quantity
+            Transaction.objects.create(
+                product=product,
+                type='adjustment',
+                quantity=adjustment_quantity,
+                unit_price=product.purchase_price,
+                notes=notes,
+                user=request.user
+            )
+        
+        return Response({
+            'success': True,
+            'message': f'Stock ajusté de {old_quantity} à {new_quantity}',
+            'old_quantity': old_quantity,
+            'new_quantity': product.quantity,
+            'product': ProductSerializer(product).data
+        })
+
+    @action(detail=False, methods=['get'])
+    def all_barcodes(self, request):
+        """Récupérer tous les codes-barres de tous les produits"""
+        # Récupérer tous les codes-barres avec les informations du produit
+        barcodes = Barcode.objects.select_related('product').all().order_by('product__name', '-is_primary', 'added_at')
+        
+        # Sérialiser les codes-barres
+        barcode_data = []
+        for barcode in barcodes:
+            barcode_data.append({
+                'id': barcode.id,
+                'ean': barcode.ean,
+                'is_primary': barcode.is_primary,
+                'notes': barcode.notes,
+                'added_at': barcode.added_at.isoformat() if barcode.added_at else None,
+                'updated_at': barcode.updated_at.isoformat() if barcode.updated_at else None,
+                'product': {
+                    'id': barcode.product.id,
+                    'name': barcode.product.name,
+                    'cug': barcode.product.cug,
+                    'category': barcode.product.category.name if barcode.product.category else None,
+                    'brand': barcode.product.brand.name if barcode.product.brand else None
+                }
+            })
+        
+        return Response({
+            'success': True,
+            'total_barcodes': len(barcode_data),
+            'barcodes': barcode_data
+        })
+
+    @action(detail=True, methods=['get'])
+    def list_barcodes(self, request, pk=None):
+        """Récupérer tous les codes-barres d'un produit"""
+        product = self.get_object()
+        
+        # Récupérer tous les codes-barres du produit
+        barcodes = product.barcodes.all().order_by('-is_primary', 'added_at')
+        
+        # Sérialiser les codes-barres
+        barcode_data = []
+        for barcode in barcodes:
+            barcode_data.append({
+                'id': barcode.id,
+                'ean': barcode.ean,
+                'is_primary': barcode.is_primary,
+                'notes': barcode.notes,
+                'added_at': barcode.added_at.isoformat() if barcode.added_at else None,
+                'updated_at': barcode.updated_at.isoformat() if barcode.updated_at else None
+            })
+        
+        return Response({
+            'success': True,
+            'product_id': product.id,
+            'product_name': product.name,
+            'barcodes_count': len(barcode_data),
+            'barcodes': barcode_data
+        })
+
+    @action(detail=True, methods=['post'])
+    def add_barcode(self, request, pk=None):
+        """Ajouter un code-barres au produit"""
+        product = self.get_object()
+        ean = request.data.get('ean')
+        notes = request.data.get('notes', '')
+        
+        if not ean:
+            return Response(
+                {'error': 'Le code-barres est requis'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Vérifier que le code-barres n'existe pas déjà pour ce produit
+        if product.barcodes.filter(ean=ean).exists():
+            return Response(
+                {'error': 'Ce code-barres existe déjà pour ce produit'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Vérifier que le code-barres n'est pas déjà utilisé par un autre produit
+        existing_barcode = Barcode.objects.filter(ean=ean).exclude(product=product).first()
+        if existing_barcode:
+            return Response({
+                'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id})'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Cette vérification est redondante car nous avons déjà vérifié dans le modèle Barcode
+        # Le code-barres est stocké dans le modèle Barcode, pas directement dans Product
+        
+        # Créer le nouveau code-barres
+        try:
+            barcode = Barcode.objects.create(
+                product=product,
+                ean=ean,
+                notes=notes,
+                is_primary=not product.barcodes.exists()  # Premier code-barres = principal
+            )
+        except Exception as e:
+            return Response({
+                'error': f'Erreur lors de l\'ajout du code-barres: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response({
+            'message': 'Code-barres ajouté avec succès',
+            'barcode': {
+                'id': barcode.id,
+                'ean': barcode.ean,
+                'is_primary': barcode.is_primary,
+                'notes': barcode.notes,
+                'added_at': barcode.added_at.isoformat() if barcode.added_at else None
+            }
+        })
+
+    @action(detail=True, methods=['delete'])
+    def remove_barcode(self, request, pk=None):
+        """Supprimer un code-barres du produit"""
+        product = self.get_object()
+        barcode_id = request.data.get('barcode_id')
+        
+        if not barcode_id:
+            return Response(
+                {'error': 'L\'ID du code-barres est requis'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Gérer le cas où barcode_id est 'primary'
+        if barcode_id == 'primary':
+            try:
+                barcode = product.barcodes.get(is_primary=True)
+            except Barcode.DoesNotExist:
+                return Response(
+                    {'error': 'Aucun code-barres principal trouvé'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            try:
+                barcode_id = int(barcode_id)
+                barcode = product.barcodes.get(id=barcode_id)
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'L\'ID du code-barres doit être un nombre valide'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Barcode.DoesNotExist:
+                return Response(
+                    {'error': 'Code-barres non trouvé'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        barcode.delete()
+        return Response({'message': 'Code-barres supprimé avec succès'})
+
+    @action(detail=True, methods=['post', 'put'])
+    def set_primary_barcode(self, request, pk=None):
+        """Définir un code-barres comme principal"""
+        product = self.get_object()
+        barcode_id = request.data.get('barcode_id')
+        
+        if not barcode_id:
+            return Response(
+                {'error': 'L\'ID du code-barres est requis'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Gérer le cas où barcode_id est 'primary'
+        if barcode_id == 'primary':
+            return Response(
+                {'error': 'Impossible de définir un code-barres comme principal avec l\'identifiant "primary"'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            barcode_id = int(barcode_id)
+            # Retirer le statut principal de tous les codes-barres
+            product.barcodes.update(is_primary=False)
+            
+            # Définir le nouveau code-barres principal
+            barcode = product.barcodes.get(id=barcode_id)
+            barcode.is_primary = True
+            barcode.save()
+            
+            # Le champ barcode n'existe pas sur le modèle Product
+            # Le code-barres principal est géré via la relation barcodes avec is_primary=True
+            
+            return Response({
+                'message': 'Code-barres principal défini avec succès',
+                'barcode': {
+                    'id': barcode.id,
+                    'ean': barcode.ean,
+                    'is_primary': barcode.is_primary,
+                    'notes': barcode.notes
+                }
+            })
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'L\'ID du code-barres doit être un nombre valide'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Barcode.DoesNotExist:
+            return Response(
+                {'error': 'Code-barres non trouvé'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['put'])
+    def update_barcode(self, request, pk=None):
+        """Modifier un code-barres du produit"""
+        product = self.get_object()
+        barcode_id = request.data.get('barcode_id')
+        ean = request.data.get('ean')
+        notes = request.data.get('notes', '')
+        
+        if not barcode_id or not ean:
+            return Response(
+                {'error': 'L\'ID et le code-barres sont requis'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Gérer le cas où barcode_id est 'primary'
+        if barcode_id == 'primary':
+            try:
+                barcode = product.barcodes.get(is_primary=True)
+            except Barcode.DoesNotExist:
+                return Response(
+                    {'error': 'Aucun code-barres principal trouvé'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            try:
+                barcode_id = int(barcode_id)
+                barcode = product.barcodes.get(id=barcode_id)
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'L\'ID du code-barres doit être un nombre valide'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Barcode.DoesNotExist:
+                return Response(
+                    {'error': 'Code-barres non trouvé'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Vérifier que le nouveau code-barres n'existe pas déjà (sauf pour celui qu'on modifie)
+            if product.barcodes.filter(ean=ean).exclude(id=barcode.id).exists():
+                return Response(
+                    {'error': 'Ce code-barres existe déjà pour ce produit'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Vérifier que le code-barres n'est pas déjà utilisé par un autre produit
+            existing_barcode = Barcode.objects.filter(ean=ean).exclude(product=product).first()
+            if existing_barcode:
+                return Response({
+                    'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id})'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Vérifier que le code-barres n'est pas déjà utilisé dans le champ barcode d'un autre produit
+            existing_product = Product.objects.filter(ean=ean).exclude(pk=product.pk).first()
+            if existing_product:
+                return Response({
+                    'error': f'Ce code-barres "{ean}" est déjà utilisé comme code-barres principal du produit "{existing_product.name}" (ID: {existing_product.id})'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            barcode.ean = ean
+            barcode.notes = notes
+            barcode.save()
+            
+            # Si c'est le code-barres principal, mettre à jour le champ du produit
+            if barcode.is_primary:
+                product.barcode = ean
+                product.save()
+            
+            return Response({
+                'message': 'Code-barres modifié avec succès',
+                'barcode': {
+                    'id': barcode.id,
+                    'ean': barcode.ean,
+                    'is_primary': barcode.is_primary,
+                    'notes': barcode.notes
+                }
+            })
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    """ViewSet pour les catégories"""
+    serializer_class = CategorySerializer
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'level', 'order']
+    ordering = ['level', 'order', 'name']
+    
+    def get_queryset(self):
+        """Filtrer les catégories par site de l'utilisateur"""
+        user_site = self.request.user.site_configuration
+        
+        if self.request.user.is_superuser:
+            # Superuser voit tout
+            return Category.objects.all()
+        else:
+            # Utilisateur normal voit seulement son site
+            if not user_site:
+                return Category.objects.none()
+            return Category.objects.filter(site_configuration=user_site)
+
+
+class BrandViewSet(viewsets.ModelViewSet):
+    """ViewSet pour les marques"""
+    serializer_class = BrandSerializer
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['name', 'description']
+    ordering_fields = ['name']
+    ordering = ['name']
+    
+    def get_queryset(self):
+        """Filtrer les marques par site de l'utilisateur"""
+        user_site = self.request.user.site_configuration
+        
+        if self.request.user.is_superuser:
+            # Superuser voit tout
+            return Brand.objects.all()
+        else:
+            # Utilisateur normal voit seulement son site
+            if not user_site:
+                return Brand.objects.none()
+            return Brand.objects.filter(site_configuration=user_site)
+
+
+class TransactionViewSet(viewsets.ModelViewSet):
+    """ViewSet pour les transactions"""
+    serializer_class = TransactionSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['type', 'product', 'user']
+    search_fields = ['product__name', 'product__cug', 'notes']
+    ordering_fields = ['transaction_date', 'quantity']
+    ordering = ['-transaction_date']
+    
+    def get_queryset(self):
+        """Filtrer les transactions par site de l'utilisateur"""
+        user_site = self.request.user.site_configuration
+        
+        if self.request.user.is_superuser:
+            # Superuser voit tout
+            return Transaction.objects.select_related('product', 'user').all()
+        else:
+            # Utilisateur normal voit seulement son site
+            if not user_site:
+                return Transaction.objects.none()
+            return Transaction.objects.filter(
+                product__site_configuration=user_site
+            ).select_related('product', 'user')
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class SaleViewSet(viewsets.ModelViewSet):
+    """ViewSet pour les ventes"""
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['status', 'payment_method', 'customer']
+    search_fields = ['customer__name', 'customer__first_name']
+    ordering_fields = ['sale_date', 'total_amount']
+    ordering = ['-sale_date']
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return SaleCreateSerializer
+        return SaleSerializer
+    
+    def get_queryset(self):
+        """Filtrer les ventes par site de l'utilisateur"""
+        user_site = self.request.user.site_configuration
+        
+        if self.request.user.is_superuser:
+            # Superuser voit tout
+            return Sale.objects.select_related('customer').prefetch_related('items').all()
+        else:
+            # Utilisateur normal voit seulement son site
+            if not user_site:
+                return Sale.objects.none()
+            return Sale.objects.filter(
+                site_configuration=user_site
+            ).select_related('customer').prefetch_related('items')
+    
+    def perform_create(self, serializer):
+        """Créer une vente avec gestion automatique du stock"""
+        user_site = self.request.user.site_configuration
+        
+        if not user_site and not self.request.user.is_superuser:
+            raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
+        
+        # Créer la vente
+        sale = serializer.save(
+            site_configuration=user_site,
+            user=self.request.user
+        )
+        
+        # Traiter les articles de la vente
+        items_data = self.request.data.get('items', [])
+        total_amount = 0
+        
+        for item_data in items_data:
+            product_id = item_data.get('product')
+            quantity = item_data.get('quantity', 0)
+            unit_price = item_data.get('unit_price', 0)
+            
+            if product_id and quantity > 0:
+                try:
+                    product = Product.objects.get(id=product_id)
+                    
+                    # Vérifier le stock disponible
+                    if product.quantity < quantity:
+                        raise ValidationError({
+                            "detail": f"Stock insuffisant pour {product.name}. Disponible: {product.quantity}, demandé: {quantity}"
+                        })
+                    
+                    # Créer l'article de vente
+                    SaleItem.objects.create(
+                        sale=sale,
+                        product=product,
+                        quantity=quantity,
+                        unit_price=unit_price,
+                        total_price=quantity * unit_price
+                    )
+                    
+                    # Mettre à jour le stock
+                    product.quantity -= quantity
+                    product.save()
+                    
+                    # Créer une transaction de sortie
+                    Transaction.objects.create(
+                        product=product,
+                        type='out',
+                        quantity=quantity,
+                        unit_price=unit_price,
+                        notes=f'Vente #{sale.id}',
+                        user=self.request.user
+                    )
+                    
+                    total_amount += quantity * unit_price
+                    
+                except Product.DoesNotExist:
+                    raise ValidationError({
+                        "detail": f"Produit avec l'ID {product_id} non trouvé"
+                    })
+        
+        # Mettre à jour le montant total de la vente
+        sale.total_amount = total_amount
+        sale.save()
+        
+        return sale
+
+
+class DashboardView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Récupérer les statistiques du tableau de bord"""
+        try:
+            # Filtrer par site de l'utilisateur
+            user_site = request.user.site_configuration
+            
+            if request.user.is_superuser:
+                # Superuser voit tout
+                products = Product.objects.all()
+                categories = Category.objects.all()
+                brands = Brand.objects.all()
+                sales = Sale.objects.all()
+            else:
+                # Utilisateur normal voit seulement son site
+                if not user_site:
+                    # Retourner des données vides au lieu d'une erreur 400
+                    return Response({
+                        'success': True,
+                        'stats': {
+                            'total_products': 0,
+                            'low_stock_count': 0,
+                            'out_of_stock_count': 0,
+                            'total_stock_value': 0,
+                            'total_categories': 0,
+                            'total_brands': 0,
+                            'total_sales_today': 0,
+                            'total_revenue_today': 0,
+                        },
+                        'recent_sales': [],
+                        'low_stock_alerts': [],
+                        'warning': 'Aucun site configuré pour cet utilisateur'
+                    })
+                
+                products = Product.objects.filter(site_configuration=user_site)
+                categories = Category.objects.filter(site_configuration=user_site)
+                brands = Brand.objects.filter(site_configuration=user_site)
+                sales = Sale.objects.filter(site_configuration=user_site)
+            
+            # Statistiques de base
+            stats = {
+                'total_products': products.count(),
+                'low_stock_count': products.filter(
+                    quantity__gt=0,
+                    quantity__lte=F('alert_threshold')
+                ).count(),
+                'out_of_stock_count': products.filter(quantity=0).count(),
+                'total_stock_value': products.aggregate(
+                    total=Sum(F('quantity') * F('purchase_price'))
+                )['total'] or 0,
+                'total_categories': categories.count(),
+                'total_brands': brands.count(),
+                'total_sales_today': sales.filter(
+                    sale_date__date=timezone.now().date()
+                ).count(),
+                'total_revenue_today': sales.filter(
+                    sale_date__date=timezone.now().date()
+                ).aggregate(
+                    total=Sum('total_amount')
+                )['total'] or 0,
+            }
+            
+            # Ventes récentes (limitées à 5)
+            recent_sales = sales.order_by('-sale_date')[:5]
+            
+            # Produits en rupture de stock (limités à 10)
+            low_stock_alerts = products.filter(
+                quantity__gt=0,
+                quantity__lte=F('alert_threshold')
+            ).order_by('quantity')[:10]
+            
+            return Response({
+                'success': True,
+                'stats': stats,
+                'recent_sales': [
+                    {
+                        'id': sale.id,
+                        'sale_number': getattr(sale, 'reference', None),
+                        'total_amount': float(sale.total_amount),
+                        'date': sale.sale_date.isoformat() if getattr(sale, 'sale_date', None) else None,
+                        'payment_method': sale.payment_method,
+                    }
+                    for sale in recent_sales
+                ],
+                'low_stock_alerts': [
+                    {
+                        'id': product.id,
+                        'name': product.name,
+                        'quantity': product.quantity,
+                        'alert_threshold': product.alert_threshold,
+                    }
+                    for product in low_stock_alerts
+                ],
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': 'Erreur lors du chargement du tableau de bord'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ConfigurationAPIView(APIView):
+    """Vue API pour la configuration basée sur la vue existante"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer la configuration actuelle"""
+        try:
+            # Utiliser la logique de la vue existante
+            config = get_user_site_configuration_api(request.user)
+            
+            # Préparer les données pour l'API
+            config_data = {
+                'id': config.id,
+                'nom_societe': config.nom_societe,
+                'adresse': config.adresse,
+                'telephone': config.telephone,
+                'email': config.email,
+                'devise': config.devise,
+                'tva': float(config.tva),
+                'site_web': getattr(config, 'site_web', ''),
+                'description': config.description,
+                'created_at': config.created_at.isoformat() if config.created_at else None,
+                'updated_at': config.updated_at.isoformat() if config.updated_at else None,
+            }
+            
+            # Ajouter l'URL du logo si disponible
+            if config.logo:
+                request = self.request
+                config_data['logo_url'] = request.build_absolute_uri(config.logo.url)
+            else:
+                config_data['logo_url'] = None
+            
+            return Response({
+                'success': True,
+                'configuration': config_data,
+                'message': 'Configuration récupérée avec succès'
+            })
+            
+        except Http404:
+            return Response({
+                'success': False,
+                'error': 'Aucun site configuré pour cet utilisateur'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print(f"❌ Erreur lors de la récupération de la configuration: {e}")
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la récupération de la configuration',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def put(self, request):
+        """Mettre à jour la configuration"""
+        try:
+            config = get_user_site_configuration_api(request.user)
+            
+            # Mettre à jour les champs fournis
+            fields_to_update = [
+                'nom_societe', 'adresse', 'telephone', 'email', 
+                'devise', 'tva', 'site_web', 'description'
+            ]
+            
+            for field in fields_to_update:
+                if field in request.data:
+                    setattr(config, field, request.data[field])
+            
+            # Gérer le logo séparément
+            if 'logo' in request.FILES:
+                config.logo = request.FILES['logo']
+            
+            # Enregistrer l'utilisateur qui a fait la modification
+            config.updated_by = request.user
+            config.save()
+            
+            print(f"✅ Configuration mise à jour par: {request.user.username}")
+            
+            # Retourner la configuration mise à jour
+            config_data = {
+                'id': config.id,
+                'nom_societe': config.nom_societe,
+                'adresse': config.adresse,
+                'telephone': config.telephone,
+                'email': config.email,
+                'devise': config.devise,
+                'tva': float(config.tva),
+                'site_web': getattr(config, 'site_web', ''),
+                'description': config.description,
+                'created_at': config.created_at.isoformat() if config.created_at else None,
+                'updated_at': config.updated_at.isoformat() if config.updated_at else None,
+            }
+            
+            if config.logo:
+                config_data['logo_url'] = request.build_absolute_uri(config.logo.url)
+            else:
+                config_data['logo_url'] = None
+            
+            return Response({
+                'success': True,
+                'configuration': config_data,
+                'message': 'Configuration mise à jour avec succès'
+            })
+                
+        except Exception as e:
+            print(f"❌ Erreur lors de la mise à jour de la configuration: {e}")
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la mise à jour de la configuration',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class ParametresAPIView(APIView):
+    """Vue API pour les paramètres basée sur la vue existante"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer les paramètres système"""
+        try:
+            # Utiliser la logique de la vue existante
+            parametres = Parametre.objects.filter(est_actif=True).order_by('cle')
+            
+            parametres_data = []
+            for parametre in parametres:
+                parametres_data.append({
+                    'id': parametre.id,
+                    'cle': parametre.cle,
+                    'valeur': parametre.valeur,
+                    'description': parametre.description,
+                    'est_actif': parametre.est_actif,
+                    'type_valeur': parametre.type_valeur,
+                })
+            
+            return Response({
+                'success': True,
+                'parametres': parametres_data,
+                'count': parametres.count(),
+                'message': 'Paramètres récupérés avec succès'
+            })
+            
+        except Exception as e:
+            print(f"❌ Erreur lors de la récupération des paramètres: {e}")
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la récupération des paramètres',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def put(self, request):
+        """Mettre à jour un paramètre spécifique"""
+        try:
+            parametre_id = request.data.get('id')
+            nouvelle_valeur = request.data.get('valeur')
+            
+            if not parametre_id or nouvelle_valeur is None:
+                return Response({
+                    'success': False,
+                    'error': 'ID du paramètre et nouvelle valeur requis'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                parametre = Parametre.objects.get(id=parametre_id)
+            except Parametre.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': 'Paramètre non trouvé'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Mettre à jour la valeur
+            parametre.valeur = str(nouvelle_valeur)
+            parametre.updated_by = request.user
+            parametre.save()
+            
+            print(f"✅ Paramètre '{parametre.cle}' mis à jour par: {request.user.username}")
+            
+            parametre_data = {
+                'id': parametre.id,
+                'cle': parametre.cle,
+                'valeur': parametre.valeur,
+                'description': parametre.description,
+                'est_actif': parametre.est_actif,
+                'type_valeur': parametre.type_valeur,
+            }
+            
+            return Response({
+                'success': True,
+                'parametre': parametre_data,
+                'message': f'Paramètre {parametre.cle} mis à jour avec succès'
+            })
+            
+        except Exception as e:
+            print(f"❌ Erreur lors de la mise à jour du paramètre: {e}")
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la mise à jour du paramètre',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class ConfigurationResetAPIView(APIView):
+    """Vue API pour réinitialiser la configuration"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Réinitialiser la configuration avec des valeurs par défaut"""
+        try:
+            config = get_user_site_configuration_api(request.user)
+            
+            # Valeurs par défaut
+            config.nom_societe = 'BoliBana Stock'
+            config.adresse = 'Adresse de votre entreprise'
+            config.telephone = '+226 XX XX XX XX'
+            config.email = 'contact@votreentreprise.com'
+            config.devise = 'FCFA'
+            config.tva = 0.00
+            config.description = 'Système de gestion de stock'
+            config.updated_by = request.user
+            config.save()
+            
+            # Journaliser l'activité
+            Activite.objects.create(
+                utilisateur=request.user,
+                type_action='modification',
+                description=f'Réinitialisation de la configuration du site: {config.site_name}',
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                url=request.path
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Configuration réinitialisée avec succès',
+                'configuration': {
+                    'id': config.id,
+                    'nom_societe': config.nom_societe,
+                    'adresse': config.adresse,
+                    'telephone': config.telephone,
+                    'email': config.email,
+                    'devise': config.devise,
+                    'tva': float(config.tva),
+                    'description': config.description,
+                }
+            })
+            
+        except Http404:
+            return Response({
+                'success': False,
+                'error': 'Aucun site configuré pour cet utilisateur'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la réinitialisation de la configuration',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class UserProfileAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer les informations du profil utilisateur"""
+        try:
+            user = request.user
+            data = {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'telephone': getattr(user, 'telephone', ''),
+                'poste': getattr(user, 'poste', ''),
+                'adresse': getattr(user, 'adresse', ''),
+                'is_staff': user.is_staff,
+                'is_active': user.is_active,
+                'date_joined': user.date_joined.isoformat(),
+                'last_login': user.last_login.isoformat() if user.last_login else None,
+            }
+            return Response({
+                'success': True,
+                'user': data
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la récupération du profil'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def put(self, request):
+        """Mettre à jour le profil utilisateur en utilisant le formulaire existant"""
+        try:
+            user = request.user
+            
+            # Utiliser le formulaire existant CustomUserUpdateForm
+            form = CustomUserUpdateForm(request.data, instance=user)
+            
+            if form.is_valid():
+                # Sauvegarder les données
+                updated_user = form.save(commit=False)
+                updated_user.save()
+                
+                # Retourner les données mises à jour
+                updated_data = {
+                    'id': updated_user.id,
+                    'username': updated_user.username,
+                    'email': updated_user.email,
+                    'first_name': updated_user.first_name,
+                    'last_name': updated_user.last_name,
+                    'telephone': getattr(updated_user, 'telephone', ''),
+                    'poste': getattr(updated_user, 'poste', ''),
+                    'adresse': getattr(updated_user, 'adresse', ''),
+                    'is_staff': updated_user.is_staff,
+                    'is_active': updated_user.is_active,
+                    'date_joined': updated_user.date_joined.isoformat(),
+                    'last_login': updated_user.last_login.isoformat() if updated_user.last_login else None,
+                }
+                
+                return Response({
+                    'success': True,
+                    'message': 'Profil mis à jour avec succès',
+                    'user': updated_data
+                })
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Données invalides',
+                    'details': form.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la mise à jour du profil'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PublicSignUpAPIView(APIView):
+    """
+    API d'inscription publique - Crée un nouveau site avec son admin
+    Basé sur PublicSignUpView
+    """
+    permission_classes = [permissions.AllowAny]  # Accès public
+
+    def post(self, request):
+        """Créer un nouveau compte utilisateur et site"""
+        try:
+            # Utiliser le formulaire existant pour la validation
+            form = PublicSignUpForm(request.data)
+            
+            if form.is_valid():
+                # Créer l'utilisateur
+                user = form.save(commit=False)
+                
+                # Générer un nom de site unique basé sur le nom de l'utilisateur et un timestamp
+                import time
+                timestamp = int(time.time())
+                base_site_name = f"{user.first_name}-{user.last_name}".replace(' ', '-').lower()
+                site_name = f"{base_site_name}-{timestamp}"
+                
+                # Vérifier l'unicité du nom de site (au cas où)
+                counter = 1
+                original_site_name = site_name
+                while Configuration.objects.filter(site_name=site_name).exists():
+                    site_name = f"{original_site_name}-{counter}"
+                    counter += 1
+                
+                # D'abord sauvegarder l'utilisateur sans site_configuration
+                user.est_actif = True
+                user.is_staff = False
+                user.is_superuser = False
+                user.save()
+                
+                # Maintenant créer la configuration du nouveau site
+                site_config = Configuration(
+                    site_name=site_name,
+                    site_owner=user,
+                    nom_societe=f"Entreprise {user.first_name} {user.last_name}",
+                    adresse="Adresse à configurer",
+                    telephone="",
+                    email=user.email,
+                    devise="€",
+                    tva=0,
+                    description=f"Site créé automatiquement pour {user.get_full_name()}"
+                )
+                site_config.save()
+                
+                # Maintenant mettre à jour l'utilisateur avec sa site_configuration
+                user.site_configuration = site_config
+                user.is_site_admin = True
+                user.save()
+                
+                # Journaliser l'activité (optionnel) - Désactivé temporairement
+                # try:
+                #     Activite.objects.create(
+                #         utilisateur=user,
+                #         type_action='creation',
+                #         description=f'Inscription publique - Création du site: {site_name}',
+                #         ip_address=request.META.get('REMOTE_ADDR'),
+                #         user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                #         url=request.path
+                #     )
+                # except Exception as e:
+                #     print(f"⚠️ Erreur création activité: {e}")
+                #     # Continuer sans journaliser l'activité
+                
+                # Générer les tokens d'authentification
+                refresh = RefreshToken.for_user(user)
+                access_token = str(refresh.access_token)
+                refresh_token = str(refresh)
+                
+                # Retourner les informations de l'utilisateur créé avec les tokens
+                user_data = {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'is_staff': user.is_staff,
+                    'is_active': user.is_active,
+                    'date_joined': user.date_joined.isoformat(),
+                    'site_name': site_name,
+                    'site_config_id': site_config.id
+                }
+                
+                return Response({
+                    'success': True,
+                    'message': 'Compte créé avec succès ! Vous êtes maintenant connecté.',
+                    'user': user_data,
+                    'site_info': {
+                        'site_name': site_name,
+                        'nom_societe': site_config.nom_societe
+                    },
+                    'tokens': {
+                        'access': access_token,
+                        'refresh': refresh_token
+                    }
+                }, status=status.HTTP_201_CREATED)
+            else:
+                # Retourner les erreurs de validation
+                return Response({
+                    'success': False,
+                    'error': 'Données invalides',
+                    'details': form.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            print(f"❌ Erreur détaillée: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'success': False,
+                'error': f'Erreur lors de la création du compte: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ============ Labels API ============
+class LabelTemplateViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = LabelTemplateSerializer
+
+    def get_queryset(self):
+        user_site = self.request.user.site_configuration
+        if self.request.user.is_superuser:
+            return LabelTemplate.objects.all()
+        return LabelTemplate.for_site_qs(user_site)
+
+
+class LabelBatchViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = LabelBatchSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['status', 'channel']
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return LabelBatch.objects.all()
+        return LabelBatch.objects.filter(site_configuration=user.site_configuration)
+
+    @action(detail=False, methods=['post'])
+    def create_batch(self, request):
+        """Créer un lot d'étiquettes"""
+        user_site = request.user.site_configuration
+        if not user_site and not request.user.is_superuser:
+            raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
+
+        data = LabelBatchCreateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        payload = data.validated_data
+
+        template = None
+        if payload.get('template_id'):
+            template = LabelTemplate.objects.filter(id=payload['template_id']).first()
+        if not template:
+            template = LabelTemplate.get_default_for_site(user_site)
+        if not template:
+            raise ValidationError({"detail": "Aucun modèle d'étiquette disponible"})
+
+        batch = LabelBatch.objects.create(
+            site_configuration=user_site,
+            user=request.user,
+            template=template,
+            source='manual',
+            channel=payload['channel'],
+            status='queued',
+            copies_total=0,
+        )
+
+        # Créer les items
+        position = 0
+        total_copies = 0
+        from app.inventory.models import Product
+        for item in payload['items']:
+            product = Product.objects.get(id=item['product_id'])
+            copies = item.get('copies', 1)
+            barcode_value = item.get('barcode_value') or ''
+            LabelItem.objects.create(
+                batch=batch,
+                product=product,
+                copies=copies,
+                barcode_value=barcode_value,
+                position=position,
+            )
+            total_copies += copies
+            position += 1
+
+        batch.copies_total = total_copies
+        batch.status = 'success'
+        batch.save(update_fields=['copies_total', 'status'])
+
+        return Response(LabelBatchSerializer(batch).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        """Générer un PDF pour le lot d'étiquettes"""
+        batch = self.get_object()
+        pdf_bytes, filename = render_label_batch_pdf(batch)
+        from django.http import HttpResponse
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return resp
+
+    @action(detail=True, methods=['get'])
+    def tsc(self, request, pk=None):
+        """Générer un fichier TSC pour le lot d'étiquettes"""
+        batch = self.get_object()
+        tsc_text, filename = render_label_batch_tsc(batch)
+        from django.http import HttpResponse
+        resp = HttpResponse(tsc_text, content_type='text/plain; charset=utf-8')
+        resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return resp
+
+
+class BarcodeViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet pour la consultation des codes-barres"""
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['is_primary', 'product__category', 'product__brand']
+    search_fields = ['ean', 'product__name', 'product__cug', 'notes']
+    ordering_fields = ['ean', 'added_at', 'product__name']
+    ordering = ['product__name', '-is_primary', 'added_at']
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return Barcode.objects.select_related('product', 'product__category', 'product__brand').all()
+        return Barcode.objects.select_related('product', 'product__category', 'product__brand').filter(
+            product__site_configuration=user.site_configuration
+        )
+
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """Récupérer les statistiques des codes-barres"""
+        queryset = self.get_queryset()
+        
+        total_barcodes = queryset.count()
+        primary_barcodes = queryset.filter(is_primary=True).count()
+        secondary_barcodes = total_barcodes - primary_barcodes
+        
+        # Statistiques par catégorie
+        category_stats = {}
+        for barcode in queryset.select_related('product__category'):
+            category_name = barcode.product.category.name if barcode.product.category else 'Sans catégorie'
+            if category_name not in category_stats:
+                category_stats[category_name] = 0
+            category_stats[category_name] += 1
+        
+        # Statistiques par marque
+        brand_stats = {}
+        for barcode in queryset.select_related('product__brand'):
+            brand_name = barcode.product.brand.name if barcode.product.brand else 'Sans marque'
+            if brand_name not in brand_stats:
+                brand_stats[brand_name] = 0
+            brand_stats[brand_name] += 1
+        
+        return Response({
+            'success': True,
+            'statistics': {
+                'total_barcodes': total_barcodes,
+                'primary_barcodes': primary_barcodes,
+                'secondary_barcodes': secondary_barcodes,
+                'by_category': category_stats,
+                'by_brand': brand_stats
+            }
+        })
+
+    @action(detail=False, methods=['get'])
+    def search(self, request):
+        """Rechercher des codes-barres par EAN ou nom de produit"""
+        search_query = request.query_params.get('q', '')
+        if not search_query:
+            return Response({'error': 'Paramètre de recherche requis'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        queryset = self.get_queryset().filter(
+            Q(ean__icontains=search_query) |
+            Q(product__name__icontains=search_query) |
+            Q(product__cug__icontains=search_query)
+        )
+        
+        # Sérialiser les résultats
+        barcode_data = []
+        for barcode in queryset:
+            barcode_data.append({
+                'id': barcode.id,
+                'ean': barcode.ean,
+                'is_primary': barcode.is_primary,
+                'notes': barcode.notes,
+                'added_at': barcode.added_at.isoformat() if barcode.added_at else None,
+                'product': {
+                    'id': barcode.product.id,
+                    'name': barcode.product.name,
+                    'cug': barcode.product.cug,
+                    'category': barcode.product.category.name if barcode.product.category else None,
+                    'brand': barcode.product.brand.name if barcode.product.brand else None
+                }
+            })
+        
+        return Response({
+            'success': True,
+            'search_query': search_query,
+            'results_count': len(barcode_data),
+            'barcodes': barcode_data
+        })
+
+
+class LabelGeneratorAPIView(APIView):
+    """API pour générer des étiquettes avec codes-barres CUG"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer la liste des produits avec codes-barres pour générer des étiquettes"""
+        try:
+            # Récupérer le site de l'utilisateur
+            user_site = request.user.site_configuration
+            if not user_site and not request.user.is_superuser:
+                return Response(
+                    {'error': 'Aucun site configuré pour cet utilisateur'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Récupérer tous les produits avec codes-barres
+            if request.user.is_superuser:
+                products = Product.objects.filter(
+                    barcodes__isnull=False
+                ).select_related('category', 'brand').prefetch_related('barcodes')
+            else:
+                products = Product.objects.filter(
+                    site_configuration=user_site,
+                    barcodes__isnull=False
+                ).select_related('category', 'brand').prefetch_related('barcodes')
+            
+            # Organiser par catégorie et marque
+            if request.user.is_superuser:
+                categories = Category.objects.all()
+                brands = Brand.objects.all()
+            else:
+                categories = Category.objects.filter(
+                    site_configuration=user_site
+                ) if user_site else Category.objects.all()
+                brands = Brand.objects.filter(
+                    site_configuration=user_site
+                ) if user_site else Brand.objects.all()
+            
+            # Préparer les données pour le mobile
+            label_data = {
+                'products': [],
+                'categories': CategorySerializer(categories, many=True).data,
+                'brands': BrandSerializer(brands, many=True).data,
+                'total_products': products.count(),
+                'generated_at': timezone.now().isoformat()
+            }
+            
+            # Ajouter les produits avec leurs codes-barres
+            for product in products:
+                primary_barcode = product.barcodes.filter(is_primary=True).first()
+                if not primary_barcode:
+                    primary_barcode = product.barcodes.first()
+                
+                if primary_barcode:
+                    label_data['products'].append({
+                        'id': product.id,
+                        'name': product.name,
+                        'cug': product.cug,
+                        'barcode_ean': primary_barcode.ean,
+                        'selling_price': product.selling_price,
+                        'quantity': product.quantity,
+                        'category': {
+                            'id': product.category.id,
+                            'name': product.category.name
+                        } if product.category else None,
+                        'brand': {
+                            'id': product.brand.id,
+                            'name': product.brand.name
+                        } if product.brand else None,
+                        'has_barcodes': True,
+                        'barcodes_count': product.barcodes.count()
+                    })
+            
+            return Response(label_data)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la génération des étiquettes: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def post(self, request):
+        """Générer des étiquettes pour des produits spécifiques"""
+        try:
+            product_ids = request.data.get('product_ids', [])
+            include_prices = request.data.get('include_prices', True)
+            include_stock = request.data.get('include_stock', True)
+            
+            if not product_ids:
+                return Response(
+                    {'error': 'Veuillez spécifier au moins un produit'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Récupérer les produits demandés
+            user_site = request.user.site_configuration
+            if request.user.is_superuser:
+                products = Product.objects.filter(
+                    id__in=product_ids,
+                    barcodes__isnull=False
+                ).select_related('category', 'brand').prefetch_related('barcodes')
+            else:
+                products = Product.objects.filter(
+                    id__in=product_ids,
+                    site_configuration=user_site,
+                    barcodes__isnull=False
+                ).select_related('category', 'brand').prefetch_related('barcodes')
+            
+            # Préparer les données des étiquettes
+            labels = []
+            for product in products:
+                primary_barcode = product.barcodes.filter(is_primary=True).first()
+                if not primary_barcode:
+                    primary_barcode = product.barcodes.first()
+                
+                if primary_barcode:
+                    label = {
+                        'product_id': product.id,
+                        'name': product.name,
+                        'cug': product.cug,
+                        'barcode_ean': primary_barcode.ean,
+                        'category': product.category.name if product.category else None,
+                        'brand': product.brand.name if product.brand else None,
+                    }
+                    
+                    if include_prices:
+                        label['price'] = product.selling_price
+                    
+                    if include_stock:
+                        label['stock'] = product.quantity
+                    
+                    labels.append(label)
+            
+            return Response({
+                'labels': labels,
+                'total_labels': len(labels),
+                'include_prices': include_prices,
+                'include_stock': include_stock,
+                'generated_at': timezone.now().isoformat()
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la génération des étiquettes: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+def get_user_site_configuration_api(user):
+    """
+    Récupère la configuration du site de l'utilisateur pour l'API
+    """
+    if user.is_superuser:
+        # Les superusers voient la première configuration ou peuvent en créer une
+        config = Configuration.objects.first()
+        if not config:
+            config = Configuration.objects.create(
+                site_name='Site Principal',
+                nom_societe='BoliBana Stock',
+                adresse='Adresse de votre entreprise',
+                telephone='+226 XX XX XX XX',
+                email='contact@votreentreprise.com',
+                devise='FCFA',
+                tva=0.00,
+                description='Système de gestion de stock',
+                site_owner=user,
+                created_by=user,
+                updated_by=user
+            )
+            # Assigner la configuration au superuser
+            user.site_configuration = config
+            user.is_site_admin = True
+            user.save()
+        return config
+    else:
+        # Les utilisateurs normaux voient leur configuration
+        if not user.site_configuration:
+            raise Http404("Aucun site configuré pour cet utilisateur")
+        return user.site_configuration

@@ -9,11 +9,64 @@ Application de gestion de stock pour BoliBana.
 - Notifications de stock bas
 - Interface moderne avec Tailwind CSS
 
+## Architecture et Organisation
+
+### Structure du Projet
+```
+bolibana-stock/
+├── app/
+│   ├── core/          # Application principale (utilisateurs, logs, notifications)
+│   ├── inventory/     # Gestion des stocks
+│   └── sales/         # Gestion des ventes
+├── theme/             # Configuration Tailwind CSS
+├── templates/         # Templates HTML
+├── static/           # Fichiers statiques
+└── bolibanastock/    # Configuration du projet
+```
+
+### Bonnes Pratiques
+- Une application par fonctionnalité
+- Séparation claire des responsabilités (MVC)
+- Tests automatisés avec pytest
+- Documentation du code et des API
+- Versionnage avec Git
+- Optimisation des requêtes (select_related, prefetch_related)
+- Indexation des modèles
+- Gestion sécurisée des fichiers statiques et médias
+- Cache pour les données fréquemment consultées
+
+## Dépendances
+
+### Base Essentielle
+- **Django** : Framework web principal
+- **django-tailwind** : Intégration de Tailwind CSS
+- **django-crispy-forms** : Pour des formulaires stylés et ergonomiques
+- **crispy-tailwind** : Support Tailwind pour crispy-forms
+- **python-dotenv** : Gestion des variables d'environnement
+- **Pillow** : Traitement des images
+- **openpyxl** : Import/Export Excel
+- **django-import-export** : Import/Export de données (CSV, Excel)
+
+### Packages Utiles
+- **django-widget-tweaks** : Personnalisation des champs de formulaire
+- **django-simple-history** : Suivi des modifications
+- **django-extensions** : Commandes de développement supplémentaires
+- **whitenoise** : Gestion des fichiers statiques
+- **django-filter** : Filtrage des listes
+- **django-debug-toolbar** : Analyse des requêtes SQL et performances
+- **django-rest-framework** : API REST pour synchronisation
+- **celery** : Tâches asynchrones (emails, rapports)
+
+### Développement et Tests
+- **coverage** : Analyse de couverture des tests
+- **pytest-django** : Framework de tests modernes
+
 ## Prérequis
 
 - Python 3.8+
 - Node.js 14+
 - npm ou yarn
+- Redis (pour Celery)
 
 ## Installation
 
@@ -67,24 +120,70 @@ cd theme
 npm run dev
 ```
 
-## Structure du projet
-
-```
-bolibana-stock/
-├── app/
-│   ├── core/          # Application principale
-│   ├── inventory/     # Gestion des stocks
-│   └── sales/         # Gestion des ventes
-├── theme/             # Configuration Tailwind CSS
-├── templates/         # Templates HTML
-├── static/           # Fichiers statiques
-└── bolibanastock/    # Configuration du projet
+10. Lancer Celery (si nécessaire) :
+```bash
+celery -A bolibanastock worker -l info
 ```
 
 ## Développement
 
-- Utiliser `npm run dev` pour le développement avec Tailwind CSS
-- Utiliser `npm run build` pour la production
+### Commandes Utiles
+```bash
+# Lancer les tests
+pytest
+
+# Vérifier la couverture
+pytest --cov
+
+# Créer une migration
+python manage.py makemigrations
+
+# Appliquer les migrations
+python manage.py migrate
+
+# Créer un superutilisateur
+python manage.py createsuperuser
+
+# Collecter les fichiers statiques
+python manage.py collectstatic
+
+# Lancer Celery
+celery -A bolibanastock worker -l info
+```
+
+### Structure des Tests
+```
+tests/
+├── conftest.py           # Configuration pytest
+├── factories/            # Factories pour les tests
+├── unit/                 # Tests unitaires
+└── integration/          # Tests d'intégration
+```
+
+## Déploiement
+
+### Production
+- Serveur web (Nginx/Apache)
+- Base de données PostgreSQL
+- Gestion des fichiers statiques avec Whitenoise
+- Configuration SSL/TLS
+- Variables d'environnement sécurisées
+- Redis pour Celery
+- Gunicorn comme serveur WSGI
+
+### Support
+- Documentation utilisateur
+- Guide d'installation
+- Support technique
+
+## Sécurité
+
+- Authentification sécurisée
+- Chiffrement des données sensibles
+- Audits de sécurité réguliers
+- Protection CSRF
+- Validation des entrées
+- Gestion sécurisée des fichiers uploadés
 
 ## Licence
 

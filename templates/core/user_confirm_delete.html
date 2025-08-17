@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title|default:"Supprimer l'utilisateur" }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
+    <div class="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+        <div class="px-6 py-4 border-b border-neutral-200">
+            <h2 class="text-xl sm:text-2xl font-bold text-neutral-800">
+                {{ title|default:"Supprimer l'utilisateur" }}
+            </h2>
+            <p class="mt-2 text-sm text-neutral-600">
+                {{ subtitle|default:"Êtes-vous sûr de vouloir supprimer cet utilisateur ?" }}
+            </p>
+        </div>
+        
+        <div class="p-6">
+            <div class="text-center">
+                <!-- Icône d'avertissement -->
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                    <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+                </div>
+                
+                <!-- Message principal -->
+                <h3 class="text-lg font-medium text-neutral-900 mb-2">
+                    Supprimer l'utilisateur "{{ object.username }}" ?
+                </h3>
+                
+                                        <p class="text-sm text-neutral-600 mb-6">
+                            Cette action est irréversible. Toutes les données associées à cet utilisateur seront définitivement supprimées.
+                            <br><br>
+                            <strong>Note :</strong> Si l'utilisateur est lié à des transactions ou des ventes, il sera désactivé à la place d'être supprimé pour préserver l'intégrité des données.
+                        </p>
+                
+                <!-- Informations sur l'utilisateur -->
+                <div class="bg-neutral-50 rounded-lg p-4 mb-6">
+                    <div class="flex items-center justify-center mb-3">
+                        {% if object.photo %}
+                            <img class="h-16 w-16 rounded-full object-cover" src="{{ object.photo.url }}" alt="{{ object.get_full_name }}">
+                        {% else %}
+                            <div class="h-16 w-16 rounded-full bg-bolibana-100 flex items-center justify-center">
+                                <span class="text-bolibana-600 font-semibold text-lg">
+                                    {{ object.first_name|first|upper }}{{ object.last_name|first|upper }}
+                                </span>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="text-center">
+                        <h4 class="text-sm font-medium text-neutral-900">
+                            {{ object.get_full_name|default:object.username }}
+                        </h4>
+                        <p class="text-sm text-neutral-500">@{{ object.username }}</p>
+                        {% if object.poste %}
+                        <p class="text-xs text-neutral-400 mt-1">{{ object.poste }}</p>
+                        {% endif %}
+                        {% if object.email %}
+                        <p class="text-xs text-neutral-400">{{ object.email }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Avertissements -->
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-yellow-800">
+                                Attention
+                            </h3>
+                            <div class="mt-2 text-sm text-yellow-700">
+                                <ul class="list-disc list-inside space-y-1">
+                                    <li>Cette action ne peut pas être annulée</li>
+                                    <li>Toutes les données de l'utilisateur seront perdues</li>
+                                    {% if object.is_superuser %}
+                                    <li>Cet utilisateur est un administrateur</li>
+                                    {% endif %}
+                                    {% if object.is_staff %}
+                                    <li>Cet utilisateur a des privilèges de gestion</li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="flex justify-center space-x-4">
+                    <a href="{% url 'core:user_list' %}" 
+                       class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-neutral-600 hover:text-neutral-100 bg-white hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-neutral-600">
+                        <i class="fas fa-times mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Annuler
+                    </a>
+                    
+                    <form method="post" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" 
+                                class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5">
+                            <i class="fas fa-trash mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Supprimer définitivement
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Styles pour les icônes et éléments */
+    .fas {
+        @apply text-lg;
+    }
+    
+    /* Animation pour l'icône d'avertissement */
+    .fa-exclamation-triangle {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.5;
+        }
+    }
+    
+    /* Hover effects */
+    .bg-red-100:hover {
+        @apply bg-red-200;
+    }
+    
+    .bg-yellow-50:hover {
+        @apply bg-yellow-100;
+    }
+</style>
+{% endblock %} 

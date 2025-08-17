@@ -1,0 +1,234 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Gestion des utilisateurs - BoliBana Stock{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
+    <!-- En-tête -->
+    <div class="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b border-neutral-200">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="text-xl sm:text-2xl font-bold text-neutral-800">
+                        Gestion des utilisateurs
+                    </h2>
+                    <p class="mt-2 text-sm text-neutral-600">
+                        {% if user.is_superuser %}
+                            Liste de tous les utilisateurs du système
+                        {% else %}
+                            Utilisateurs de votre site : {{ user.site_configuration.site_name }}
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="mt-4 sm:mt-0">
+                    <a href="{% url 'core:user_create' %}" 
+                       class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5">
+                        <i class="fas fa-user-plus mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Nouvel utilisateur
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Liste des utilisateurs -->
+    <div class="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-neutral-200">
+                <thead class="bg-neutral-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                            Utilisateur
+                        </th>
+                        {% if user.is_superuser %}
+                        <th class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                            Site
+                        </th>
+                        {% endif %}
+                        <th class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                            Contact
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                            Dernière connexion
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                            Statut
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                            Actions
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-neutral-200">
+                    {% for user_item in users %}
+                    <tr class="hover:bg-neutral-50 transition-colors duration-150">
+                        <!-- Informations utilisateur -->
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0 h-10 w-10">
+                                    {% if user_item.photo %}
+                                        <img class="h-10 w-10 rounded-full object-cover" src="{{ user_item.photo.url }}" alt="{{ user_item.get_full_name }}">
+                                    {% else %}
+                                        <div class="h-10 w-10 rounded-full bg-bolibana-100 flex items-center justify-center">
+                                            <i class="fas fa-user text-bolibana-600"></i>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                <div class="ml-4">
+                                    <div class="text-sm font-medium text-neutral-900">
+                                        {{ user_item.get_full_name|default:user_item.username }}
+                                    </div>
+                                    <div class="text-sm text-neutral-500">
+                                        @{{ user_item.username }}
+                                    </div>
+                                    {% if user_item.is_superuser %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                            <i class="fas fa-crown mr-1"></i>Super Admin
+                                        </span>
+                                    {% elif user_item.is_site_admin %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-bolibana-100 text-bolibana-800">
+                                            <i class="fas fa-shield-alt mr-1"></i>Admin Site
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Site (pour les superusers) -->
+                        {% if user.is_superuser %}
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-neutral-500">
+                            {% if user_item.site_configuration %}
+                                <div class="flex flex-col">
+                                    <span class="font-medium text-neutral-900">{{ user_item.site_configuration.site_name }}</span>
+                                    <span class="text-xs text-neutral-400">{{ user_item.site_configuration.nom_societe }}</span>
+                                </div>
+                            {% else %}
+                                <span class="text-neutral-400 italic">Aucun site</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+
+                        <!-- Contact -->
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-neutral-500">
+                            <div class="flex flex-col">
+                                {% if user_item.email %}
+                                    <span class="font-medium">{{ user_item.email }}</span>
+                                {% endif %}
+                                {% if user_item.telephone %}
+                                    <span class="text-xs text-neutral-400">{{ user_item.telephone }}</span>
+                                {% endif %}
+                            </div>
+                        </td>
+
+                        <!-- Dernière connexion -->
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-neutral-500">
+                            {% if user_item.derniere_connexion %}
+                                <div class="flex flex-col">
+                                    <span class="font-medium">{{ user_item.get_derniere_connexion_date }}</span>
+                                    <span class="text-xs text-neutral-400">{{ user_item.get_derniere_connexion_time }}</span>
+                                    <span class="text-xs text-bolibana-600">{{ user_item.get_derniere_connexion_display }}</span>
+                                </div>
+                            {% else %}
+                                <span class="text-neutral-400 italic">Jamais connecté</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Statut -->
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if user_item.est_actif %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <i class="fas fa-check-circle mr-1"></i>Actif
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    <i class="fas fa-times-circle mr-1"></i>Inactif
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Actions -->
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div class="flex space-x-2">
+                                <a href="{% url 'core:user_update' user_item.pk %}" 
+                                   class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-bolibana-700 bg-bolibana-100 hover:bg-bolibana-200 transition-colors duration-150">
+                                    <i class="fas fa-edit mr-1"></i>Modifier
+                                </a>
+                                
+                                {% if user_item.est_actif %}
+                                    <a href="{% url 'core:user_toggle_status' user_item.pk %}" 
+                                       class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-yellow-700 bg-yellow-100 hover:bg-yellow-200 transition-colors duration-150">
+                                        <i class="fas fa-pause mr-1"></i>Désactiver
+                                    </a>
+                                {% else %}
+                                    <a href="{% url 'core:user_toggle_status' user_item.pk %}" 
+                                       class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors duration-150">
+                                        <i class="fas fa-play mr-1"></i>Activer
+                                    </a>
+                                {% endif %}
+                                
+                                {% if user_item != request.user and not user_item.is_superuser or user_item.is_superuser and admin_count > 1 %}
+                                <a href="{% url 'core:user_delete' user_item.pk %}" 
+                                   class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 transition-colors duration-150">
+                                    <i class="fas fa-trash mr-1"></i>Supprimer
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="{% if user.is_superuser %}6{% else %}5{% endif %}" class="px-6 py-12 text-center">
+                            <div class="text-neutral-500">
+                                <i class="fas fa-users text-4xl mb-4"></i>
+                                <p class="text-lg font-medium">Aucun utilisateur trouvé</p>
+                                <p class="text-sm">Commencez par créer votre premier utilisateur.</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if is_paginated %}
+        <div class="px-6 py-4 border-t border-neutral-200">
+            <div class="flex items-center justify-between">
+                <div class="text-sm text-neutral-500">
+                    Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+                </div>
+                <div class="flex space-x-2">
+                    {% if page_obj.has_previous %}
+                        <a href="?page={{ page_obj.previous_page_number }}" class="px-3 py-1 text-sm text-bolibana-600 hover:text-bolibana-800">
+                            <i class="fas fa-chevron-left mr-1"></i>Précédent
+                        </a>
+                    {% endif %}
+                    {% if page_obj.has_next %}
+                        <a href="?page={{ page_obj.next_page_number }}" class="px-3 py-1 text-sm text-bolibana-600 hover:text-bolibana-800">
+                            Suivant<i class="fas fa-chevron-right ml-1"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    /* Styles pour les badges de statut */
+    .badge {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    }
+    
+    /* Animation pour les lignes du tableau */
+    tr {
+        transition: all 0.2s ease-in-out;
+    }
+    
+    tr:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+</style>
+{% endblock %} 

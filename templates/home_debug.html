@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Accueil Debug - BoliBana Stock{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Informations de debug -->
+        <div class="bg-white shadow-lg rounded-lg p-6 mb-8">
+            <h1 class="text-2xl font-bold text-gray-900 mb-6">Debug - Page d'accueil</h1>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Statut de connexion -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h2 class="text-lg font-semibold text-blue-900 mb-2">Statut de connexion</h2>
+                    <div class="space-y-2">
+                        <p class="text-sm"><span class="font-medium">Authentifié:</span> 
+                            <span class="{% if is_authenticated %}text-green-600{% else %}text-red-600{% endif %}">
+                                {{ is_authenticated|yesno:"Oui,Non" }}
+                            </span>
+                        </p>
+                        <p class="text-sm"><span class="font-medium">Session ID:</span> 
+                            <span class="text-gray-600">{{ session_id|default:"Aucune session" }}</span>
+                        </p>
+                        {% if is_authenticated %}
+                        <p class="text-sm"><span class="font-medium">User ID:</span> 
+                            <span class="text-gray-600">{{ user_id }}</span>
+                        </p>
+                        <p class="text-sm"><span class="font-medium">Username:</span> 
+                            <span class="text-gray-600">{{ username }}</span>
+                        </p>
+                        <p class="text-sm"><span class="font-medium">Nom complet:</span> 
+                            <span class="text-gray-600">{{ user.get_full_name }}</span>
+                        </p>
+                        <p class="text-sm"><span class="font-medium">Email:</span> 
+                            <span class="text-gray-600">{{ user.email }}</span>
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Configuration du site -->
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h2 class="text-lg font-semibold text-green-900 mb-2">Configuration du site</h2>
+                    <div class="space-y-2">
+                        <p class="text-sm"><span class="font-medium">Configuration nécessaire:</span> 
+                            <span class="{% if needs_configuration %}text-red-600{% else %}text-green-600{% endif %}">
+                                {{ needs_configuration|yesno:"Oui,Non" }}
+                            </span>
+                        </p>
+                        {% if site_config %}
+                        <p class="text-sm"><span class="font-medium">Nom du site:</span> 
+                            <span class="text-gray-600">{{ site_config.site_name }}</span>
+                        </p>
+                        <p class="text-sm"><span class="font-medium">Société:</span> 
+                            <span class="text-gray-600">{{ site_config.nom_societe }}</span>
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-2">Actions</h2>
+                    <div class="space-y-2">
+                        <a href="{% url 'core:test_auth' %}" class="block w-full text-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-bolibana-600 hover:bg-bolibana-700">
+                            <i class="fas fa-user-check mr-2"></i>Test Auth
+                        </a>
+                        <a href="{% url 'core:debug_signup' %}" class="block w-full text-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                            <i class="fas fa-user-plus mr-2"></i>Debug Inscription
+                        </a>
+                        {% if is_authenticated %}
+                        <a href="{% url 'logout' %}" class="block w-full text-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Déconnexion
+                        </a>
+                        {% else %}
+                        <a href="{% url 'login' %}" class="block w-full text-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
+                            <i class="fas fa-sign-in-alt mr-2"></i>Connexion
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Contenu normal de la page d'accueil -->
+        {% if is_authenticated %}
+        <div class="bg-white shadow-lg rounded-lg p-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">Bienvenue {{ user.get_full_name }} !</h2>
+            <p class="text-gray-600">Vous êtes maintenant connecté et pouvez accéder à toutes les fonctionnalités de BoliBana Stock.</p>
+            
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <a href="{% url 'inventory:product_list' %}" class="bg-bolibana-50 border border-bolibana-200 rounded-lg p-4 hover:bg-bolibana-100 transition-colors">
+                    <div class="flex items-center">
+                        <i class="fas fa-box text-bolibana-600 text-2xl mr-3"></i>
+                        <div>
+                            <h3 class="font-semibold text-bolibana-900">Produits</h3>
+                            <p class="text-sm text-bolibana-600">Gérer votre inventaire</p>
+                        </div>
+                    </div>
+                </a>
+                
+                <a href="{% url 'sales:sale_list' %}" class="bg-green-50 border border-green-200 rounded-lg p-4 hover:bg-green-100 transition-colors">
+                    <div class="flex items-center">
+                        <i class="fas fa-cash-register text-green-600 text-2xl mr-3"></i>
+                        <div>
+                            <h3 class="font-semibold text-green-900">Ventes</h3>
+                            <p class="text-sm text-green-600">Gérer vos ventes</p>
+                        </div>
+                    </div>
+                </a>
+                
+                <a href="{% url 'inventory:transaction_list' %}" class="bg-blue-50 border border-blue-200 rounded-lg p-4 hover:bg-blue-100 transition-colors">
+                    <div class="flex items-center">
+                        <i class="fas fa-exchange-alt text-blue-600 text-2xl mr-3"></i>
+                        <div>
+                            <h3 class="font-semibold text-blue-900">Transactions</h3>
+                            <p class="text-sm text-blue-600">Suivre les mouvements</p>
+                        </div>
+                    </div>
+                </a>
+                
+                <a href="{% url 'core:configuration' %}" class="bg-purple-50 border border-purple-200 rounded-lg p-4 hover:bg-purple-100 transition-colors">
+                    <div class="flex items-center">
+                        <i class="fas fa-cog text-purple-600 text-2xl mr-3"></i>
+                        <div>
+                            <h3 class="font-semibold text-purple-900">Configuration</h3>
+                            <p class="text-sm text-purple-600">Paramétrer votre site</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-white shadow-lg rounded-lg p-6 text-center">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">Bienvenue sur BoliBana Stock</h2>
+            <p class="text-gray-600 mb-6">Vous n'êtes pas connecté. Veuillez vous connecter ou créer un compte pour accéder aux fonctionnalités.</p>
+            
+            <div class="flex justify-center space-x-4">
+                <a href="{% url 'login' %}" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-bolibana-600 hover:bg-bolibana-700">
+                    <i class="fas fa-sign-in-alt mr-2"></i>Se connecter
+                </a>
+                <a href="{% url 'signup' %}" class="inline-flex items-center px-6 py-3 border border-bolibana-300 text-base font-medium rounded-md text-bolibana-700 bg-white hover:bg-bolibana-50">
+                    <i class="fas fa-user-plus mr-2"></i>Créer un compte
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 

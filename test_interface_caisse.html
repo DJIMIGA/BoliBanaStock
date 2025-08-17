@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Interface Caisse Scanner</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">
+            <i class="fas fa-cash-register"></i>
+            Test Interface Caisse Scanner
+        </h1>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="test-section">
+                    <h3>🔍 Test de Recherche</h3>
+                    <div class="mb-3">
+                        <label for="searchInput" class="form-label">Code-barres, CUG ou nom:</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="searchInput" placeholder="Ex: 57851, 3600550964707...">
+                            <button class="btn btn-primary" onclick="testSearch()">
+                                <i class="fas fa-search"></i> Tester
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h5>Tests rapides:</h5>
+                        <button class="btn btn-sm btn-outline-primary me-2" onclick="testCode('57851')">CUG: 57851</button>
+                        <button class="btn btn-sm btn-outline-primary me-2" onclick="testCode('3600550964707')">EAN: 3600550964707</button>
+                        <button class="btn btn-sm btn-outline-primary me-2" onclick="testCode('18415')">CUG: 18415</button>
+                        <button class="btn btn-sm btn-outline-primary me-2" onclick="testCode('99999')">Code inexistant</button>
+                    </div>
+                </div>
+                
+                <div class="test-section">
+                    <h3>📊 Résultats du Test</h3>
+                    <div id="testResults"></div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="test-section">
+                    <h3>🔧 Informations de Débogage</h3>
+                    <div id="debugInfo">
+                        <p><strong>URL de test:</strong> <span id="testUrl">Chargement...</span></p>
+                        <p><strong>CSRF Token:</strong> <span id="csrfToken">Chargement...</span></p>
+                        <p><strong>Status:</strong> <span id="status">En attente...</span></p>
+                    </div>
+                </div>
+                
+                <div class="test-section">
+                    <h3>📝 Log des Requêtes</h3>
+                    <div id="requestLog" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost:8000';
+        const SEARCH_ENDPOINT = '/sales/cash-register-scanner/';
+        
+        // Éléments DOM
+        const searchInput = document.getElementById('searchInput');
+        const testResults = document.getElementById('testResults');
+        const debugInfo = document.getElementById('debugInfo');
+        const requestLog = document.getElementById('requestLog');
+        
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', function() {
+            updateDebugInfo();
+            log('🚀 Interface de test initialisée');
+        });
+        
+        // Fonctions utilitaires
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            requestLog.innerHTML += `[${timestamp}] ${message}\n`;
+            requestLog.scrollTop = requestLog.scrollHeight;
+        }
+        
+        function updateDebugInfo() {
+            document.getElementById('testUrl').textContent = API_BASE_URL + SEARCH_ENDPOINT;
+            document.getElementById('csrfToken').textContent = 'Non disponible (CORS)';
+            document.getElementById('status').textContent = 'Prêt';
+        }
+        
+        function showResult(message, type = 'info') {
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${type}`;
+            resultDiv.innerHTML = `<strong>${type.toUpperCase()}:</strong> ${message}`;
+            testResults.appendChild(resultDiv);
+            testResults.scrollTop = testResults.scrollHeight;
+        }
+        
+        function clearResults() {
+            testResults.innerHTML = '';
+        }
+        
+        // Test de recherche
+        function testSearch() {
+            const query = searchInput.value.trim();
+            if (!query) {
+                showResult('Veuillez saisir un code à tester', 'error');
+                return;
+            }
+            
+            clearResults();
+            log(`🔍 Test de recherche pour: ${query}`);
+            showResult(`Test de recherche pour: ${query}`, 'info');
+            
+            // Simuler la requête AJAX
+            simulateSearch(query);
+        }
+        
+        function testCode(code) {
+            searchInput.value = code;
+            testSearch();
+        }
+        
+        // Simulation de la requête AJAX
+        function simulateSearch(query) {
+            log(`📡 Envoi de la requête POST vers ${SEARCH_ENDPOINT}`);
+            showResult('Envoi de la requête...', 'info');
+            
+            // Créer la requête
+            const formData = new FormData();
+            formData.append('search', query);
+            
+            // Headers pour simuler Django
+            const headers = {
+                'X-Requested-With': 'XMLHttpRequest'
+            };
+            
+            // Effectuer la requête
+            fetch(API_BASE_URL + SEARCH_ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                headers: headers
+            })
+            .then(response => {
+                log(`📥 Réponse reçue: ${response.status} ${response.statusText}`);
+                showResult(`Réponse reçue: ${response.status} ${response.statusText}`, 'info');
+                return response.json();
+            })
+            .then(data => {
+                log(`📊 Données reçues: ${JSON.stringify(data, null, 2)}`);
+                
+                if (data.success) {
+                    showResult(`✅ PRODUIT TROUVÉ: ${data.product.name}`, 'success');
+                    showResult(`   CUG: ${data.product.cug}`, 'success');
+                    showResult(`   Prix: ${data.product.selling_price} FCFA`, 'success');
+                    showResult(`   Stock: ${data.product.quantity}`, 'success');
+                    showResult(`   Type de recherche: ${data.search_type}`, 'success');
+                } else {
+                    showResult(`❌ PRODUIT NON TROUVÉ: ${data.error}`, 'error');
+                    if (data.suggestions && data.suggestions.length > 0) {
+                        showResult(`💡 Suggestions disponibles: ${data.suggestions.length}`, 'info');
+                        data.suggestions.forEach(suggestion => {
+                            showResult(`   - ${suggestion.text}`, 'info');
+                        });
+                    }
+                }
+            })
+            .catch(error => {
+                log(`💥 Erreur: ${error.message}`);
+                showResult(`💥 Erreur lors de la recherche: ${error.message}`, 'error');
+                
+                // Afficher des informations de débogage
+                showResult('💡 Vérifiez que le serveur Django est démarré sur le port 8000', 'info');
+                showResult('💡 Vérifiez que vous êtes connecté à l\'application', 'info');
+                showResult('💡 Vérifiez les logs du serveur Django', 'info');
+            });
+        }
+        
+        // Gestion des événements
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                testSearch();
+            }
+        });
+    </script>
+</body>
+</html>

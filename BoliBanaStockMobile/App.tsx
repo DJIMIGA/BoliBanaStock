@@ -1,0 +1,183 @@
+import 'react-native-gesture-handler';
+import React, { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { Provider } from 'react-redux';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+import { useSelector } from 'react-redux';
+import { store } from './src/store';
+import { checkAuthStatus } from './src/store/slices/authSlice';
+import { RootState } from './src/store';
+import {
+  LoginScreen,
+  SignupScreen,
+  DashboardScreen,
+  ProductsScreen,
+  ProductDetailScreen,
+  ScanProductScreen,
+  CashRegisterScreen,
+  SaleDetailScreen,
+  ConfigurationScreen,
+  SettingsScreen,
+  ProfileScreen,
+  LowStockScreen,
+  OutOfStockScreen,
+  StockValueScreen,
+  NewSaleScreen,
+  InventoryScreen,
+  ReportsScreen,
+  TransactionsScreen,
+  AddProductScreen,
+  TestScannerScreen,
+  LabelGeneratorScreen,
+  LabelPreviewScreen,
+  BarcodeTest,
+  CategoriesScreen,
+  BrandsScreen,
+} from './src/screens';
+import { RootStackParamList } from './src/types';
+import theme, { actionColors } from './src/utils/theme';
+
+const Stack = createStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator();
+
+const MainTabs = () => (
+  <Tab.Navigator
+    initialRouteName="Dashboard"
+    screenOptions={{
+      headerShown: false,
+      tabBarActiveTintColor: actionColors.primary,
+      tabBarInactiveTintColor: theme.colors.neutral[400],
+      tabBarStyle: { backgroundColor: theme.colors.background.primary },
+    }}
+  >
+    <Tab.Screen
+      name="Dashboard"
+      component={DashboardScreen}
+      options={{
+        title: 'Accueil',
+        tabBarLabel: 'Accueil',
+        tabBarIcon: ({ color, size }) => (
+          <Ionicons name="home-outline" size={size} color={color} />
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="Products"
+      component={ProductsScreen}
+      options={{
+        title: 'Produits',
+        tabBarLabel: 'Produits',
+        tabBarIcon: ({ color, size }) => (
+          <Ionicons name="cube-outline" size={size} color={color} />
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="CashRegister"
+      component={CashRegisterScreen}
+      options={{
+        title: 'Caisse',
+        tabBarLabel: 'Caisse',
+        tabBarIcon: ({ color, size }) => (
+          <Ionicons name="calculator-outline" size={size} color={color} />
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="Transactions"
+      component={TransactionsScreen}
+      options={{
+        title: 'Transactions',
+        tabBarLabel: 'Transactions',
+        tabBarIcon: ({ color, size }) => (
+          <Ionicons name="swap-horizontal-outline" size={size} color={color} />
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="Labels"
+      component={LabelGeneratorScreen}
+      options={{
+        title: 'Étiquettes',
+        tabBarLabel: 'Étiquettes',
+        tabBarIcon: ({ color, size }) => (
+          <Ionicons name="pricetag-outline" size={size} color={color} />
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="Settings"
+      component={SettingsScreen}
+      options={{
+        title: 'Paramètres',
+        tabBarLabel: 'Paramètres',
+        tabBarIcon: ({ color, size }) => (
+          <Ionicons name="settings-outline" size={size} color={color} />
+        ),
+      }}
+    />
+  </Tab.Navigator>
+);
+
+const AppContent: React.FC = () => {
+  const { isAuthenticated } = useSelector((state: RootState) => state.auth);
+
+  useEffect(() => {
+    // Vérifier l'état d'authentification au démarrage
+    store.dispatch(checkAuthStatus());
+  }, []);
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        {!isAuthenticated ? (
+          // Écrans d'authentification
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Signup" component={SignupScreen} />
+          </>
+        ) : (
+          // Application principale avec menu bas fixe (onglets)
+          <>
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+            {/* Écrans secondaires accessibles depuis les onglets */}
+            <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
+            <Stack.Screen name="ScanProduct" component={ScanProductScreen} />
+            <Stack.Screen name="SaleDetail" component={SaleDetailScreen} />
+            <Stack.Screen name="Configuration" component={ConfigurationScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen name="LowStock" component={LowStockScreen} />
+            <Stack.Screen name="OutOfStock" component={OutOfStockScreen} />
+            <Stack.Screen name="StockValue" component={StockValueScreen} />
+            <Stack.Screen name="NewSale" component={NewSaleScreen} />
+            <Stack.Screen name="Inventory" component={InventoryScreen} />
+            <Stack.Screen name="Reports" component={ReportsScreen} />
+            <Stack.Screen name="AddProduct" component={AddProductScreen} />
+            <Stack.Screen name="TestScanner" component={TestScannerScreen} />
+            <Stack.Screen name="LabelPreview" component={LabelPreviewScreen} />
+            <Stack.Screen name="BarcodeTest" component={BarcodeTest} />
+            <Stack.Screen name="Categories" component={CategoriesScreen} />
+            <Stack.Screen name="Brands" component={BrandsScreen} />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+};
+
+export default function App() {
+  return (
+    <Provider store={store}>
+      <StatusBar style="auto" />
+      <AppContent />
+    </Provider>
+  );
+}

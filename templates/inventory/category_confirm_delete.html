@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Supprimer la catégorie{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Supprimer la catégorie</h1>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <p>Êtes-vous sûr de vouloir supprimer la catégorie "{{ object.name }}" ?</p>
+            
+            {% if object.children.exists %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                Attention : Cette catégorie contient des sous-catégories qui seront également supprimées.
+            </div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger">Confirmer la suppression</button>
+                <a href="{% url 'inventory:category_list' %}" class="btn btn-secondary">Annuler</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

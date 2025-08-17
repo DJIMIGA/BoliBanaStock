@@ -1,0 +1,353 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title|default:"Configuration" }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
+    <div class="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+        <div class="px-6 py-4 border-b border-neutral-200">
+            <h2 class="text-xl sm:text-2xl font-bold text-neutral-800">
+                {{ title|default:"Configuration du site" }}
+            </h2>
+            <p class="mt-2 text-sm text-neutral-600">
+                {{ subtitle|default:"Personnalisez les informations de votre entreprise" }}
+            </p>
+        </div>
+        
+        <div class="p-6">
+            <form method="post" enctype="multipart/form-data" class="space-y-6">
+                {% csrf_token %}
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Colonne gauche -->
+                    <div class="space-y-4">
+                        <div class="form-group">
+                            <label for="{{ form.nom_societe.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.nom_societe.label }}{% if form.nom_societe.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="text" name="{{ form.nom_societe.name }}" id="{{ form.nom_societe.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.nom_societe.value|default:'' }}"
+                                       {% if form.nom_societe.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.nom_societe.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.nom_societe.help_text }}</p>
+                            {% endif %}
+                            {% if form.nom_societe.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.nom_societe.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.telephone.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.telephone.label }}{% if form.telephone.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="text" name="{{ form.telephone.name }}" id="{{ form.telephone.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.telephone.value|default:'' }}"
+                                       {% if form.telephone.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.telephone.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.telephone.help_text }}</p>
+                            {% endif %}
+                            {% if form.telephone.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.telephone.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.email.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.email.label }}{% if form.email.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="email" name="{{ form.email.name }}" id="{{ form.email.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.email.value|default:'' }}"
+                                       {% if form.email.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.email.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.email.help_text }}</p>
+                            {% endif %}
+                            {% if form.email.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.email.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.site_web.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.site_web.label }}
+                            </label>
+                            <div class="mt-1">
+                                <input type="url" name="{{ form.site_web.name }}" id="{{ form.site_web.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.site_web.value|default:'' }}">
+                            </div>
+                            {% if form.site_web.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.site_web.help_text }}</p>
+                            {% endif %}
+                            {% if form.site_web.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.site_web.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.adresse.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.adresse.label }}{% if form.adresse.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <textarea name="{{ form.adresse.name }}" id="{{ form.adresse.id_for_label }}" 
+                                          rows="3"
+                                          class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                          {% if form.adresse.field.required %}required{% endif %}>{{ form.adresse.value|default:'' }}</textarea>
+                            </div>
+                            {% if form.adresse.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.adresse.help_text }}</p>
+                            {% endif %}
+                            {% if form.adresse.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.adresse.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Colonne droite -->
+                    <div class="space-y-4">
+                        <div class="form-group">
+                            <label for="{{ form.devise.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.devise.label }}{% if form.devise.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <select name="{{ form.devise.name }}" id="{{ form.devise.id_for_label }}" 
+                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                        {% if form.devise.field.required %}required{% endif %}>
+                                    <option value="">Sélectionnez une devise</option>
+                                    <option value="FCFA" {% if form.devise.value == 'FCFA' %}selected{% endif %}>FCFA (Franc CFA)</option>
+                                    <option value="€" {% if form.devise.value == '€' %}selected{% endif %}>€ (Euro)</option>
+                                    <option value="$" {% if form.devise.value == '$' %}selected{% endif %}>$ (Dollar)</option>
+                                    <option value="£" {% if form.devise.value == '£' %}selected{% endif %}>£ (Livre Sterling)</option>
+                                </select>
+                            </div>
+                            {% if form.devise.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.devise.help_text }}</p>
+                            {% endif %}
+                            {% if form.devise.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.devise.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.tva.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.tva.label }}{% if form.tva.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <input type="number" name="{{ form.tva.name }}" id="{{ form.tva.id_for_label }}" 
+                                       class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                       value="{{ form.tva.value|default:'' }}"
+                                       min="0" max="100" step="0.01"
+                                       {% if form.tva.field.required %}required{% endif %}>
+                            </div>
+                            {% if form.tva.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.tva.help_text }}</p>
+                            {% endif %}
+                            {% if form.tva.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.tva.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.logo.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.logo.label }}
+                            </label>
+                            <div class="mt-1">
+                                {% if object.logo %}
+                                    <div class="mb-3 flex items-center space-x-3">
+                                        <img src="{{ object.logo.url }}" alt="Logo actuel" class="h-12 w-12 object-contain rounded border border-neutral-200">
+                                        <span class="text-sm text-neutral-500">Logo actuel</span>
+                                    </div>
+                                {% endif %}
+                                <input type="file" name="{{ form.logo.name }}" id="{{ form.logo.id_for_label }}" 
+                                       class="block w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-bolibana-50 file:text-bolibana-700 hover:file:bg-bolibana-100">
+                            </div>
+                            {% if form.logo.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.logo.help_text }}</p>
+                            {% endif %}
+                            <p class="mt-1 text-sm text-neutral-500">Format recommandé: PNG, JPG. Taille max: 2MB</p>
+                            {% if form.logo.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.logo.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.description.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.description.label }}
+                            </label>
+                            <div class="mt-1">
+                                <textarea name="{{ form.description.name }}" id="{{ form.description.id_for_label }}" 
+                                          rows="4"
+                                          class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm">{{ form.description.value|default:'' }}</textarea>
+                            </div>
+                            {% if form.description.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.description.help_text }}</p>
+                            {% endif %}
+                            {% if form.description.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.description.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex justify-between items-center pt-6 border-t border-neutral-200">
+                    <div class="flex space-x-3">
+                        <a href="{% url 'core:configuration_reset' %}" 
+                           class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-neutral-600 hover:text-neutral-100 bg-white hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-neutral-600">
+                            <i class="fas fa-undo mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Réinitialiser
+                        </a>
+                        
+                        <a href="{% url 'core:configuration_export' %}" 
+                           class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-neutral-600 hover:text-neutral-100 bg-white hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-neutral-600">
+                            <i class="fas fa-download mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Exporter
+                        </a>
+                    </div>
+
+                    <div class="flex space-x-3">
+                        <a href="{% url 'theme:home' %}" 
+                           class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-neutral-600 hover:text-neutral-100 bg-white hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-neutral-600">
+                            <i class="fas fa-times mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Annuler
+                        </a>
+                        
+                        <button type="submit" 
+                                class="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-bold rounded-full text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5">
+                            <i class="fas fa-save mr-2 sm:mr-2.5 text-base sm:text-lg"></i>Enregistrer
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Aperçu -->
+    {% if object %}
+    <div class="mt-8 bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+        <div class="px-6 py-4 border-b border-neutral-200">
+            <h3 class="text-lg font-bold text-neutral-800">Aperçu de la configuration</h3>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span class="font-medium text-neutral-700">Nom:</span>
+                        <span class="text-neutral-900">{{ object.nom_societe }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-medium text-neutral-700">Téléphone:</span>
+                        <span class="text-neutral-900">{{ object.telephone }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-medium text-neutral-700">Email:</span>
+                        <span class="text-neutral-900">{{ object.email }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-medium text-neutral-700">Site web:</span>
+                        <span class="text-neutral-900">{{ object.site_web|default:"Non renseigné" }}</span>
+                    </div>
+                </div>
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span class="font-medium text-neutral-700">Devise:</span>
+                        <span class="text-neutral-900">{{ object.devise }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-medium text-neutral-700">TVA:</span>
+                        <span class="text-neutral-900">{{ object.tva }}%</span>
+                    </div>
+                                         <div class="flex justify-between">
+                         <span class="font-medium text-neutral-700">Dernière modification:</span>
+                         <span class="text-neutral-900">{{ object.get_last_modification_info.formatted_date }}</span>
+                     </div>
+                     <div class="flex justify-between">
+                         <span class="font-medium text-neutral-700">Modifié par:</span>
+                         <span class="text-neutral-900">{{ object.get_updated_by_display }}</span>
+                     </div>
+                     <div class="flex justify-between">
+                         <span class="font-medium text-neutral-700">Créé par:</span>
+                         <span class="text-neutral-900">{{ object.get_created_by_display }}</span>
+                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    /* Styles personnalisés pour les champs du formulaire */
+    .form-group {
+        @apply mb-4;
+    }
+    
+    .form-group label {
+        @apply block text-sm font-medium text-neutral-700 mb-1;
+    }
+    
+    .form-group input[type="text"],
+    .form-group input[type="email"],
+    .form-group input[type="url"],
+    .form-group input[type="number"],
+    .form-group textarea,
+    .form-group select {
+        @apply block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm;
+    }
+
+    /* Styles spécifiques pour les select */
+    .form-group select {
+        @apply appearance-none bg-white bg-no-repeat bg-right pr-10;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+        background-size: 1.5em 1.5em;
+        background-position: right 0.5rem center;
+    }
+
+    .form-group select:focus {
+        @apply border-bolibana-500 ring-1 ring-bolibana-500;
+    }
+
+    .form-group select option {
+        @apply py-2 px-3 text-sm text-neutral-700;
+    }
+
+    .form-group select option:checked {
+        @apply bg-bolibana-50 text-bolibana-900;
+    }
+
+    .form-group select option:hover {
+        @apply bg-neutral-50;
+    }
+    
+    .form-group input[type="file"] {
+        @apply block w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-bolibana-50 file:text-bolibana-700 hover:file:bg-bolibana-100;
+    }
+    
+    /* Style pour les champs en lecture seule */
+    .form-group input[readonly] {
+        @apply bg-neutral-50 cursor-not-allowed;
+    }
+    
+    /* Style pour les champs obligatoires */
+    .form-group label.required:after {
+        content: " *";
+        @apply text-red-500;
+    }
+
+    /* Style pour les messages d'erreur de validation */
+    .invalid-feedback {
+        @apply mt-1 text-sm text-red-600;
+    }
+
+    /* Style pour les champs invalides */
+    .is-invalid {
+        @apply border-red-500 focus:border-red-500 focus:ring-red-500;
+    }
+</style>
+{% endblock %} 

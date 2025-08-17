@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% load static %}
+{% load humanize %}
+{% load inventory_filters %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Message de configuration du site -->
+    {% if needs_configuration %}
+    <div class="relative bg-gradient-to-r from-bolibana-50 to-forest-50 border border-bolibana-200 rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
+        <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+        <div class="relative p-6 sm:p-8">
+            <div class="flex items-start space-x-4">
+                <div class="flex-shrink-0">
+                    <div class="p-3 rounded-full bg-bolibana-100">
+                        <i class="fas fa-cog text-bolibana-600 text-xl"></i>
+                    </div>
+                </div>
+                <div class="flex-1">
+                    <h2 class="text-lg sm:text-xl font-bold text-bolibana-900 mb-2">
+                        🎉 Bienvenue sur BoliBana Stock !
+                    </h2>
+                    <p class="text-bolibana-700 mb-4">
+                        Pour commencer à utiliser votre système de gestion, nous vous invitons à configurer votre site. 
+                        Cette configuration vous permettra de personnaliser votre entreprise et d'optimiser votre expérience.
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <a href="{% url 'core:configuration' %}" 
+                           class="inline-flex items-center justify-center px-4 py-2 text-sm font-bold rounded-full text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5">
+                            <i class="fas fa-cog mr-2"></i>
+                            Configurer mon site
+                        </a>
+                        <a href="{% url 'core:configuration_reset' %}" 
+                           class="inline-flex items-center justify-center px-4 py-2 text-sm font-bold rounded-full text-bolibana-600 hover:text-white bg-transparent hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 border border-bolibana-600">
+                            <i class="fas fa-magic mr-2"></i>
+                            Configuration rapide
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- En-tête -->
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">
+                {% if site_config %}
+                    Bienvenue sur {{ site_config.nom_societe }}
+                {% else %}
+                    Bienvenue sur BoliBana Stock
+                {% endif %}
+            </h1>
+            <p class="text-gray-600">
+                {% if site_config %}
+                    {{ site_config.description|default:"Gestion d'entreprise • Stock • Caisse" }}
+                    {% if site_config.devise %}
+                        <span class="inline-flex items-center px-2 py-1 ml-2 text-xs font-medium bg-bolibana-100 text-bolibana-800 rounded-full">
+                            <i class="fas fa-coins mr-1"></i>
+                            Devise: {{ site_config.devise }}
+                        </span>
+                    {% endif %}
+                {% else %}
+                    Gestion d'entreprise • Stock • Caisse
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <!-- Statistiques principales -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <!-- Total Produits -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Total Produits</p>
+                        <p class="text-xl sm:text-2xl font-bold text-neutral-900">{{ total_products }}</p>
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-bolibana-100/80 backdrop-blur-sm">
+                        <i class="fas fa-box text-bolibana-500 text-lg sm:text-xl"></i>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                    <a href="{% url 'inventory:product_list' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-bolibana-600 hover:text-white bg-transparent hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-bolibana-600">
+                        <i class="fas fa-eye mr-1.5 sm:mr-2 text-base"></i>
+                        Voir
+                    </a>
+                    <a href="{% url 'inventory:product_create' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-forest-600 hover:text-white bg-transparent hover:bg-forest-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-forest-600">
+                        <i class="fas fa-plus mr-1.5 sm:mr-2 text-base"></i>
+                        Nouveau
+                    </a>
+                    <a href="{% url 'inventory:cadencier_view' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-gold-600 hover:text-white bg-transparent hover:bg-gold-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-gold-600">
+                        <i class="fas fa-clipboard-list mr-1.5 sm:mr-2 text-base"></i>
+                        Cadencier
+                    </a>
+                    <button type="button" 
+                            onclick="window.location.href='{% url 'inventory:check_price' %}'"
+                            class="btn-primary w-full">
+                        <i class="fas fa-barcode mr-2"></i>
+                        Scan Prix
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Régularisations -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Régularisations</p>
+                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ regularizations_count }}</p>
+                    </div>
+                    <div class="p-2 sm:p-3 rounded-full bg-purple-100/80 backdrop-blur-sm">
+                        <i class="fas fa-balance-scale text-purple-500 text-lg sm:text-xl"></i>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                    <a href="{% url 'inventory:transaction_create' %}?type=loss" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-red-600 hover:text-white bg-transparent hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-red-600">
+                        <i class="fas fa-trash-alt mr-1.5 sm:mr-2 text-base"></i>
+                        Casse
+                    </a>
+                    <a href="{% url 'inventory:transaction_create' %}?type=in" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-forest-600 hover:text-white bg-transparent hover:bg-forest-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-forest-600">
+                        <i class="fas fa-plus mr-1.5 sm:mr-2 text-base"></i>
+                        Entrée
+                    </a>
+                    <a href="{% url 'inventory:inventory_count' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-gold-600 hover:text-white bg-transparent hover:bg-gold-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-gold-600">
+                        <i class="fas fa-clipboard-check mr-1.5 sm:mr-2 text-base"></i>
+                        Inventaire
+                    </a>
+                    <a href="{% url 'inventory:stock_count' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-bolibana-600 hover:text-white bg-transparent hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-bolibana-600">
+                        <i class="fas fa-calculator mr-1.5 sm:mr-2 text-base"></i>
+                        Comptage
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ventes et CA du jour -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zMCAxNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjE1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik0xNSAzNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjM1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik00NSAzNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjM1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik0zMCAxNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjE1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik0xNSAzNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjM1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik00NSAzNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjM1eiIgZmlsbD0iIzIwMjAyMCIvPjwvZz48L3N2Zz4=')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Ventes et CA du Jour</p>
+                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ revenue|intcomma }} FCFA</p>
+                        <p class="text-sm text-neutral-500 mt-1">{{ revenue|divisibleby:5|intcomma }} wari</p>
+                        <p class="text-sm text-neutral-500">{{ today_sales }} ventes</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-4">
+                        <div class="p-2 sm:p-3 rounded-full bg-bolibana-100/80 backdrop-blur-sm">
+                            <i class="fas fa-chart-line text-bolibana-500 text-lg sm:text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                    <a href="{% url 'sales:sale_create' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-bolibana-600 hover:text-white bg-transparent hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-bolibana-600">
+                        <i class="fas fa-plus mr-1.5 sm:mr-2 text-base"></i>
+                        Vente
+                    </a>
+                    <a href="{% url 'sales:sale_list' %}" 
+                       class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-forest-600 hover:text-white bg-transparent hover:bg-forest-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-forest-600">
+                        <i class="fas fa-list mr-1.5 sm:mr-2 text-base"></i>
+                        Voir Ventes
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transactions -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zMCAxNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjE1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik0xNSAzNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjM1eiIgZmlsbD0iIzIwMjAyMCIvPjxwYXRoIGQ9Ik00NSAzNWMwLTIuNzYgMi4yNC01IDUtNWgxMGMxLjM4IDAgMi41IDEuMTIgMi41IDIuNXYxMGMwIDIuNzYtMi4yNCA1LTUgNWgtMTBjLTIuNzYgMC01LTIuMjQtNS01VjM1eiIgZmlsbD0iIzIwMjAyMCIvPjwvZz48L3N2Zz4=')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex-1">
+                        <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Transactions</p>
+                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ regularizations_count }}</p>
+                        <p class="text-sm text-neutral-500 mt-1">Transactions aujourd'hui</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-4">
+                        <div class="p-2 sm:p-3 rounded-full bg-purple-100/80 backdrop-blur-sm">
+                            <i class="fas fa-exchange-alt text-purple-500 text-lg sm:text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+                <a href="{% url 'inventory:transaction_list' %}" 
+                   class="inline-flex items-center px-2 sm:px-3 py-2 text-sm font-bold rounded-full text-bolibana-600 hover:text-white bg-transparent hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 w-full justify-center border border-bolibana-600">
+                    <i class="fas fa-list mr-2 sm:mr-2.5 text-base sm:text-lg"></i>
+                    Voir les Transactions
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertes et Statistiques -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Alertes Stock -->
+        <div class="lg:col-span-2 space-y-6">
+            <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+                <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+                <div class="relative p-4 sm:p-5 lg:p-6">
+                    <h2 class="text-lg font-medium text-neutral-900 mb-4">Alertes Stock</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <a href="{% url 'inventory:product_list' %}?filter=out_of_stock" class="relative bg-white rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 border border-neutral-200 hover:border-neutral-300 p-4">
+                            <div class="flex items-center">
+                                <div class="p-2 rounded-full bg-red-100/80 backdrop-blur-sm">
+                                    <i class="fas fa-times-circle text-red-500 text-lg"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-neutral-800">Produits en rupture</h3>
+                                    <p class="text-xl font-semibold text-red-600">{{ out_of_stock_products }}</p>
+                                </div>
+                            </div>
+                        </a>
+                        <a href="{% url 'inventory:product_list' %}?filter=low_stock" class="relative bg-white rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 border border-neutral-200 hover:border-neutral-300 p-4">
+                            <div class="flex items-center">
+                                <div class="p-2 rounded-full bg-gold-100/80 backdrop-blur-sm">
+                                    <i class="fas fa-exclamation-triangle text-gold-500 text-lg"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-neutral-800">Stock bas</h3>
+                                    <p class="text-xl font-semibold text-gold-600">{{ low_stock_products }}</p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dernières activités -->
+            <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+                <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+                <div class="relative p-4 sm:p-5 lg:p-6">
+                    <h2 class="text-lg font-medium text-neutral-900 mb-4">Dernières Activités</h2>
+                    <div class="space-y-4">
+                        {% for activity in recent_activities %}
+                        <a href="{{ activity.url }}" 
+                           class="flex items-center p-3 rounded-xl bg-neutral-50 hover:bg-neutral-100 transition-colors duration-200">
+                            <div class="p-2 rounded-full bg-{{ activity.color }}-100/80 backdrop-blur-sm">
+                                <i class="fas fa-history text-{{ activity.color }}-500"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm font-medium text-neutral-800">{{ activity.description }}</p>
+                                <p class="text-xs text-neutral-500">{{ activity.date|timesince }}</p>
+                            </div>
+                        </a>
+                        {% empty %}
+                        <p class="text-neutral-500 text-center py-4">Aucune activité récente</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Catégories -->
+        <div class="relative bg-white rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 border border-neutral-200 hover:border-neutral-300 overflow-hidden">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiMyMDIwMjAiLz48L2c+PC9zdmc+')] opacity-5"></div>
+            <div class="relative p-4 sm:p-5 lg:p-6">
+                <h2 class="text-lg font-medium text-neutral-900 mb-4">Top Catégories</h2>
+                    <div class="space-y-4">
+                        {% for category in products_by_category %}
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-neutral-50 hover:bg-neutral-100 transition-colors duration-200">
+                        <div class="flex items-center">
+                            <div class="p-2 rounded-full bg-bolibana-100/80 backdrop-blur-sm">
+                                <i class="fas fa-tag text-bolibana-500"></i>
+                            </div>
+                            <span class="ml-3 text-neutral-800">{{ category.name }}</span>
+                        </div>
+                        <span class="text-bolibana-600 font-medium">{{ category.product_count }} produits</span>
+                    </div>
+                    {% empty %}
+                    <p class="text-neutral-500 text-center py-4">Aucune catégorie disponible</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+  
+{% endblock %} 

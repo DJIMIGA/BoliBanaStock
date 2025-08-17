@@ -1,0 +1,52 @@
+{
+  "name": "bolibanastockmobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.1.2",
+    "@react-native-picker/picker": "^2.11.1",
+    "@react-navigation/bottom-tabs": "^6.6.1",
+    "@react-navigation/native": "^6.1.18",
+    "@react-navigation/stack": "^6.4.1",
+    "@reduxjs/toolkit": "^1.9.7",
+    "axios": "^1.11.0",
+    "expo": "~53.0.20",
+    "expo-camera": "^16.1.11",
+    "expo-haptics": "^14.1.4",
+    "expo-image-picker": "^16.1.4",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.5",
+    "react-native-elements": "^3.4.3",
+    "react-native-gesture-handler": "~2.24.0",
+    "react-native-reanimated": "~3.17.4",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-screens": "~4.11.1",
+    "react-native-vector-icons": "^10.3.0",
+    "react-redux": "^8.1.3",
+    "redux": "^4.2.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~19.0.10",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "babel-preset-expo": "~13.0.0",
+    "expo-dev-client": "^5.2.4",
+    "metro-react-native-babel-transformer": "^0.77.0",
+    "typescript": "~5.8.3"
+  },
+  "private": true,
+  "_comment": "🚨 DEPENDANCES CRITIQUES - MIGRATION BARCODE SCANNER",
+  "_comment2": "expo-camera: ^16.1.11 - REMPLACE expo-barcode-scanner (déprécié)",
+  "_comment3": "redux: ^4.2.1 - Version stable compatible React 19 (pas v5)",
+  "_comment4": "@reduxjs/toolkit: ^1.9.7 - Version stable compatible React 19 (pas v2)",
+  "_comment5": "react-redux: ^8.1.3 - Version stable compatible React 19 (pas v9)",
+  "_comment6": "expo: ~53.0.20 - Version critique pour la nouvelle API CameraView",
+  "_comment7": "react: 19.0.0 - Version majeure avec incompatibilités modules"
+}

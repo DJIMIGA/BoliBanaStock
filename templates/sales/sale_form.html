@@ -1,0 +1,225 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block title %}
+    {% if form.instance.pk %}
+        Modifier la Vente
+    {% else %}
+        Nouvelle Vente
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>
+                {% if form.instance.pk %}
+                    Modifier la Vente #{{ form.instance.reference }}
+                {% else %}
+                    Nouvelle Vente
+                {% endif %}
+            </h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <form method="post" id="saleForm">
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                {{ form.customer|as_crispy_field }}
+                            </div>
+                            <div class="col-md-6">
+                                {{ form.cash_register|as_crispy_field }}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                {{ form.tax_rate|as_crispy_field }}
+                            </div>
+                            <div class="col-md-6">
+                                {{ form.discount_amount|as_crispy_field }}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                {{ form.payment_method|as_crispy_field }}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12">
+                                {{ form.notes|as_crispy_field }}
+                            </div>
+                        </div>
+
+                        <!-- Section des articles -->
+                        <div class="mt-4">
+                            <h4>Articles</h4>
+                            <div id="items-container">
+                                <!-- Les articles seront ajoutés ici dynamiquement -->
+                            </div>
+                            <button type="button" class="btn btn-secondary mt-2" id="addItemBtn">
+                                <i class="fas fa-plus"></i> Ajouter un article
+                            </button>
+                        </div>
+
+                        <div class="mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Enregistrer
+                            </button>
+                            <a href="{% url 'sales:sale_list' %}" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Annuler
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h4>Résumé</h4>
+                    <div class="summary-details">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Sous-total:</span>
+                            <span id="subtotal">0.00 FCFA</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>TVA ({{ form.instance.tax_rate|default:"0" }}%):</span>
+                            <span id="tax-amount">0.00 FCFA</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Remise:</span>
+                            <span id="discount-amount">0.00 FCFA</span>
+                        </div>
+                        <hr>
+                        <div class="d-flex justify-content-between">
+                            <strong>Total:</strong>
+                            <strong id="total-amount">0.00 FCFA</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Fonction pour ajouter un nouvel article
+    function addItemRow() {
+        const container = document.getElementById('items-container');
+        const itemCount = container.children.length;
+        
+        const row = document.createElement('div');
+        row.className = 'row mb-3 item-row';
+        row.innerHTML = `
+            <div class="col-md-4">
+                <select class="form-control product-select" name="items[${itemCount}][product]">
+                    <option value="">Sélectionner un produit</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control quantity-input" name="items[${itemCount}][quantity]" value="1" min="1">
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control price-input" name="items[${itemCount}][price]" step="0.01" min="0">
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control" value="0.00 FCFA" readonly>
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-danger remove-item">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+        
+        container.appendChild(row);
+        loadProducts(row.querySelector('.product-select'));
+    }
+
+    // Charger les produits dans le select
+    function loadProducts(select) {
+        fetch('/api/products/')
+            .then(response => response.json())
+            .then(data => {
+                data.forEach(product => {
+                    const option = document.createElement('option');
+                    option.value = product.id;
+                    option.textContent = `${product.name} (${product.cug})`;
+                    option.dataset.price = product.price;
+                    select.appendChild(option);
+                });
+            });
+    }
+
+    // Gérer l'ajout d'articles
+    document.getElementById('addItemBtn').addEventListener('click', addItemRow);
+
+    // Gérer la suppression d'articles
+    document.getElementById('items-container').addEventListener('click', function(e) {
+        if (e.target.closest('.remove-item')) {
+            e.target.closest('.item-row').remove();
+            updateTotals();
+        }
+    });
+
+    // Mettre à jour les totaux
+    function updateTotals() {
+        let subtotal = 0;
+        document.querySelectorAll('.item-row').forEach(row => {
+            const quantity = parseFloat(row.querySelector('.quantity-input').value) || 0;
+            const price = parseFloat(row.querySelector('.price-input').value) || 0;
+            const total = quantity * price;
+            row.querySelector('input[readonly]').value = total.toFixed(2) + ' FCFA';
+            subtotal += total;
+        });
+
+        const taxRate = parseFloat(document.getElementById('id_tax_rate').value) || 0;
+        const discount = parseFloat(document.getElementById('id_discount_amount').value) || 0;
+
+        const taxAmount = subtotal * (taxRate / 100);
+        const total = subtotal + taxAmount - discount;
+
+        document.getElementById('subtotal').textContent = subtotal.toFixed(2) + ' FCFA';
+        document.getElementById('tax-amount').textContent = taxAmount.toFixed(2) + ' FCFA';
+        document.getElementById('discount-amount').textContent = discount.toFixed(2) + ' FCFA';
+        document.getElementById('total-amount').textContent = total.toFixed(2) + ' FCFA';
+    }
+
+    // Écouter les changements pour mettre à jour les totaux
+    document.getElementById('saleForm').addEventListener('change', function(e) {
+        if (e.target.matches('.quantity-input, .price-input, #id_tax_rate, #id_discount_amount')) {
+            updateTotals();
+        }
+    });
+
+    // Charger le prix quand un produit est sélectionné
+    document.getElementById('items-container').addEventListener('change', function(e) {
+        if (e.target.matches('.product-select')) {
+            const option = e.target.options[e.target.selectedIndex];
+            const price = option.dataset.price;
+            const priceInput = e.target.closest('.item-row').querySelector('.price-input');
+            priceInput.value = price;
+            updateTotals();
+        }
+    });
+
+    // Ajouter un premier article au chargement
+    addItemRow();
+});
+</script>
+{% endblock %}
+{% endblock %} 

@@ -1,0 +1,446 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Caisse Scanner - Recherche Produits{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>
+                <i class="fas fa-cash-register"></i>
+                Caisse Scanner - Recherche Produits
+            </h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-search"></i> Scanner ou Rechercher</h5>
+                </div>
+                <div class="card-body">
+                    <form id="scannerForm" method="post">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="searchInput">Code-barres, CUG ou nom du produit</label>
+                            <div class="input-group">
+                                <input type="text" 
+                                       class="form-control form-control-lg" 
+                                       id="searchInput" 
+                                       name="search" 
+                                       placeholder="Scannez un code-barres ou saisissez CUG/nom..."
+                                       autocomplete="off"
+                                       autofocus>
+                                <div class="input-group-append">
+                                    <button type="submit" class="btn btn-primary btn-lg">
+                                        <i class="fas fa-search"></i> Rechercher
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-primary" onclick="startBarcodeScanner()">
+                            <i class="fas fa-camera"></i> Scanner Code-barres
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="clearResults()">
+                            <i class="fas fa-eraser"></i> Effacer
+                        </button>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <div class="alert alert-info">
+                            <h6><i class="fas fa-info-circle"></i> Types de recherche supportés:</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong><i class="fas fa-barcode text-success"></i> Code-barres EAN</strong><br>
+                                    <small>Scannez le code-barres du produit</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <strong><i class="fas fa-hashtag text-info"></i> CUG (5 chiffres)</strong><br>
+                                    <small>Saisissez le CUG du produit</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <strong><i class="fas fa-tag text-primary"></i> Nom du produit</strong><br>
+                                    <small>Recherche par nom partiel</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-warning">
+                            <h6><i class="fas fa-exclamation-triangle"></i> Test rapide:</h6>
+                            <p class="mb-2">Essayez ces CUG pour tester :</p>
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="testCUG('57851')">57851</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="testCUG('91227')">91227</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="testCUG('18415')">18415</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="testCUG('90757')">90757</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-info-circle"></i> Informations Produit</h5>
+                </div>
+                <div class="card-body" id="productInfo">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-barcode fa-3x mb-3"></i>
+                        <p>Scannez un code-barres ou saisissez un CUG pour afficher les informations du produit</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Résultats de recherche -->
+    <div class="row mt-4" id="searchResults" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-list"></i> Résultats de Recherche</h5>
+                </div>
+                <div class="card-body" id="resultsContent">
+                    <!-- Les résultats seront affichés ici -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scanner modal -->
+    <div class="modal fade" id="scannerModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Scanner Code-barres</h5>
+                    <button type="button" class="close" data-dismiss="modal">
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="scannerContainer" class="w-100 h-100 bg-light rounded">
+                        <!-- Le scanner sera initialisé ici -->
+                        <div class="text-center p-5">
+                            <i class="fas fa-camera fa-3x text-muted"></i>
+                            <p class="mt-3">Scanner de code-barres en cours d'initialisation...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Fermer</button>
+                    <button type="button" class="btn btn-primary" onclick="manualInput()">Saisie Manuelle</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    const scannerForm = document.getElementById('scannerForm');
+    
+    // Focus automatique sur le champ de recherche
+    searchInput.focus();
+    
+    // Recherche automatique après saisie (avec délai)
+    let searchTimeout;
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(function() {
+            if (searchInput.value.trim().length >= 3) {
+                performSearch();
+            }
+        }, 500);
+    });
+    
+    // Recherche sur soumission du formulaire
+    scannerForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        performSearch();
+    });
+    
+    // Recherche sur Entrée
+    searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            performSearch();
+        }
+    });
+});
+
+function performSearch() {
+    const searchInput = document.getElementById('searchInput');
+    const searchQuery = searchInput.value.trim();
+    
+    if (!searchQuery) return;
+    
+    console.log('🔍 Recherche lancée:', searchQuery);
+    
+    // Afficher un indicateur de chargement
+    showLoading();
+    
+    // Effectuer la recherche via AJAX
+    fetch('{% url "sales:cash_register_scanner" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: `search=${encodeURIComponent(searchQuery)}`
+    })
+    .then(response => {
+        console.log('📡 Réponse reçue:', response.status, response.statusText);
+        return response.json();
+    })
+    .then(data => {
+        console.log('📊 Données reçues:', data);
+        
+        if (data.success) {
+            console.log('✅ Produit trouvé:', data.product);
+            displayProduct(data.product);
+        } else {
+            console.log('❌ Erreur:', data.error);
+            showError(data.error, data.suggestions || []);
+        }
+    })
+    .catch(error => {
+        console.error('💥 Erreur lors de la recherche:', error);
+        showError('Erreur lors de la recherche: ' + error.message);
+    });
+}
+
+function displayProduct(product) {
+    const productInfo = document.getElementById('productInfo');
+    
+    // Déterminer la couleur du badge de type de recherche
+    let searchTypeBadge = '';
+    if (product.search_type) {
+        const badgeClass = product.search_type.includes('CUG') ? 'badge-info' : 
+                          product.search_type.includes('EAN') ? 'badge-success' : 'badge-primary';
+        searchTypeBadge = `<span class="badge ${badgeClass} ml-2">${product.search_type}</span>`;
+    }
+    
+    // Indicateur pour les produits sans codes-barres
+    const barcodeInfo = product.has_barcodes ? 
+        `<span class="badge badge-success">${product.barcodes_count} code(s)-barres</span>` :
+        `<span class="badge badge-warning">Aucun code-barres - Utilisez le CUG: ${product.cug}</span>`;
+    
+    productInfo.innerHTML = `
+        <div class="row">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center mb-2">
+                    <h4 class="text-primary mb-0">${product.name}</h4>
+                    ${searchTypeBadge}
+                </div>
+                
+                <p class="text-muted">${product.description || 'Aucune description'}</p>
+                
+                <div class="row">
+                    <div class="col-6">
+                        <strong>CUG:</strong> 
+                        <span class="font-monospace text-primary">${product.cug}</span>
+                        ${barcodeInfo}
+                    </div>
+                    <div class="col-6">
+                        <strong>Catégorie:</strong> ${product.category || 'Non catégorisé'}
+                    </div>
+                </div>
+                
+                <div class="row mt-2">
+                    <div class="col-6">
+                        <strong>Marque:</strong> ${product.brand || 'Non définie'}
+                    </div>
+                    <div class="col-6">
+                        <strong>Stock:</strong> 
+                        <span class="badge badge-${product.quantity > 0 ? 'success' : 'danger'}">
+                            ${product.quantity}
+                        </span>
+                        <small class="text-muted">(Seuil: ${product.alert_threshold})</small>
+                    </div>
+                </div>
+                
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <strong>Statut:</strong> 
+                        <span class="badge badge-${product.stock_status === 'En stock' ? 'success' : 
+                                                   product.stock_status === 'Stock faible' ? 'warning' : 'danger'}">
+                            ${product.stock_status}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4 text-right">
+                <div class="card bg-light">
+                    <div class="card-body text-center">
+                        <h3 class="text-success mb-0">${product.selling_price.toLocaleString()} FCFA</h3>
+                        <small class="text-muted">Prix de vente</small>
+                        <br>
+                        <small class="text-muted">Achat: ${product.purchase_price.toLocaleString()} FCFA</small>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <button class="btn btn-success btn-block" onclick="addToCart(${product.id})">
+                        <i class="fas fa-plus"></i> Ajouter au Panier
+                    </button>
+                    
+                    ${!product.has_barcodes ? `
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle"></i>
+                                Ce produit n'a pas de code-barres. Scannez le CUG: <strong>${product.cug}</strong>
+                            </small>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Masquer les résultats de recherche
+    document.getElementById('searchResults').style.display = 'none';
+}
+
+function showError(message, suggestions = []) {
+    const productInfo = document.getElementById('productInfo');
+    
+    let suggestionsHtml = '';
+    if (suggestions && suggestions.length > 0) {
+        suggestionsHtml = `
+            <div class="mt-3">
+                <h6><i class="fas fa-lightbulb"></i> Suggestions:</h6>
+                <div class="list-group">
+                    ${suggestions.map(suggestion => `
+                        <div class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">${suggestion.text}</h6>
+                                <small class="text-muted">${suggestion.type}</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary mt-2" 
+                                    onclick="selectSuggestion('${suggestion.product_id}')">
+                                <i class="fas fa-check"></i> Sélectionner
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    productInfo.innerHTML = `
+        <div class="text-center text-danger">
+            <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+            <h5>Produit non trouvé</h5>
+            <p>${message}</p>
+            
+            <div class="mt-3">
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle"></i> Conseils de recherche:</h6>
+                    <ul class="text-left mb-0">
+                        <li><strong>CUG:</strong> Saisissez les 5 chiffres du CUG (ex: 57851)</li>
+                        <li><strong>Code-barres:</strong> Scannez le code EAN du produit</li>
+                        <li><strong>Nom:</strong> Tapez le nom du produit (recherche partielle)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            ${suggestionsHtml}
+        </div>
+    `;
+}
+
+function showLoading() {
+    const productInfo = document.getElementById('productInfo');
+    
+    productInfo.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Recherche en cours...</span>
+            </div>
+            <p class="mt-2">Recherche en cours...</p>
+        </div>
+    `;
+}
+
+function startBarcodeScanner() {
+    $('#scannerModal').modal('show');
+    
+    // Ici vous pouvez initialiser le scanner de code-barres
+    // Par exemple avec QuaggaJS ou une autre bibliothèque
+    console.log('Scanner de code-barres initialisé');
+}
+
+function manualInput() {
+    $('#scannerModal').modal('hide');
+    const searchInput = document.getElementById('searchInput');
+    searchInput.focus();
+    searchInput.select();
+}
+
+function clearResults() {
+    const productInfo = document.getElementById('productInfo');
+    const searchInput = document.getElementById('searchInput');
+    
+    productInfo.innerHTML = `
+        <div class="text-center text-muted">
+            <i class="fas fa-barcode fa-3x mb-3"></i>
+            <p>Scannez un code-barres ou saisissez un CUG pour afficher les informations du produit</p>
+        </div>
+    `;
+    
+    searchInput.value = '';
+    searchInput.focus();
+    
+    document.getElementById('searchResults').style.display = 'none';
+}
+
+function addToCart(productId) {
+    // Fonction pour ajouter le produit au panier
+    // À implémenter selon vos besoins
+    alert('Fonction d\'ajout au panier à implémenter');
+}
+
+function showSuggestions() {
+    // Fonction pour afficher des suggestions de produits
+    // À implémenter selon vos besoins
+    alert('Fonction de suggestions à implémenter');
+}
+
+function selectSuggestion(productId) {
+    // Récupérer les informations du produit suggéré
+    fetch(`/inventory/product/${productId}/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayProduct(data.product);
+        }
+    })
+    .catch(error => {
+        console.error('Erreur lors de la récupération du produit:', error);
+        // Fallback: afficher un message d'erreur
+        showError('Erreur lors de la récupération du produit suggéré');
+    });
+}
+
+function testCUG(cug) {
+    console.log('🧪 Test CUG:', cug);
+    const searchInput = document.getElementById('searchInput');
+    searchInput.value = cug;
+    performSearch();
+}
+</script>
+{% endblock %}
