@@ -1,0 +1,20 @@
+# Exclure les fichiers Android de la construction Railway
+app/
+gradle/
+gradlew
+gradlew.bat
+build.gradle.kts
+settings.gradle.kts
+local.properties
+*.apk
+*.aab
+
+# Exclure les dossiers de build Android
+build/
+.gradle/
+.idea/
+*.iml
+
+# Exclure les fichiers de configuration Android
+proguard-rules.pro
+keystore.properties
