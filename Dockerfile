@@ -7,19 +7,8 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier les fichiers du projet Django
-COPY requirements.txt .
-COPY manage.py .
-COPY bolibanastock/ ./bolibanastock/
-COPY api/ ./api/
-COPY app/core/ ./app/core/
-COPY app/inventory/ ./app/inventory/
-COPY app/sales/ ./app/sales/
-COPY app/users/ ./app/users/
-COPY app/tests/ ./app/tests/
-COPY templates/ ./templates/
-COPY static/ ./static/
-COPY media/ ./media/
+# Copier tout le projet (les exclusions sont gérées par .dockerignore)
+COPY . .
 
 # Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt

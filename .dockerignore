@@ -1,5 +1,9 @@
-# Exclure complètement les fichiers Android
-app/
+# Exclure seulement les fichiers Android, pas les dossiers Django
+app/build/
+app/src/
+app/build.gradle.kts
+app/proguard-rules.pro
+app/.gitignore
 gradle/
 gradlew*
 build.gradle*
