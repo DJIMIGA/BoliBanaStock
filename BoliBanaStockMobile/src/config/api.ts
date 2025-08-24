@@ -1,8 +1,11 @@
+// Import de la configuration réseau centralisée
+import { getCurrentApiUrl, ERROR_MESSAGES, MOBILE_CONFIG } from './networkConfig';
+
 // Configuration de l'API pour l'application mobile
 export const API_CONFIG = {
   // URL de base de l'API
   BASE_URL: __DEV__ 
-    ? (process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.7:8000/api/v1')
+    ? (process.env.EXPO_PUBLIC_API_BASE_URL || getCurrentApiUrl())
     : (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://votre-domaine.com/api/v1'),
   
   // Timeout des requêtes (en millisecondes)
@@ -66,14 +69,8 @@ export const API_CONFIG = {
     PROFILE: '/profile/',
   },
   
-  // Configuration des erreurs
-  ERROR_MESSAGES: {
-    NETWORK_ERROR: 'Erreur de connexion réseau. Vérifiez votre connexion internet et que le serveur est accessible sur 192.168.1.7:8000',
-    TIMEOUT_ERROR: 'La requête a pris trop de temps. Vérifiez votre connexion réseau.',
-    AUTH_ERROR: 'Votre session a expiré. Veuillez vous reconnecter.',
-    SERVER_ERROR: 'Erreur du serveur. Veuillez réessayer plus tard.',
-    UNKNOWN_ERROR: 'Une erreur inattendue s\'est produite. Veuillez réessayer.',
-  },
+  // Configuration des erreurs (utilise la configuration centralisée)
+  ERROR_MESSAGES,
   
   // Codes de statut HTTP
   STATUS_CODES: {
@@ -88,10 +85,10 @@ export const API_CONFIG = {
   },
 };
 
-// Configuration pour différents environnements
+// Configuration pour différents environnements (utilise la configuration centralisée)
 export const ENV_CONFIG = {
   development: {
-    API_URL: 'http://192.168.1.7:8000/api/v1', // IP locale pour le développement mobile
+    API_URL: getCurrentApiUrl(),
     DEBUG: true,
     LOG_LEVEL: 'debug',
   },
@@ -122,18 +119,14 @@ export const buildApiUrl = (endpoint: string) => {
   return `${baseUrl}${endpoint}`;
 };
 
-// Configuration réseau pour le développement mobile
+// Configuration réseau pour le développement mobile (utilise la configuration centralisée)
 export const NETWORK_CONFIG = {
   // Adresses IP alternatives pour le développement
-  ALTERNATIVE_IPS: [
-    '192.168.1.7',  // Votre IP locale actuelle
-    '10.0.2.2',     // Android Emulator localhost
-    'localhost',     // Fallback local
-  ],
+  ALTERNATIVE_IPS: MOBILE_CONFIG.FALLBACK_IPS,
   
   // Ports à tester
-  PORTS: [8000, 3000],
+  PORTS: MOBILE_CONFIG.PORTS_TO_TEST,
   
   // Timeout pour la détection réseau
-  DISCOVERY_TIMEOUT: 5000,
+  DISCOVERY_TIMEOUT: MOBILE_CONFIG.DISCOVERY_TIMEOUT,
 };

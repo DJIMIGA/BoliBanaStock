@@ -43,3 +43,10 @@ django-celery-beat>=2.5.0  # Pour les tâches planifiées
 django-cors-headers==4.3.1
 djangorestframework-simplejwt==5.3.0
 drf-yasg==1.21.7  # Documentation API Swagger
+
+# Railway/PostgreSQL
+psycopg2-binary>=2.9.7  # Driver PostgreSQL pour Railway
+ 
+# Runtime utils nécessaires
+setuptools>=68.0.0
+cffi>=1.15.0

@@ -69,13 +69,15 @@ const LoginScreen: React.FC = () => {
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Nom d'utilisateur</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, styles.textInput]}
               value={credentials.username}
               onChangeText={(value) => handleInputChange('username', value)}
               placeholder="Entrez votre nom d'utilisateur"
+              placeholderTextColor={theme.colors.text.tertiary}
               autoCapitalize="none"
               autoCorrect={false}
               editable={!loading}
+              selectionColor={theme.colors.primary[500]}
             />
           </View>
 
@@ -83,12 +85,18 @@ const LoginScreen: React.FC = () => {
             <Text style={styles.label}>Mot de passe</Text>
             <View style={styles.passwordContainer}>
               <TextInput
-                style={[styles.input, styles.passwordInput]}
+                style={[styles.input, styles.passwordInput, styles.textInput]}
                 value={credentials.password}
                 onChangeText={(value) => handleInputChange('password', value)}
                 placeholder="Entrez votre mot de passe"
+                placeholderTextColor={theme.colors.text.tertiary}
                 secureTextEntry={!showPassword}
                 editable={!loading}
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="password"
+                autoComplete="password"
+                selectionColor={theme.colors.primary[500]}
               />
               <TouchableOpacity
                 style={styles.eyeButton}
@@ -194,6 +202,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     backgroundColor: theme.colors.neutral[50],
+  },
+  textInput: {
+    color: theme.colors.text.primary,
+    includeFontPadding: false,
   },
   passwordContainer: {
     position: 'relative',

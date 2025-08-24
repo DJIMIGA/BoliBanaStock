@@ -14,11 +14,11 @@ import {
   Image,
   Modal,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { productService, categoryService, brandService } from '../services/api';
+import { useImageManager } from '../hooks';
 import theme from '../utils/theme';
 
 interface Category {
@@ -53,6 +53,9 @@ export default function AddProductScreen({ navigation, route }: any) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  
+  // Hook personnalisé pour la gestion des images
+  const { selectedImage, isProcessing, showImageOptions } = useImageManager();
   
   // États pour les modals de création rapide
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
@@ -91,6 +94,13 @@ export default function AddProductScreen({ navigation, route }: any) {
     // Champ barcode surveillé
   }, [form?.scan_field]);
 
+  // Synchroniser l'image sélectionnée avec le formulaire
+  useEffect(() => {
+    if (selectedImage) {
+      setForm(prev => ({ ...prev, image: selectedImage }));
+    }
+  }, [selectedImage]);
+
   useEffect(() => {
     const loadForEdit = async () => {
       if (!editId) return;
@@ -116,7 +126,7 @@ export default function AddProductScreen({ navigation, route }: any) {
       } catch (e) {
         console.error('❌ Erreur lors du chargement pour édition:', e);
         // Reset form to initial state on error
-        setForm({
+        setForm(prev => ({
           name: '',
           description: '',
           purchase_price: '',
@@ -128,7 +138,7 @@ export default function AddProductScreen({ navigation, route }: any) {
           image: undefined,
           scan_field: '',
           is_active: true,
-        });
+        }));
       }
     };
     loadForEdit();
@@ -408,7 +418,7 @@ export default function AddProductScreen({ navigation, route }: any) {
   };
 
   const resetForm = () => {
-    setForm({
+    setForm(prev => ({
       name: '',
       description: '',
       purchase_price: '',
@@ -420,99 +430,10 @@ export default function AddProductScreen({ navigation, route }: any) {
       image: undefined,
       scan_field: '',
       is_active: true,
-    });
+    }));
   };
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission requise', 'Autorisez l\'accès à la galerie pour ajouter une image.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets?.length) {
-      const asset = result.assets[0];
-      setForm((prev) => {
-        if (!prev) {
-          // Fallback to initial form state if prev is undefined
-          return {
-            name: '',
-            description: '',
-            purchase_price: '',
-            selling_price: '',
-            quantity: '',
-            alert_threshold: '5',
-            category_id: '',
-            brand_id: '',
-            image: asset,
-            scan_field: '',
-            is_active: true,
-          };
-        }
-        return { ...prev, image: asset };
-      });
-    }
-  };
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission requise', 'Autorisez l\'accès à l\'appareil photo pour prendre une photo.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [4, 3],
-    });
-    if (!result.canceled && result.assets?.length) {
-      const asset = result.assets[0];
-      setForm((prev) => {
-        if (!prev) {
-          // Fallback to initial form state if prev is undefined
-          return {
-            name: '',
-            description: '',
-            purchase_price: '',
-            selling_price: '',
-            quantity: '',
-            alert_threshold: '5',
-            category_id: '',
-            brand_id: '',
-            image: asset,
-            scan_field: '',
-            is_active: true,
-          };
-        }
-        return { ...prev, image: asset };
-      });
-    }
-  };
-
-  const showImageOptions = () => {
-    Alert.alert(
-      'Sélectionner une image',
-      'Choisissez la source de l\'image',
-      [
-        {
-          text: 'Appareil photo',
-          onPress: takePhoto,
-        },
-        {
-          text: 'Galerie',
-          onPress: pickImage,
-        },
-        {
-          text: 'Annuler',
-          style: 'cancel',
-        },
-      ]
-    );
-  };
+    // Les fonctions de gestion d'images sont maintenant gérées par le hook useImageManager
 
   const FormField = useCallback(({ 
     label, 
@@ -642,9 +563,19 @@ export default function AddProductScreen({ navigation, route }: any) {
 
             {/* Image */}
             <View style={styles.imageRow}>
-              <TouchableOpacity style={styles.imagePicker} onPress={showImageOptions}>
-                <Ionicons name="camera-outline" size={20} color={theme.colors.primary[500]} />
-                <Text style={styles.imagePickerText}>{form.image ? 'Changer l\'image' : 'Ajouter une image'}</Text>
+              <TouchableOpacity 
+                style={[styles.imagePicker, isProcessing && styles.imagePickerDisabled]} 
+                onPress={showImageOptions}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                ) : (
+                  <Ionicons name="camera-outline" size={20} color={theme.colors.primary[500]} />
+                )}
+                <Text style={styles.imagePickerText}>
+                  {isProcessing ? 'Traitement...' : (form.image ? 'Changer l\'image' : 'Ajouter une image')}
+                </Text>
               </TouchableOpacity>
               {form.image ? (
                 <Image source={{ uri: form.image.uri }} style={styles.imagePreview} />
@@ -996,6 +927,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: theme.colors.background.primary,
+  },
+  imagePickerDisabled: {
+    opacity: 0.6,
+    backgroundColor: theme.colors.neutral[100],
   },
   imagePickerText: {
     color: theme.colors.primary[500],

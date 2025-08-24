@@ -1,0 +1,6 @@
+# Ajouter le SDK Android au PATH
+$androidSdkPath = "C:\Users\$env:USERNAME\AppData\Local\Android\Sdk\platform-tools"
+if (Test-Path $androidSdkPath) {
+    $env:PATH = "$androidSdkPath;$env:PATH"
+    Write-Host "SDK Android ajouté au PATH" -ForegroundColor Green
+}

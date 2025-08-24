@@ -18,7 +18,13 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', os.getenv('DEV_HOST_IP', '192.168.1.7'), '37.65.65.126']
+# Import de la configuration réseau centralisée
+try:
+    from config.network_config import get_allowed_hosts
+    ALLOWED_HOSTS = get_allowed_hosts()
+except ImportError:
+    # Fallback si le fichier de config n'est pas disponible
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', os.getenv('DEV_HOST_IP', '192.168.1.7'), '37.65.65.126']
 
 # Application definition
 INSTALLED_APPS = [
@@ -242,19 +248,24 @@ SIMPLE_JWT = {
 }
 
 # CORS Configuration pour l'API Mobile
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # React Native Metro
-    "http://localhost:8081",  # React Native Debug
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:8081",
-    f"http://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8081",  # Expo sur réseau local
-    f"exp://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8081",   # Expo Go
-    f"http://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8000",  # Django API réseau
-    "http://37.65.65.126:8000",  # IP publique
-    "http://localhost:8000",    # Django API local
-    "exp://localhost:8081",     # Expo Go local
-    "exp://127.0.0.1:8081",     # Expo Go local
-]
+try:
+    from config.network_config import get_cors_origins
+    CORS_ALLOWED_ORIGINS = get_cors_origins()
+except ImportError:
+    # Fallback si le fichier de config n'est pas disponible
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",  # React Native Metro
+        "http://localhost:8081",  # React Native Debug
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8081",
+        f"http://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8081",  # Expo sur réseau local
+        f"exp://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8081",   # Expo Go
+        f"http://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8000",  # Django API réseau
+        "http://37.65.65.126:8000",  # IP publique
+        "http://localhost:8000",    # Django API local
+        "exp://localhost:8081",     # Expo Go local
+        "exp://127.0.0.1:8081",     # Expo Go local
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 

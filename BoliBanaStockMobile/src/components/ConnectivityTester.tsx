@@ -16,6 +16,7 @@ interface ConnectivityResult {
   status?: number;
   error?: string;
   code?: string;
+  timestamp?: string;
 }
 
 export default function ConnectivityTester() {

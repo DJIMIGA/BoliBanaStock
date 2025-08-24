@@ -14,14 +14,15 @@ interface ImageAsset {
 // Configuration de base de l'API
 // Utiliser l'adresse IP locale pour l'accès mobile
 const API_BASE_URL = __DEV__ 
-  ? (process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.7:8000/api/v1')
+  ? (process.env.EXPO_PUBLIC_API_BASE_URL || 'http://172.20.10.2:8000/api/v1')
   : (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://votre-domaine.com/api/v1');
 
 // URL alternative pour les tests
-const API_BASE_URL_LOCAL = 'http://192.168.1.7:8000/api/v1';
+const API_BASE_URL_LOCAL = 'http://172.20.10.2:8000/api/v1';
 
 // URLs de fallback pour différents environnements
 const FALLBACK_URLS = [
+  'http://172.20.10.2:8000/api/v1',
   'http://192.168.1.7:8000/api/v1',
   'http://192.168.1.100:8000/api/v1',
   'http://192.168.1.101:8000/api/v1',
@@ -486,7 +487,8 @@ export const productService = {
             const token2 = await AsyncStorage.getItem('access_token');
             const url2 = `${API_BASE_URL}/products/${id}/upload_image/`;
             console.log('🔁 Upload natif via FileSystem.uploadAsync →', url2);
-            const uploadResult = await FileSystem.uploadAsync(url2, (formData as any)?.get?.('image')?.uri || (formData as any)?._parts?.find?.((p: any) => p?.[0] === 'image')?.[1]?.uri || normalizedUri, {
+            const imageUriForUpload = (formData as any)?.get?.('image')?.uri || (formData as any)?._parts?.find?.((p: any) => p?.[0] === 'image')?.[1]?.uri || '';
+            const uploadResult = await FileSystem.uploadAsync(url2, imageUriForUpload, {
               httpMethod: 'POST',
               headers: token2 ? { Authorization: `Bearer ${token2}`, Accept: 'application/json' } as any : { Accept: 'application/json' } as any,
               uploadType: FileSystem.FileSystemUploadType.MULTIPART,

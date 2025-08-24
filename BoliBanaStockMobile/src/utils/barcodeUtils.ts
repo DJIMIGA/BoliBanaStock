@@ -25,7 +25,7 @@ export const validateBarcode = (barcode: string): BarcodeInfo => {
   }
 
   // Détection du type de code-barres
-  const barcodeInfo = detectBarcodeType(trimmedBarcode);
+  const barcodeInfo = detectBarcodeType(trimmedBarcode) as any;
   
   return {
     type: barcodeInfo.type,

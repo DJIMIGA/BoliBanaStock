@@ -11,7 +11,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
-import { optimizeImageForUpload, isImageTooLarge, isValidImageFormat } from '../utils/imageUtils';
+// Simplification: nous utilisons uniquement l'API d'image du composant
 
 interface ImageSelectorProps {
   image: any;
