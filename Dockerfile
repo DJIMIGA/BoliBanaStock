@@ -12,10 +12,11 @@ COPY requirements.txt .
 COPY manage.py .
 COPY bolibanastock/ ./bolibanastock/
 COPY api/ ./api/
-COPY core/ ./core/
-COPY inventory/ ./inventory/
-COPY sales/ ./sales/
-COPY users/ ./users/
+COPY app/core/ ./app/core/
+COPY app/inventory/ ./app/inventory/
+COPY app/sales/ ./app/sales/
+COPY app/users/ ./app/users/
+COPY app/tests/ ./app/tests/
 COPY templates/ ./templates/
 COPY static/ ./static/
 COPY media/ ./media/
