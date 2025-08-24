@@ -9,3 +9,18 @@ cmds = ["python manage.py collectstatic --noinput"]
 
 [start]
 cmd = "gunicorn bolibanastock.wsgi:application --bind 0.0.0.0:$PORT"
+
+# Forcer l'utilisation de Python et ignorer les autres builders
+[phases.setup]
+nixPkgs = ["python311", "python311Packages.pip"]
+
+# Exclure explicitement les fichiers non-Python
+[phases.setup]
+cmds = ["echo 'Building Python Django application...'"]
+
+# Configuration spécifique pour éviter la détection automatique
+[phases.install]
+cmds = [
+    "pip install -r requirements.txt",
+    "echo 'Python dependencies installed successfully'"
+]

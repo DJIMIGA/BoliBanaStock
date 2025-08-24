@@ -1,0 +1,30 @@
+# Ignorer complètement les fichiers Android pour nixpacks
+app/
+gradle/
+gradlew*
+build.gradle*
+settings.gradle*
+local.properties
+*.apk
+*.aab
+
+# Dossiers de build Android
+build/
+.gradle/
+.idea/
+*.iml
+
+# Fichiers de configuration Android
+proguard-rules.pro
+keystore.properties
+
+# Autres exclusions
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.env
+.venv
