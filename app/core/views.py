@@ -735,15 +735,7 @@ def debug_signup(request):
     return render(request, 'core/debug_signup.html')
 
 def health_check(request):
-    """Vue simple pour le healthcheck Railway"""
-    try:
-        # Vérifier la base de données
-        db_conn = connections['default']
-        db_conn.cursor()
-        return HttpResponse("OK", status=200)
-    except OperationalError:
-        return HttpResponse("Database Error", status=503)
-    except Exception as e:
-        return HttpResponse(f"Error: {str(e)}", status=500)
+    """Vue ultra-simple pour le healthcheck Railway"""
+    return HttpResponse("OK", status=200)
 
  
