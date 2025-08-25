@@ -7,24 +7,29 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Charger les variables d'environnement
-load_dotenv()
+try:
+    load_dotenv()
+except Exception as e:
+    print(f"Warning: Impossible de charger le fichier .env: {e}")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-default-key-for-development-only')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
 
-# Import de la configuration réseau centralisée
-try:
-    from config.network_config import get_allowed_hosts
-    ALLOWED_HOSTS = get_allowed_hosts()
-except ImportError:
-    # Fallback si le fichier de config n'est pas disponible
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', os.getenv('DEV_HOST_IP', '192.168.1.7'), '37.65.65.126']
+# Configuration ALLOWED_HOSTS avec Railway
+RAILWAY_HOST = os.getenv('RAILWAY_HOST', '')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,0.0.0.0').split(',')
+if RAILWAY_HOST:
+    ALLOWED_HOSTS.append(RAILWAY_HOST)
+    # Ajouter aussi le domaine sans le préfixe web-production-
+    if RAILWAY_HOST.startswith('web-production-'):
+        domain = RAILWAY_HOST.replace('web-production-', '')
+        ALLOWED_HOSTS.append(domain)
 
 # Application definition
 INSTALLED_APPS = [
@@ -247,25 +252,23 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
-# CORS Configuration pour l'API Mobile
-try:
-    from config.network_config import get_cors_origins
-    CORS_ALLOWED_ORIGINS = get_cors_origins()
-except ImportError:
-    # Fallback si le fichier de config n'est pas disponible
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:3000",  # React Native Metro
-        "http://localhost:8081",  # React Native Debug
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8081",
-        f"http://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8081",  # Expo sur réseau local
-        f"exp://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8081",   # Expo Go
-        f"http://{os.getenv('DEV_HOST_IP', '192.168.1.7')}:8000",  # Django API réseau
-        "http://37.65.65.126:8000",  # IP publique
-        "http://localhost:8000",    # Django API local
-        "exp://localhost:8081",     # Expo Go local
-        "exp://127.0.0.1:8081",     # Expo Go local
-    ]
+# CORS Configuration pour l'API Mobile avec Railway
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if os.getenv('CORS_ALLOWED_ORIGINS') else [
+    "http://localhost:3000",  # React Native Metro
+    "http://localhost:8081",  # React Native Debug
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8081",
+    "http://localhost:8000",    # Django API local
+    "exp://localhost:8081",     # Expo Go local
+    "exp://127.0.0.1:8081",     # Expo Go local
+]
+
+# Ajouter Railway aux origines CORS si configuré
+if RAILWAY_HOST:
+    CORS_ALLOWED_ORIGINS.extend([
+        f"https://{RAILWAY_HOST}",
+        f"http://{RAILWAY_HOST}",
+    ])
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -273,11 +276,40 @@ CORS_ALLOW_CREDENTIALS = True
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
     CORS_ALLOW_CREDENTIALS = True
+elif os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True':
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOW_CREDENTIALS = True
 
 # Configuration des limites d'upload pour les images
 DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000  # Nombre de champs max
+
+# Configuration pour Railway - Gestion des erreurs
+if not DEBUG:
+    # En production, rediriger les erreurs 404 vers une page personnalisée
+    HANDLER404 = 'bolibanastock.views.custom_404'
+    # Logging pour Railway
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+            },
+        },
+        'root': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['console'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+        },
+    }
 
 CORS_ALLOW_METHODS = [
     'DELETE',
