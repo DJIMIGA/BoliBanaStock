@@ -15,6 +15,19 @@ from django.db.models.deletion import ProtectedError
 import json
 from django.db import transaction
 from django.contrib.auth import get_user_model
+from django.shortcuts import render
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth import login
+from django.shortcuts import render, redirect
+from django.views.generic import CreateView
+from django.urls import reverse_lazy
+from django.contrib import messages
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from django.db import connections
+from django.db.utils import OperationalError
+from django.http import HttpResponse
 
 User = get_user_model()
 
@@ -720,5 +733,17 @@ def debug_signup(request):
             })
     
     return render(request, 'core/debug_signup.html')
+
+def health_check(request):
+    """Vue simple pour le healthcheck Railway"""
+    try:
+        # Vérifier la base de données
+        db_conn = connections['default']
+        db_conn.cursor()
+        return HttpResponse("OK", status=200)
+    except OperationalError:
+        return HttpResponse("Database Error", status=503)
+    except Exception as e:
+        return HttpResponse(f"Error: {str(e)}", status=500)
 
  
