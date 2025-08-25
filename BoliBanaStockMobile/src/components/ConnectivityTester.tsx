@@ -138,7 +138,7 @@ export default function ConnectivityTester() {
       <View style={styles.infoContainer}>
         <Text style={styles.infoTitle}>Informations de débogage :</Text>
         <Text style={styles.infoText}>
-          • Vérifiez que le serveur Django est en cours d'exécution sur 192.168.1.7:8000
+          • Vérifiez que le serveur Railway est accessible sur https://web-production-e896b.up.railway.app
         </Text>
         <Text style={styles.infoText}>
           • Vérifiez que votre appareil mobile est sur le même réseau WiFi

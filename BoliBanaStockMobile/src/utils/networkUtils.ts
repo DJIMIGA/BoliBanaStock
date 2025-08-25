@@ -105,7 +105,7 @@ export const runNetworkDiagnostic = async (): Promise<void> => {
     diagnosticMessage += `⏱️ Réponse: ${apiStatus.responseTime}ms\n`;
   } else {
     diagnosticMessage += `❌ Erreur: ${apiStatus.error}\n`;
-    diagnosticMessage += `💡 Vérifiez que le serveur Django tourne sur 192.168.1.7:8000\n`;
+            diagnosticMessage += `💡 Vérifiez que le serveur Railway est accessible sur https://web-production-e896b.up.railway.app\n`;
   }
   
   Alert.alert('Diagnostic Réseau', diagnosticMessage);
@@ -120,10 +120,10 @@ export const checkNetworkConfiguration = (): {
   const issues: string[] = [];
   const recommendations: string[] = [];
   
-  // Vérifier que l'IP locale est configurée
-  if (!API_CONFIG.BASE_URL.includes('192.168.1.7')) {
-    issues.push('IP locale non configurée');
-    recommendations.push('Mettre à jour la configuration API avec 192.168.1.7:8000');
+  // Vérifier que Railway est configuré
+  if (!API_CONFIG.BASE_URL.includes('web-production-e896b.up.railway.app')) {
+    issues.push('Railway non configuré');
+    recommendations.push('Mettre à jour la configuration API avec https://web-production-e896b.up.railway.app/api/v1');
   }
   
   // Vérifier le timeout

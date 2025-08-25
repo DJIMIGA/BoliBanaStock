@@ -65,7 +65,7 @@ const NetworkTester: React.FC<NetworkTesterProps> = ({ onTestComplete, apiUrl })
       if (error.name === 'AbortError') {
         errorMessage = 'La connexion a pris trop de temps. Vérifiez votre réseau.';
       } else if (error.message?.includes('Network request failed')) {
-        errorMessage = 'Erreur de réseau. Vérifiez votre connexion WiFi et que le serveur est accessible sur 192.168.1.7:8000';
+        errorMessage = 'Erreur de réseau. Vérifiez votre connexion internet et que le serveur Railway est accessible sur https://web-production-e896b.up.railway.app';
       }
 
       Alert.alert(

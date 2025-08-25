@@ -13,6 +13,9 @@ export const NETWORK_CONFIG = {
   MOBILE_DEV_IP: '172.20.10.2',    // IP mobile (réseau mobile)
   PUBLIC_SERVER_IP: '37.65.65.126', // IP publique du serveur
   
+  // URL Railway (production)
+  RAILWAY_URL: 'https://web-production-e896b.up.railway.app', // URL Railway réelle
+  
   // Ports
   DJANGO_PORT: 8000,
   EXPO_PORT: 8081,
@@ -21,11 +24,13 @@ export const NETWORK_CONFIG = {
   API_BASE_URL_DEV: 'http://192.168.1.7:8000/api/v1',
   API_BASE_URL_MOBILE: 'http://172.20.10.2:8000/api/v1',
   API_BASE_URL_PUBLIC: 'http://37.65.65.126:8000/api/v1',
+  API_BASE_URL_RAILWAY: 'https://web-production-e896b.up.railway.app/api/v1', // URL Railway réelle
   
   // URLs Django
   DJANGO_URL_DEV: 'http://192.168.1.7:8000',
   DJANGO_URL_MOBILE: 'http://172.20.10.2:8000',
   DJANGO_URL_PUBLIC: 'http://37.65.65.126:8000',
+  DJANGO_URL_RAILWAY: 'https://web-production-e896b.up.railway.app', // URL Railway réelle
   
   // URLs Expo
   EXPO_URL_DEV: 'http://192.168.1.7:8081',
@@ -36,9 +41,10 @@ export const NETWORK_CONFIG = {
 export const MOBILE_CONFIG = {
   // URLs API prioritaires (dans l'ordre de préférence)
   API_URLS: [
-    NETWORK_CONFIG.API_BASE_URL_MOBILE,  // IP mobile principale
-    NETWORK_CONFIG.API_BASE_URL_DEV,     // IP locale alternative
-    NETWORK_CONFIG.API_BASE_URL_PUBLIC,  // IP publique
+    NETWORK_CONFIG.API_BASE_URL_RAILWAY,  // Railway (production) - PRIORITÉ MAXIMALE
+    NETWORK_CONFIG.API_BASE_URL_MOBILE,   // IP mobile alternative
+    NETWORK_CONFIG.API_BASE_URL_DEV,      // IP locale alternative
+    NETWORK_CONFIG.API_BASE_URL_PUBLIC,   // IP publique
   ],
   
   // IPs de fallback pour la découverte réseau
@@ -59,28 +65,28 @@ export const MOBILE_CONFIG = {
 // Configuration des environnements
 export const ENV_CONFIG = {
   development: {
-    API_URL: NETWORK_CONFIG.API_BASE_URL_MOBILE,
+    API_URL: NETWORK_CONFIG.API_BASE_URL_RAILWAY, // Utilise Railway même en dev
     DEBUG: true,
     LOG_LEVEL: 'debug',
   },
   staging: {
-    API_URL: NETWORK_CONFIG.API_BASE_URL_PUBLIC,
+    API_URL: NETWORK_CONFIG.API_BASE_URL_RAILWAY, // Utilise Railway pour staging
     DEBUG: false,
     LOG_LEVEL: 'info',
   },
   production: {
-    API_URL: 'https://api.bolibana.com/api/v1',
+    API_URL: NETWORK_CONFIG.API_BASE_URL_RAILWAY, // Utilise Railway pour production
     DEBUG: false,
     LOG_LEVEL: 'error',
   },
 };
 
-// Configuration des erreurs avec IPs dynamiques
+// Configuration des erreurs avec Railway
 export const ERROR_MESSAGES = {
-  NETWORK_ERROR: `Erreur de connexion réseau. Vérifiez votre connexion internet et que le serveur est accessible sur ${NETWORK_CONFIG.MOBILE_DEV_IP}:8000`,
+  NETWORK_ERROR: `Erreur de connexion réseau. Vérifiez votre connexion internet et que le serveur Railway est accessible sur ${NETWORK_CONFIG.RAILWAY_URL}`,
   TIMEOUT_ERROR: 'La requête a pris trop de temps. Vérifiez votre connexion réseau.',
   AUTH_ERROR: 'Votre session a expiré. Veuillez vous reconnecter.',
-  SERVER_ERROR: 'Erreur du serveur. Veuillez réessayer plus tard.',
+  SERVER_ERROR: 'Erreur du serveur Railway. Veuillez réessayer plus tard.',
   UNKNOWN_ERROR: 'Une erreur inattendue s\'est produite. Veuillez réessayer.',
 };
 
@@ -91,20 +97,20 @@ export const getCurrentApiUrl = (): string => {
     return process.env.EXPO_PUBLIC_API_BASE_URL;
   }
   
-  // Sinon, utiliser l'IP mobile par défaut
-  return NETWORK_CONFIG.API_BASE_URL_MOBILE;
+  // Sinon, utiliser Railway par défaut
+  return NETWORK_CONFIG.API_BASE_URL_RAILWAY;
 };
 
 export const getMobileApiUrl = (): string => {
-  return NETWORK_CONFIG.API_BASE_URL_MOBILE;
+  return NETWORK_CONFIG.API_BASE_URL_RAILWAY; // Utilise Railway
 };
 
 export const getDevApiUrl = (): string => {
-  return NETWORK_CONFIG.API_BASE_URL_DEV;
+  return NETWORK_CONFIG.API_BASE_URL_RAILWAY; // Utilise Railway
 };
 
 export const getPublicApiUrl = (): string => {
-  return NETWORK_CONFIG.API_BASE_URL_PUBLIC;
+  return NETWORK_CONFIG.API_BASE_URL_RAILWAY; // Utilise Railway
 };
 
 export const getAllowedHosts = (): string[] => {
@@ -114,15 +120,16 @@ export const getAllowedHosts = (): string[] => {
     '0.0.0.0',
     NETWORK_CONFIG.DEV_HOST_IP,
     NETWORK_CONFIG.MOBILE_DEV_IP,
-    NETWORK_CONFIG.PUBLIC_SERVER_IP
+    NETWORK_CONFIG.PUBLIC_SERVER_IP,
+    NETWORK_CONFIG.RAILWAY_URL.replace('https://', '').replace('http://', '') // Host Railway
   ];
 };
 
 // Configuration pour les tests
 export const TEST_CONFIG = {
-  BASE_URL: NETWORK_CONFIG.API_BASE_URL_MOBILE,
-  AUTH_URL: `${NETWORK_CONFIG.API_BASE_URL_MOBILE}/auth/login/`,
-  PRODUCTS_URL: `${NETWORK_CONFIG.API_BASE_URL_MOBILE}/products/`,
+  BASE_URL: NETWORK_CONFIG.API_BASE_URL_RAILWAY,
+  AUTH_URL: `${NETWORK_CONFIG.API_BASE_URL_RAILWAY}/auth/login/`,
+  PRODUCTS_URL: `${NETWORK_CONFIG.API_BASE_URL_RAILWAY}/products/`,
 };
 
 // Export par défaut

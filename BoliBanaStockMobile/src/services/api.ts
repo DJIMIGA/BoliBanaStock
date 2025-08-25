@@ -12,23 +12,23 @@ interface ImageAsset {
 }
 
 // Configuration de base de l'API
-// Utiliser l'adresse IP locale pour l'accès mobile
+// Utiliser Railway par défaut
 const API_BASE_URL = __DEV__ 
-  ? (process.env.EXPO_PUBLIC_API_BASE_URL || 'http://172.20.10.2:8000/api/v1')
-  : (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://votre-domaine.com/api/v1');
+  ? (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://web-production-e896b.up.railway.app/api/v1')
+  : (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://web-production-e896b.up.railway.app/api/v1');
 
-// URL alternative pour les tests
-const API_BASE_URL_LOCAL = 'http://172.20.10.2:8000/api/v1';
+// URL Railway (production)
+const API_BASE_URL_RAILWAY = 'https://web-production-e896b.up.railway.app/api/v1';
 
-// URLs de fallback pour différents environnements
+// URLs de fallback pour différents environnements (Railway en priorité)
 const FALLBACK_URLS = [
-  'http://172.20.10.2:8000/api/v1',
-  'http://192.168.1.7:8000/api/v1',
-  'http://192.168.1.100:8000/api/v1',
-  'http://192.168.1.101:8000/api/v1',
-  'http://10.0.0.1:8000/api/v1',
-  'http://localhost:8000/api/v1',
-  'http://127.0.0.1:8000/api/v1',
+  'https://web-production-e896b.up.railway.app/api/v1',  // Railway - PRIORITÉ MAXIMALE
+  'http://172.20.10.2:8000/api/v1',                    // IP mobile alternative
+  'http://192.168.1.7:8000/api/v1',                     // IP locale alternative
+  'http://192.168.1.100:8000/api/v1',                   // IP alternative
+  'http://10.0.0.1:8000/api/v1',                        // IP réseau
+  'http://localhost:8000/api/v1',                        // Localhost
+  'http://127.0.0.1:8000/api/v1',                       // Localhost
 ];
 
 // Log de l'URL utilisée pour le débogage
@@ -435,7 +435,7 @@ export const productService = {
           console.log('✅ Connectivité OK, début upload...');
         } catch (connectivityError) {
           console.error('❌ Échec test connectivité:', connectivityError);
-          throw new Error('Serveur inaccessible. Vérifiez que le serveur Django est démarré sur 192.168.1.7:8000');
+          throw new Error('Serveur inaccessible. Vérifiez que le serveur Railway est accessible sur https://web-production-e896b.up.railway.app');
         }
         
         const formData = new FormData();
@@ -696,7 +696,7 @@ export const productService = {
       }
       
       if (error.response?.status === 0) {
-        throw new Error('Impossible de se connecter au serveur. Vérifiez que le serveur est accessible sur 192.168.1.7:8000');
+        throw new Error('Impossible de se connecter au serveur Railway. Vérifiez que le serveur est accessible sur https://web-production-e896b.up.railway.app');
       }
       
       throw error;

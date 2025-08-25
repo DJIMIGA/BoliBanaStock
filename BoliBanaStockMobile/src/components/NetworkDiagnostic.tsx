@@ -37,7 +37,7 @@ const NetworkDiagnostic: React.FC = () => {
         Alert.alert('Test API', `✅ API accessible!\n\n📡 URL: ${result.url}\n⏱️ Réponse: ${result.responseTime}ms`);
       } else {
         setLastResult(`❌ API non accessible: ${result.error}`);
-        Alert.alert('Test API', `❌ API non accessible!\n\n${result.error}\n\n💡 Vérifiez que le serveur Django tourne sur 192.168.1.7:8000`);
+        Alert.alert('Test API', `❌ API non accessible!\n\n${result.error}\n\n💡 Vérifiez que le serveur Railway est accessible sur https://web-production-e896b.up.railway.app`);
       }
     } catch (error) {
       setLastResult(`❌ Erreur lors du test: ${error}`);
@@ -128,7 +128,7 @@ const NetworkDiagnostic: React.FC = () => {
 
       <View style={styles.infoContainer}>
         <Text style={styles.infoTitle}>💡 Comment résoudre les erreurs réseau:</Text>
-        <Text style={styles.infoText}>1. Vérifiez que le serveur Django tourne sur 192.168.1.7:8000</Text>
+        <Text style={styles.infoText}>1. Vérifiez que le serveur Railway est accessible sur https://web-production-e896b.up.railway.app</Text>
         <Text style={styles.infoText}>2. Assurez-vous que votre mobile est sur le même réseau WiFi</Text>
         <Text style={styles.infoText}>3. Vérifiez que le pare-feu n'empêche pas la connexion</Text>
         <Text style={styles.infoText}>4. Testez avec l'IP locale au lieu de localhost</Text>

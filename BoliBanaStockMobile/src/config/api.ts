@@ -6,7 +6,7 @@ export const API_CONFIG = {
   // URL de base de l'API
   BASE_URL: __DEV__ 
     ? (process.env.EXPO_PUBLIC_API_BASE_URL || getCurrentApiUrl())
-    : (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://votre-domaine.com/api/v1'),
+    : (process.env.EXPO_PUBLIC_API_BASE_URL || getCurrentApiUrl()), // Utilise Railway même en production
   
   // Timeout des requêtes (en millisecondes)
   TIMEOUT: 15000, // Augmenté pour les connexions réseau lentes
@@ -88,17 +88,17 @@ export const API_CONFIG = {
 // Configuration pour différents environnements (utilise la configuration centralisée)
 export const ENV_CONFIG = {
   development: {
-    API_URL: getCurrentApiUrl(),
+    API_URL: getCurrentApiUrl(), // Utilise Railway
     DEBUG: true,
     LOG_LEVEL: 'debug',
   },
   staging: {
-    API_URL: 'https://staging.bolibana.com/api/v1',
+    API_URL: getCurrentApiUrl(), // Utilise Railway
     DEBUG: false,
     LOG_LEVEL: 'info',
   },
   production: {
-    API_URL: 'https://api.bolibana.com/api/v1',
+    API_URL: getCurrentApiUrl(), // Utilise Railway
     DEBUG: false,
     LOG_LEVEL: 'error',
   },

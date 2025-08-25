@@ -11,13 +11,14 @@ export interface NetworkEndpoint {
 
 export class NetworkDiscovery {
   private static readonly COMMON_IPS = [
-    '192.168.1.7',    // IP locale courante
-    '192.168.1.100',  // IP alternative
-    '10.0.2.2',       // Android Emulator localhost
+    'web-production-e896b.up.railway.app',  // Railway - PRIORITÉ MAXIMALE
+    '192.168.1.7',    // IP locale courante (fallback)
+    '192.168.1.100',  // IP alternative (fallback)
+    '10.0.2.2',       // Android Emulator localhost (fallback)
     'localhost',       // Fallback local
   ];
 
-  private static readonly PORTS = [8000, 3000];
+  private static readonly PORTS = [443, 80, 8000, 3000]; // 443 pour HTTPS Railway
 
   /**
    * Détecte automatiquement l'endpoint du serveur
@@ -37,7 +38,7 @@ export class NetworkDiscovery {
             return {
               ip,
               port,
-              url: `http://${endpoint}/api/v1`,
+              url: `https://${endpoint}/api/v1`, // Utilise HTTPS pour Railway
               isReachable: true,
             };
           }
@@ -55,33 +56,25 @@ export class NetworkDiscovery {
    * Teste si un endpoint est accessible
    */
   private static async testEndpoint(ip: string, port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        resolve(false);
-      }, 3000);
-
-      // Test simple avec fetch
-      fetch(`http://${ip}:${port}/api/v1/`, {
+    const protocol = port === 443 ? 'https' : 'http';
+    const url = `${protocol}://${ip}:${port}/api/v1/`;
+    
+    try {
+      const response = await fetch(url, {
         method: 'GET',
-        timeout: 3000,
-      })
-        .then((response) => {
-          clearTimeout(timeout);
-          resolve(response.ok);
-        })
-        .catch(() => {
-          clearTimeout(timeout);
-          resolve(false);
-        });
-    });
+        timeout: 5000,
+      });
+      return response.status === 200 || response.status === 401; // 401 = OK, auth requise
+    } catch {
+      return false;
+    }
   }
 
   /**
-   * Obtient l'IP locale de l'appareil
+   * Obtient l'IP locale (fallback)
    */
   static getLocalIP(): string {
-    // Pour le développement, retourner l'IP la plus probable
-    return '192.168.1.7';
+    return 'web-production-e896b.up.railway.app'; // Utilise Railway par défaut
   }
 
   /**
@@ -92,9 +85,8 @@ export class NetworkDiscovery {
       return `${baseUrl}${endpoint}`;
     }
 
-    // Fallback vers l'IP locale
-    const localIP = this.getLocalIP();
-    return `http://${localIP}:8000/api/v1${endpoint}`;
+    // Utilise Railway par défaut
+    return `https://web-production-e896b.up.railway.app/api/v1${endpoint}`;
   }
 }
 
@@ -102,7 +94,6 @@ export class NetworkDiscovery {
  * Configuration réseau par défaut
  */
 export const DEFAULT_NETWORK_CONFIG = {
-  API_BASE_URL: 'http://192.168.1.7:8000/api/v1',
+  API_BASE_URL: 'https://web-production-e896b.up.railway.app/api/v1', // Railway par défaut
   TIMEOUT: 15000,
-  RETRY_ATTEMPTS: 3,
 };
