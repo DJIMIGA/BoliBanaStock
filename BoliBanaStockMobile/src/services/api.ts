@@ -11,25 +11,8 @@ interface ImageAsset {
   fileName?: string;
 }
 
-// Configuration de base de l'API
-// Utiliser Railway par défaut
-const API_BASE_URL = __DEV__ 
-  ? (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://web-production-e896b.up.railway.app/api/v1')
-  : (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://web-production-e896b.up.railway.app/api/v1');
-
-// URL Railway (production)
-const API_BASE_URL_RAILWAY = 'https://web-production-e896b.up.railway.app/api/v1';
-
-// URLs de fallback pour différents environnements (Railway en priorité)
-const FALLBACK_URLS = [
-  'https://web-production-e896b.up.railway.app/api/v1',  // Railway - PRIORITÉ MAXIMALE
-  'http://172.20.10.2:8000/api/v1',                    // IP mobile alternative
-  'http://192.168.1.7:8000/api/v1',                     // IP locale alternative
-  'http://192.168.1.100:8000/api/v1',                   // IP alternative
-  'http://10.0.0.1:8000/api/v1',                        // IP réseau
-  'http://localhost:8000/api/v1',                        // Localhost
-  'http://127.0.0.1:8000/api/v1',                       // Localhost
-];
+// Configuration de base de l'API - Railway uniquement
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://web-production-e896b.up.railway.app/api/v1';
 
 // Log de l'URL utilisée pour le débogage
 console.log('🔗 URL API utilisée:', API_BASE_URL);
@@ -38,14 +21,11 @@ console.log('🌐 Mode développement:', __DEV__);
 // Instance axios avec configuration de base
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000, // Augmenté pour les connexions réseau lentes
+  timeout: 15000,
   headers: {
-    // Ne pas fixer Content-Type par défaut pour éviter de casser les uploads FormData
     'Accept': 'application/json',
   },
 });
-
-// Configuration API
 
 // Intercepteur pour ajouter le token d'authentification
 api.interceptors.request.use(
@@ -63,8 +43,6 @@ api.interceptors.request.use(
       const isNativeFormData = typeof FormData !== 'undefined' && config.data instanceof FormData;
       if ((isNativeFormData || looksLikeFormData) && config.headers) {
         delete (config.headers as any)['Content-Type'];
-        // Optionnel: fixer explicitement multipart (React Native gère souvent mieux sans fixation explicite)
-        // (config.headers as any)['Content-Type'] = 'multipart/form-data';
       }
     } catch (_) {
       // No-op
@@ -110,43 +88,41 @@ api.interceptors.response.use(
       });
     }
     
-         if (error.response?.status === 401) {
-       console.log('🔑 Erreur 401 détectée, tentative de refresh du token...');
-       
-       // Token expiré, essayer de le rafraîchir
-       const refreshToken = await AsyncStorage.getItem('refresh_token');
-       if (refreshToken) {
-         try {
-           console.log('🔄 Tentative de refresh du token...');
-           const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
-             refresh: refreshToken,
-           });
-           
-           console.log('✅ Token refreshé avec succès');
-           await AsyncStorage.setItem('access_token', response.data.access);
-           
-           // Retenter la requête originale
-           error.config.headers.Authorization = `Bearer ${response.data.access}`;
-           return api.request(error.config);
-         } catch (refreshError: any) {
-           console.error('❌ Échec du refresh du token:', refreshError.response?.data || refreshError.message);
-           // Échec du refresh, déconnexion
-           await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
-           console.log('🚪 Déconnexion effectuée');
-           // Rediriger vers la page de connexion
-           // Navigation.navigate('Login');
-         }
-       } else {
-         console.log('❌ Aucun refresh token trouvé');
-         // Pas de refresh token, déconnexion forcée
-         await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
-         console.log('🚪 Déconnexion forcée - aucun refresh token');
-       }
-       
-       // Si on arrive ici, c'est qu'on n'a pas pu résoudre l'erreur 401
-       console.error('🔑 Erreur 401 non résolue - redirection vers login requise');
-       throw new Error('Session expirée. Veuillez vous reconnecter.');
-     }
+    if (error.response?.status === 401) {
+      console.log('🔑 Erreur 401 détectée, tentative de refresh du token...');
+      
+      // Token expiré, essayer de le rafraîchir
+      const refreshToken = await AsyncStorage.getItem('refresh_token');
+      if (refreshToken) {
+        try {
+          console.log('🔄 Tentative de refresh du token...');
+          const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
+            refresh: refreshToken,
+          });
+          
+          console.log('✅ Token refreshé avec succès');
+          await AsyncStorage.setItem('access_token', response.data.access);
+          
+          // Retenter la requête originale
+          error.config.headers.Authorization = `Bearer ${response.data.access}`;
+          return api.request(error.config);
+        } catch (refreshError: any) {
+          console.error('❌ Échec du refresh du token:', refreshError.response?.data || refreshError.message);
+          // Échec du refresh, déconnexion
+          await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+          console.log('🚪 Déconnexion effectuée');
+        }
+      } else {
+        console.log('❌ Aucun refresh token trouvé');
+        // Pas de refresh token, déconnexion forcée
+        await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+        console.log('🚪 Déconnexion forcée - aucun refresh token');
+      }
+      
+      // Si on arrive ici, c'est qu'on n'a pas pu résoudre l'erreur 401
+      console.error('🔑 Erreur 401 non résolue - redirection vers login requise');
+      throw new Error('Session expirée. Veuillez vous reconnecter.');
+    }
     return Promise.reject(error);
   }
 );
@@ -424,20 +400,6 @@ export const productService = {
         }
         console.log('✅ Token d\'authentification trouvé');
         
-        // Test de connectivité avant l'upload
-        console.log('🔍 Test de connectivité avant upload...');
-        
-        try {
-          const connectivityTest = await testConnectivity();
-          if (!connectivityTest.success) {
-            throw new Error(`Serveur inaccessible: ${connectivityTest.error}`);
-          }
-          console.log('✅ Connectivité OK, début upload...');
-        } catch (connectivityError) {
-          console.error('❌ Échec test connectivité:', connectivityError);
-          throw new Error('Serveur inaccessible. Vérifiez que le serveur Railway est accessible sur https://web-production-e896b.up.railway.app');
-        }
-        
         const formData = new FormData();
         
         // Traiter chaque champ du produit (séquentiel pour permettre await)
@@ -643,23 +605,6 @@ export const productService = {
             method: patchError?.config?.method,
             baseURL: patchError?.config?.baseURL,
           });
-          // Fallback réseau: si Network Error, tenter découverte d'une URL accessible et retenter
-          const isNetworkErr = patchError?.code === 'ERR_NETWORK' || String(patchError?.message || '').includes('Network Error');
-          if (isNetworkErr) {
-            try {
-              console.log('🔍 Fallback réseau: test de connectivité pour URL alternative...');
-              const result = await testConnectivity();
-              if (result?.success && result?.url && result?.url !== API_BASE_URL) {
-                console.log('🔁 Reconfiguration baseURL et nouvelle tentative PATCH:', result.url);
-                api.defaults.baseURL = result.url;
-                const retry = await api.patch(`/products/${id}/`, sanitized);
-                console.log('✅ PATCH produit OK (fallback):', retry.status);
-                return retry.data;
-              }
-            } catch (fallbackErr: any) {
-              console.error('❌ Fallback réseau échoué:', fallbackErr?.message || fallbackErr);
-            }
-          }
           throw patchError;
         }
       }
@@ -680,10 +625,6 @@ export const productService = {
         throw new Error('La requête a pris trop de temps. Vérifiez votre connexion réseau.');
       }
       
-      if (error.code === 'ERR_NETWORK') {
-        throw new Error('Erreur réseau spécifique. Vérifiez que le serveur Django écoute sur toutes les interfaces (0.0.0.0:8000).');
-      }
-      
       if (error.response?.status === 413) {
         throw new Error('Image trop volumineuse. Réduisez la taille de l\'image.');
       }
@@ -693,10 +634,6 @@ export const productService = {
                            error.response.data?.message || 
                            'Données invalides';
         throw new Error(errorMessage);
-      }
-      
-      if (error.response?.status === 0) {
-        throw new Error('Impossible de se connecter au serveur Railway. Vérifiez que le serveur est accessible sur https://web-production-e896b.up.railway.app');
       }
       
       throw error;
@@ -1068,46 +1005,26 @@ export const profileService = {
   },
 };
 
-// Fonction de test de connectivité avec fallback
+// Fonction de test de connectivité simplifiée
 export const testConnectivity = async () => {
-  console.log('🔍 Test de connectivité avec fallback...');
+  console.log('🔍 Test de connectivité Railway...');
   
-  // Tester d'abord l'URL principale
   try {
-    console.log('🔍 Test URL principale:', API_BASE_URL);
+    console.log('🔍 Test URL Railway:', API_BASE_URL);
     const response = await axios.get(`${API_BASE_URL.replace('/api/v1', '')}/`, {
       timeout: 5000,
     });
-    console.log('✅ Connectivité OK:', response.status);
+    console.log('✅ Connectivité Railway OK:', response.status);
     return { success: true, status: response.status, url: API_BASE_URL };
   } catch (error: any) {
-    console.error('❌ Erreur URL principale:', error.message);
+    console.error('❌ Erreur connectivité Railway:', error.message);
+    return { 
+      success: false, 
+      error: 'Serveur Railway inaccessible',
+      code: 'RAILWAY_UNREACHABLE',
+      status: 0 
+    };
   }
-  
-  // Tester les URLs de fallback
-  for (const fallbackUrl of FALLBACK_URLS) {
-    if (fallbackUrl === API_BASE_URL) continue; // Éviter de retester l'URL principale
-    
-    try {
-      console.log('🔍 Test URL fallback:', fallbackUrl);
-      const response = await axios.get(`${fallbackUrl.replace('/api/v1', '')}/`, {
-        timeout: 5000,
-      });
-      console.log('✅ Connectivité fallback OK:', response.status, 'URL:', fallbackUrl);
-      return { success: true, status: response.status, url: fallbackUrl };
-    } catch (error: any) {
-      console.error('❌ Erreur URL fallback:', fallbackUrl, error.message);
-    }
-  }
-  
-  // Aucune URL accessible
-  console.error('❌ Aucune URL accessible');
-  return { 
-    success: false, 
-    error: 'Aucune URL de serveur accessible',
-    code: 'NO_SERVER_ACCESSIBLE',
-    status: 0 
-  };
 };
 
 export default api; 
