@@ -21,8 +21,11 @@ ENV DJANGO_SETTINGS_MODULE=bolibanastock.settings
 # Collecter les fichiers statiques
 RUN python manage.py collectstatic --noinput
 
+# Rendre le script de démarrage exécutable
+RUN chmod +x start.sh
+
 # Exposer le port
 EXPOSE 8000
 
 # Commande de démarrage
-CMD ["gunicorn", "bolibanastock.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["./start.sh"]
