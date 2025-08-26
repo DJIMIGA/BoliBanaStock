@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-secret-key-for-docker
+      - PORT=8000
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      - db
+    command: ./start.sh
+
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_DB=bolibanastock
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:

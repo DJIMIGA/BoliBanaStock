@@ -16,9 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Définir les variables d'environnement pour le build
 ENV DJANGO_SECRET_KEY=temp-secret-key-for-build-only
 ENV DJANGO_DEBUG=False
-ENV DJANGO_SETTINGS_MODULE=bolibanastock.settings
+ENV DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway
 
-# Collecter les fichiers statiques
+# Collecter les fichiers statiques avec les settings Railway
 RUN python manage.py collectstatic --noinput
 
 # Rendre le script de démarrage exécutable

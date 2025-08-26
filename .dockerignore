@@ -46,3 +46,17 @@ coverage.xml
 .mypy_cache/
 .pytest_cache/
 .hypothesis/
+
+# Fichiers de test et développement
+test_deploy_local.py
+*.md
+docs/
+examples/
+todos/
+logs/
+staticfiles/
+media/
+
+# Fichiers de configuration Railway
+railway_startup.py
+collect_static_railway.py

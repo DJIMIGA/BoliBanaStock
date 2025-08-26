@@ -1,16 +1,15 @@
 #!/bin/bash
 
+# Configuration Django pour Railway
+export DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway
+
 # Attendre que la base de données soit prête
 echo "Waiting for database to be ready..."
 python manage.py wait_for_db --timeout=60
 
-# Appliquer les migrations si nécessaire
-echo "Applying database migrations..."
-python manage.py migrate --noinput
-
-# Collecter les fichiers statiques si nécessaire
-echo "Collecting static files..."
-python manage.py collectstatic --noinput
+# Utiliser le script de déploiement Railway pour la configuration complète
+echo "🚀 Configuration Railway - Déploiement complet..."
+python deploy_railway.py
 
 # Démarrer l'application
 echo "Starting Django application..."
