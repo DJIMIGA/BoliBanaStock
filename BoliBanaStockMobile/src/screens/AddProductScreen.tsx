@@ -35,6 +35,7 @@ interface Brand {
 
 interface ProductForm {
   name: string;
+  cug: string;
   description: string;
   purchase_price: string;
   selling_price: string;
@@ -43,7 +44,7 @@ interface ProductForm {
   category_id: string;
   brand_id: string;
   image?: any;
-  scan_field: string;  // Champ pour le code-barres EAN (optionnel)
+  scan_field: string;
   is_active: boolean;
 }
 
@@ -68,6 +69,7 @@ export default function AddProductScreen({ navigation, route }: any) {
   const [creatingBrand, setCreatingBrand] = useState(false);
   const [form, setForm] = useState<ProductForm>({
     name: '',
+    cug: '',
     description: '',
     purchase_price: '',
     selling_price: '',
@@ -107,9 +109,9 @@ export default function AddProductScreen({ navigation, route }: any) {
       try {
         const p = await productService.getProduct(editId);
         
-        // Ensure all fields have safe fallback values
         setForm({
           name: p?.name || '',
+          cug: p?.cug || '',
           description: p?.description || '',
           purchase_price: p?.purchase_price ? String(p.purchase_price) : '',
           selling_price: p?.selling_price ? String(p.selling_price) : '',
@@ -125,9 +127,9 @@ export default function AddProductScreen({ navigation, route }: any) {
 
       } catch (e) {
         console.error('❌ Erreur lors du chargement pour édition:', e);
-        // Reset form to initial state on error
         setForm(prev => ({
           name: '',
+          cug: '',
           description: '',
           purchase_price: '',
           selling_price: '',
@@ -152,7 +154,6 @@ export default function AddProductScreen({ navigation, route }: any) {
         brandService.getBrands(),
       ]);
       
-      // Ensure we have arrays even if the API returns unexpected data
       const categoriesArray = Array.isArray(categoriesData?.results) ? categoriesData.results : 
                             Array.isArray(categoriesData) ? categoriesData : [];
       const brandsArray = Array.isArray(brandsData?.results) ? brandsData.results : 
@@ -163,9 +164,8 @@ export default function AddProductScreen({ navigation, route }: any) {
     } catch (error: any) {
       console.error('❌ Erreur chargement données:', error);
       Alert.alert('Erreur', 'Impossible de charger les catégories et marques');
-      // Set empty arrays on error to prevent crashes
       setCategories([]);
-      setCategories([]);
+      setBrands([]);
     } finally {
       setLoadingData(false);
     }
@@ -185,17 +185,11 @@ export default function AddProductScreen({ navigation, route }: any) {
         description: newCategoryDescription.trim(),
       });
       
-      // Ajouter la nouvelle catégorie à la liste
       setCategories(prev => [...prev, newCategory]);
-      
-      // Sélectionner automatiquement la nouvelle catégorie
       setForm(prev => ({ ...prev, category_id: String(newCategory.id) }));
-      
-      // Fermer le modal et réinitialiser
       setCategoryModalVisible(false);
       setNewCategoryName('');
       setNewCategoryDescription('');
-      
       Alert.alert('Succès', 'Catégorie créée et sélectionnée !');
     } catch (error) {
       console.error('❌ Erreur création catégorie:', error);
@@ -219,17 +213,11 @@ export default function AddProductScreen({ navigation, route }: any) {
         description: newBrandDescription.trim(),
       });
       
-      // Ajouter la nouvelle marque à la liste
       setBrands(prev => [...prev, newBrand]);
-      
-      // Sélectionner automatiquement la nouvelle marque
       setForm(prev => ({ ...prev, brand_id: String(newBrand.id) }));
-      
-      // Fermer le modal et réinitialiser
       setBrandModalVisible(false);
       setNewBrandName('');
       setNewBrandDescription('');
-      
       Alert.alert('Succès', 'Marque créée et sélectionnée !');
     } catch (error) {
       console.error('❌ Erreur création marque:', error);
@@ -239,12 +227,19 @@ export default function AddProductScreen({ navigation, route }: any) {
     }
   };
 
+    // Fonction pour générer un CUG aléatoire à 5 chiffres
+  const generateRandomCUG = (): string => {
+    const min = 10000;
+    const max = 99999;
+    return String(Math.floor(Math.random() * (max - min + 1)) + min);
+  };
+
   const updateForm = useCallback((field: keyof ProductForm, value: string | boolean) => {
     setForm(prev => {
       if (!prev) {
-        // Fallback to initial form state if prev is undefined
         return {
           name: '',
+          cug: '',
           description: '',
           purchase_price: '',
           selling_price: '',
@@ -271,6 +266,8 @@ export default function AddProductScreen({ navigation, route }: any) {
       Alert.alert('Erreur', 'Le nom du produit est requis');
       return false;
     }
+
+
 
     if (!form.purchase_price || parseFloat(form.purchase_price) < 0) {
       Alert.alert('Erreur', 'Le prix d\'achat doit être positif');
@@ -324,6 +321,10 @@ export default function AddProductScreen({ navigation, route }: any) {
         is_active: form.is_active,
       };
 
+      if (form.cug.trim()) {
+        productData.cug = form.cug.trim();
+      }
+
       if (form.image) {
         productData.image = {
           uri: form.image.uri,
@@ -337,7 +338,6 @@ export default function AddProductScreen({ navigation, route }: any) {
       }
 
       if (editId) {
-        // Modification d'un produit existant
         await productService.updateProduct(editId, productData);
         Alert.alert(
           'Succès',
@@ -354,7 +354,6 @@ export default function AddProductScreen({ navigation, route }: any) {
           ]
         );
       } else {
-        // Création d'un nouveau produit
         const newProduct = await productService.createProduct(productData);
         Alert.alert(
           'Succès',
@@ -377,7 +376,6 @@ export default function AddProductScreen({ navigation, route }: any) {
       let errorMessage = '';
       let errorTitle = 'Erreur';
       
-      // Gestion spécifique des erreurs d'upload d'images
       if (error.message?.includes('connexion réseau')) {
         errorTitle = 'Erreur de Connexion';
         errorMessage = 'Vérifiez votre connexion internet et que le serveur est accessible.';
@@ -420,6 +418,7 @@ export default function AddProductScreen({ navigation, route }: any) {
   const resetForm = () => {
     setForm(prev => ({
       name: '',
+      cug: '',
       description: '',
       purchase_price: '',
       selling_price: '',
@@ -433,7 +432,7 @@ export default function AddProductScreen({ navigation, route }: any) {
     }));
   };
 
-    // Les fonctions de gestion d'images sont maintenant gérées par le hook useImageManager
+
 
   const FormField = useCallback(({ 
     label, 
@@ -521,7 +520,6 @@ export default function AddProductScreen({ navigation, route }: any) {
     );
   }
 
-  // Safety check: ensure form is defined before rendering
   if (!form) {
     console.error('❌ Formulaire non défini dans le render');
     return (
@@ -546,7 +544,6 @@ export default function AddProductScreen({ navigation, route }: any) {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="none"
         >
-          {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()}>
               <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
@@ -557,11 +554,9 @@ export default function AddProductScreen({ navigation, route }: any) {
             </TouchableOpacity>
           </View>
 
-          {/* Formulaire */}
           <View style={styles.formContainer}>
             <Text style={styles.sectionTitle}>Informations générales</Text>
 
-            {/* Image */}
             <View style={styles.imageRow}>
               <TouchableOpacity 
                 style={[styles.imagePicker, isProcessing && styles.imagePickerDisabled]} 
@@ -586,7 +581,6 @@ export default function AddProductScreen({ navigation, route }: any) {
               )}
             </View>
 
-            {/* Actif / Inactif */}
             <View style={styles.switchRow}>
               <Text style={styles.fieldLabel}>Activer le produit</Text>
               <TouchableOpacity
@@ -605,6 +599,38 @@ export default function AddProductScreen({ navigation, route }: any) {
               placeholder="Ex: iPhone 14 Pro"
               required
             />
+
+            <View style={styles.fieldContainer}>
+              <View style={styles.fieldHeader}>
+                <Text style={styles.fieldLabel}>
+                  CUG (Code Unique de Gestion)
+                </Text>
+                <TouchableOpacity 
+                  style={styles.generateCugButton}
+                  onPress={() => updateForm('cug', generateRandomCUG())}
+                >
+                  <Ionicons name="refresh" size={16} color={theme.colors.primary[500]} />
+                  <Text style={styles.generateCugButtonText}>Générer</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={styles.textInput}
+                value={form.cug}
+                onChangeText={(value: string) => updateForm('cug', value)}
+                placeholder="Laissé vide pour génération automatique"
+                keyboardType="numeric"
+                autoCapitalize="none"
+                autoCorrect={false}
+                blurOnSubmit={false}
+                returnKeyType="next"
+                enablesReturnKeyAutomatically={true}
+                contextMenuHidden={false}
+                selectTextOnFocus={false}
+              />
+              <Text style={styles.helpText}>
+                💡 Le CUG sera généré automatiquement si laissé vide, ou saisissez un code personnalisé
+              </Text>
+            </View>
 
             <FormField
               label="Description"
@@ -680,7 +706,6 @@ export default function AddProductScreen({ navigation, route }: any) {
               keyboardType="numeric"
             />
 
-            {/* Bouton de soumission */}
             <TouchableOpacity
               style={[styles.submitButton, loading && styles.submitButtonDisabled]}
               onPress={handleSubmit}
@@ -699,7 +724,6 @@ export default function AddProductScreen({ navigation, route }: any) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Modal pour créer rapidement une catégorie */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -763,7 +787,6 @@ export default function AddProductScreen({ navigation, route }: any) {
         </View>
       </Modal>
 
-      {/* Modal pour créer rapidement une marque */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -895,6 +918,28 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: theme.colors.background.secondary,
   },
+  generateCugButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: theme.colors.primary[50],
+    borderWidth: 1,
+    borderColor: theme.colors.primary[200],
+  },
+  generateCugButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.primary[500],
+    marginLeft: 4,
+  },
+  helpText: {
+    fontSize: 12,
+    color: theme.colors.text.tertiary,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
   required: {
     color: theme.colors.error[500],
   },
@@ -1007,7 +1052,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   
-  // Styles pour les modals
   quickModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

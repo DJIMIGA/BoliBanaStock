@@ -46,6 +46,7 @@ drf-yasg==1.21.7  # Documentation API Swagger
 
 # Railway/PostgreSQL
 psycopg2-binary>=2.9.7  # Driver PostgreSQL pour Railway
+dj-database-url>=2.1.0  # Configuration automatique des bases de données
  
 # Runtime utils nécessaires
 setuptools>=68.0.0

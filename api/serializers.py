@@ -43,6 +43,8 @@ class ProductSerializer(serializers.ModelSerializer):
     brand_id = serializers.PrimaryKeyRelatedField(
         queryset=Brand.objects.all(), source='brand', write_only=True, required=False, allow_null=True
     )
+    # Champ CUG optionnel pour la création (sera généré automatiquement si non fourni)
+    cug = serializers.CharField(required=False, allow_blank=True, max_length=50)
     
     def get_category(self, obj):
         if obj.category:
@@ -90,6 +92,14 @@ class ProductSerializer(serializers.ModelSerializer):
             'category_id', 'brand_id'
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'stock_updated_at']
+
+    def create(self, validated_data):
+        """Créer un produit avec génération automatique du CUG si nécessaire"""
+        # Si aucun CUG n'est fourni, le modèle le générera automatiquement
+        if not validated_data.get('cug'):
+            validated_data.pop('cug', None)  # Supprimer le champ vide pour laisser le modèle le gérer
+        
+        return super().create(validated_data)
 
     def update(self, instance, validated_data):
         """Supporte PATCH/PUT avec image et mise à jour des FK même si le client envoie 'category'/'brand' comme IDs"""
