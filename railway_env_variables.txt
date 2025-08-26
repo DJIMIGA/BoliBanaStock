@@ -1,7 +1,7 @@
 # Variables d'environnement Railway pour BoliBana Stock
 # Copiez ces variables dans le dashboard Railway
 
-DJANGO_SECRET_KEY=atHsx*rGC8ZD_aqFTZQv0nlx7fevSSalN32AoPj4FuEs#WXNXb
+DJANGO_SECRET_KEY=(!&eedcMMzBN$Og#-7IjspErlG5Kmu9fFF(av2tGin5f5tVGqE
 DJANGO_DEBUG=False
 DJANGO_SETTINGS_MODULE=bolibanastock.settings
 RAILWAY_HOST=web-production-e896b.up.railway.app
