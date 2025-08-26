@@ -2011,11 +2011,11 @@ def get_user_site_configuration_api(user):
         return user.site_configuration
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsAdminUser])
+@permission_classes([IsAuthenticated])
 def collect_static_files(request):
     """
     Endpoint API pour collecter les fichiers statiques
-    Accessible uniquement aux administrateurs
+    Accessible à tous les utilisateurs authentifiés
     """
     try:
         # Collecter les fichiers statiques

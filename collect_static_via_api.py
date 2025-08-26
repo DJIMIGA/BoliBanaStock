@@ -12,8 +12,8 @@ def collect_static_via_api():
     print("🔧 Collecte des fichiers statiques sur Railway via l'API")
     print("=" * 60)
     
-    # Demander les identifiants d'un administrateur
-    print("\n🔐 Connexion administrateur requise:")
+    # Demander les identifiants d'un utilisateur
+    print("\n🔐 Connexion utilisateur requise:")
     username = input("Username admin: ").strip()
     password = input("Mot de passe admin: ").strip()
     
@@ -80,7 +80,7 @@ def collect_static_via_api():
             test_admin_interface()
             
         elif collect_response.status_code == 403:
-            print("❌ Accès refusé - L'utilisateur n'a pas les permissions d'administrateur")
+            print("❌ Accès refusé - L'utilisateur n'a pas les permissions requises")
             
         elif collect_response.status_code == 401:
             print("❌ Token invalide ou expiré")
