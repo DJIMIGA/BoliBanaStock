@@ -31,6 +31,9 @@ from django.http import Http404
 from app.inventory.printing.pdf import render_label_batch_pdf
 from app.inventory.printing.tsc import render_label_batch_tsc
 from django.shortcuts import get_object_or_404
+from django.core.management import call_command
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 
 
 class LoginView(APIView):
@@ -2006,3 +2009,30 @@ def get_user_site_configuration_api(user):
         if not user.site_configuration:
             raise Http404("Aucun site configuré pour cet utilisateur")
         return user.site_configuration
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def collect_static_files(request):
+    """
+    Endpoint API pour collecter les fichiers statiques
+    Accessible uniquement aux administrateurs
+    """
+    try:
+        # Collecter les fichiers statiques
+        call_command('collectstatic', '--noinput', '--clear')
+        
+        return Response({
+            'success': True,
+            'message': 'Fichiers statiques collectés avec succès',
+            'details': {
+                'command': 'collectstatic --noinput --clear',
+                'timestamp': timezone.now().isoformat()
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e),
+            'message': 'Erreur lors de la collecte des fichiers statiques'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

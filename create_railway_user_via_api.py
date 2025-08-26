@@ -16,28 +16,35 @@ def create_user_via_api():
     username = input("Username: ").strip()
     email = input("Email: ").strip()
     password = input("Mot de passe: ").strip()
-    first_name = input("Prénom (optionnel): ").strip()
-    last_name = input("Nom (optionnel): ").strip()
+    first_name = input("Prénom (obligatoire): ").strip()
+    last_name = input("Nom (obligatoire): ").strip()
     
-    if not username or not email or not password:
-        print("❌ Username, email et mot de passe sont requis")
+    if not username or not email or not password or not first_name or not last_name:
+        print("❌ Username, email, mot de passe, prénom et nom sont requis")
         return
     
-    # Données de l'utilisateur
+    # Données de l'utilisateur avec les bons champs et permissions complètes
     user_data = {
         'username': username,
         'email': email,
-        'password': password,
-        'first_name': first_name or '',
-        'last_name': last_name or '',
+        'password1': password,
+        'password2': password,
+        'first_name': first_name,
+        'last_name': last_name,
         'is_superuser': True,
         'is_staff': True,
-        'is_active': True
+        'is_active': True,
+        'groups': [],  # Aucun groupe spécifique
+        'user_permissions': []  # Aucune permission spécifique
     }
     
     print(f"\n👤 Création de l'utilisateur: {username}")
     print(f"📧 Email: {email}")
+    print(f"👤 Prénom: {first_name}")
+    print(f"👤 Nom: {last_name}")
     print(f"🔑 Superuser: {user_data['is_superuser']}")
+    print(f"👔 Staff: {user_data['is_staff']}")
+    print(f"✅ Actif: {user_data['is_active']}")
     
     try:
         # Tentative de création via l'API
@@ -54,11 +61,20 @@ def create_user_via_api():
         print(f"📋 Headers: {dict(response.headers)}")
         
         if response.status_code == 201:
+            auth_data = response.json()
             print("✅ Utilisateur créé avec succès!")
-            user_info = response.json()
-            print(f"   ID: {user_info.get('id')}")
-            print(f"   Username: {user_info.get('username')}")
-            print(f"   Email: {user_info.get('email')}")
+            print(f"   ID: {auth_data.get('id')}")
+            print(f"   Username: {auth_data.get('username')}")
+            print(f"   Email: {auth_data.get('email')}")
+            
+            # Test de connexion immédiat
+            print("\n🔍 Test de connexion immédiat...")
+            test_login(username, password)
+            
+        elif response.status_code == 200:
+            auth_data = response.json()
+            print("✅ Utilisateur créé avec succès!")
+            print(f"   Réponse: {auth_data}")
             
             # Test de connexion immédiat
             print("\n🔍 Test de connexion immédiat...")
@@ -67,6 +83,16 @@ def create_user_via_api():
         elif response.status_code == 400:
             print("❌ Erreur de validation des données")
             print(f"   Détails: {response.text}")
+            
+            # Afficher les erreurs spécifiques
+            try:
+                error_data = response.json()
+                if 'details' in error_data:
+                    print("\n🔍 Erreurs de validation:")
+                    for field, errors in error_data['details'].items():
+                        print(f"   {field}: {errors}")
+            except:
+                pass
             
         elif response.status_code == 409:
             print("❌ L'utilisateur existe déjà")
@@ -101,7 +127,7 @@ def test_login(username, password):
             print("✅ Connexion réussie!")
             print(f"   Token: {auth_data.get('access_token', 'N/A')[:20]}...")
             
-            # Test d'accès à l'admin
+            # Test d'accès à l'admin avec le token
             access_token = auth_data.get('access_token')
             if access_token:
                 print("\n🔍 Test d'accès à l'admin...")
@@ -121,6 +147,7 @@ def test_login(username, password):
                     print("✅ Accès admin autorisé")
                     print("\n🎉 Félicitations ! L'utilisateur peut accéder à l'admin")
                     print("🌐 URL: https://web-production-e896b.up.railway.app/admin/")
+                    print(f"   Identifiants: {username} / {password}")
                 else:
                     print(f"⚠️ Accès admin retourne: {admin_response.status_code}")
                     
@@ -153,6 +180,8 @@ def check_api_endpoints():
                 print(f"   ❌ {endpoint} - Non trouvé (404)")
             elif status == 401:
                 print(f"   🔒 {endpoint} - Authentification requise (401)")
+            elif status == 405:
+                print(f"   ⚠️ {endpoint} - Méthode non autorisée (405)")
             else:
                 print(f"   ⚠️ {endpoint} - Code: {status}")
                 

@@ -11,7 +11,8 @@ from .views import (
     UserProfileAPIView, PublicSignUpAPIView,
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
     RefreshTokenView, ForceLogoutAllView,
-    LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView
+    LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
+    collect_static_files
 )
 
 # Configuration Swagger
@@ -69,6 +70,9 @@ urlpatterns = [
     
     # Génération d'étiquettes
     path('labels/generate/', LabelGeneratorAPIView.as_view(), name='api_label_generator'),
+    
+    # Administration - Collecte des fichiers statiques
+    path('admin/collectstatic/', collect_static_files, name='api_collect_static'),
     
     # API endpoints
     path('', include(router.urls)),
