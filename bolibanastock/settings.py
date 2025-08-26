@@ -88,13 +88,29 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'bolibanastock.wsgi.application'
 
-# Database
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Database - Configuration automatique pour Railway
+import dj_database_url
+
+# Vérifier si on est sur Railway (variables PostgreSQL présentes)
+if os.getenv('DATABASE_URL') or os.getenv('PGDATABASE'):
+    # Configuration PostgreSQL pour Railway
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=os.getenv('DATABASE_URL'),
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-}
+    print("🚂 Configuration PostgreSQL Railway détectée")
+else:
+    # Configuration SQLite pour le développement local
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+    print("💻 Configuration SQLite locale détectée")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -261,6 +277,8 @@ CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if os.ge
     "http://localhost:8000",    # Django API local
     "exp://localhost:8081",     # Expo Go local
     "exp://127.0.0.1:8081",     # Expo Go local
+    "exp://192.168.1.7:8081",   # Expo Go réseau local
+    "exp://192.168.1.7:19000",  # Expo Go port alternatif
 ]
 
 # Ajouter Railway aux origines CORS si configuré
@@ -268,6 +286,14 @@ if RAILWAY_HOST:
     CORS_ALLOWED_ORIGINS.extend([
         f"https://{RAILWAY_HOST}",
         f"http://{RAILWAY_HOST}",
+    ])
+
+# Ajouter des origines plus permissives pour le développement mobile
+if DEBUG or os.getenv('MOBILE_DEVELOPMENT', 'False') == 'True':
+    CORS_ALLOWED_ORIGINS.extend([
+        "exp://*",              # Toutes les origines Expo Go
+        "http://*",             # Toutes les origines HTTP locales
+        "https://*",            # Toutes les origines HTTPS locales
     ])
 
 CORS_ALLOW_CREDENTIALS = True
@@ -279,6 +305,38 @@ if DEBUG:
 elif os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True':
     CORS_ALLOW_ALL_ORIGINS = True
     CORS_ALLOW_CREDENTIALS = True
+
+# Configuration CORS pour les appareils mobiles
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'cache-control',
+    'pragma',
+    'x-http-method-override',  # Pour les méthodes HTTP personnalisées
+]
+
+# Configuration spécifique pour les uploads d'images
+CORS_EXPOSE_HEADERS = [
+    'content-disposition',
+    'content-length',
+    'content-type',
+]
 
 # Configuration des limites d'upload pour les images
 DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
@@ -310,26 +368,3 @@ if not DEBUG:
             },
         },
     }
-
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-    'cache-control',
-    'pragma',
-]

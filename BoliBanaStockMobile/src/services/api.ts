@@ -353,11 +353,32 @@ export const productService = {
         }
 
         console.log('📤 Upload avec image - FormData:', formData);
+        console.log('🔗 URL API utilisée:', `${API_BASE_URL}/products/`);
+        console.log('🌐 Mode développement:', __DEV__);
         
+        // Vérifier l'authentification avant l'upload
+        const token = await AsyncStorage.getItem('access_token');
+        if (!token) {
+          throw new Error('Aucun token d\'authentification trouvé. Veuillez vous reconnecter.');
+        }
+        console.log('✅ Token d\'authentification trouvé');
+        
+        // Configuration optimisée pour les uploads d'images
         const response = await api.post('/products/', formData, {
           // Ne pas définir manuellement Content-Type pour laisser Axios ajouter le boundary
-          timeout: 30000, // Timeout plus long pour les uploads
+          timeout: 60000, // Timeout plus long pour les uploads (1 minute)
+          maxContentLength: 50 * 1024 * 1024, // 50MB max
+          maxBodyLength: 50 * 1024 * 1024, // 50MB max
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) => {
+            return status >= 200 && status < 300; // Accepter seulement les succès
+          },
         });
+        
+        console.log('✅ Upload réussi:', response.status);
         return response.data;
       } else {
         // Pas d'image, requête normale
@@ -368,8 +389,17 @@ export const productService = {
       console.error('❌ Erreur création produit avec image:', error);
       
       // Gestion spécifique des erreurs d'upload
-      if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
+      if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+        console.error('🌐 Erreur réseau détaillée:', {
+          code: error.code,
+          message: error.message,
+          config: error.config,
+        });
         throw new Error('Erreur de connexion réseau. Vérifiez votre connexion et réessayez.');
+      }
+      
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('La requête a pris trop de temps. Vérifiez votre connexion réseau.');
       }
       
       if (error.response?.status === 413) {
@@ -381,6 +411,18 @@ export const productService = {
                            error.response.data?.message || 
                            'Données invalides';
         throw new Error(errorMessage);
+      }
+      
+      if (error.response?.status === 401) {
+        throw new Error('Session expirée. Veuillez vous reconnecter.');
+      }
+      
+      if (error.response?.status === 403) {
+        throw new Error('Accès refusé. Vérifiez vos permissions.');
+      }
+      
+      if (error.response?.status >= 500) {
+        throw new Error('Erreur serveur. Veuillez réessayer plus tard.');
       }
       
       throw error;

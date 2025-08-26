@@ -233,6 +233,29 @@ class ProductViewSet(viewsets.ModelViewSet):
         context['request'] = self.request
         return context
 
+    def create(self, request, *args, **kwargs):
+        """Créer un produit avec gestion améliorée des images"""
+        try:
+            print(f"🆕 Création produit - Méthode: {request.method}")
+            print(f"📦 Données reçues: {dict(request.data)}")
+            print(f"📎 Fichiers reçus: {list(request.FILES.keys())}")
+            print(f"🌐 Origine: {request.META.get('HTTP_ORIGIN', 'Non spécifiée')}")
+            print(f"📱 User-Agent: {request.META.get('HTTP_USER_AGENT', 'Non spécifié')}")
+            
+            # Vérifier la taille des fichiers
+            for field_name, file_obj in request.FILES.items():
+                print(f"📏 Fichier {field_name}: {file_obj.size} bytes, type: {file_obj.content_type}")
+                if file_obj.size > 50 * 1024 * 1024:  # 50MB
+                    return Response(
+                        {'error': f'Fichier {field_name} trop volumineux (max 50MB)'},
+                        status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                    )
+            
+        except Exception as e:
+            print(f"⚠️  Erreur lors du logging de création: {e}")
+        
+        return super().create(request, *args, **kwargs)
+
     def update(self, request, *args, **kwargs):
         # Log de debug pour suivre les mises à jour complètes (PUT)
         try:
@@ -266,12 +289,21 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         try:
             print("🖼️  Upload image (POST) - payload:", dict(request.data))
-            try:
-                print("📎 Fichiers reçus (POST):", list(request.FILES.keys()))
-            except Exception:
-                pass
-        except Exception:
-            pass
+            print("📎 Fichiers reçus (POST):", list(request.FILES.keys()))
+            print(f"🌐 Origine: {request.META.get('HTTP_ORIGIN', 'Non spécifiée')}")
+            print(f"📱 User-Agent: {request.META.get('HTTP_USER_AGENT', 'Non spécifié')}")
+            
+            # Vérifier la taille des fichiers
+            for field_name, file_obj in request.FILES.items():
+                print(f"📏 Fichier {field_name}: {file_obj.size} bytes, type: {file_obj.content_type}")
+                if file_obj.size > 50 * 1024 * 1024:  # 50MB
+                    return Response(
+                        {'error': f'Fichier {field_name} trop volumineux (max 50MB)'},
+                        status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                    )
+                    
+        except Exception as e:
+            print(f"⚠️  Erreur lors du logging d'upload: {e}")
 
         product = get_object_or_404(Product, pk=pk)
         serializer = self.get_serializer(product, data=request.data, partial=True)
