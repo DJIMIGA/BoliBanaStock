@@ -92,10 +92,10 @@ class PublicSignUpForm(UserCreationForm):
         user.last_name = self.cleaned_data['last_name']
         
         # Valeurs par défaut pour les champs optionnels
-        user.telephone = ''
-        user.poste = ''
-        user.adresse = ''
-        user.est_actif = True
+        # user.telephone = ''  # Champ supprimé
+        # user.poste = ''      # Champ supprimé
+        # user.adresse = ''    # Champ supprimé
+        # user.est_actif = True  # Champ supprimé
         # Ne pas forcer is_staff et is_superuser ici, laisser la vue les définir
         # user.is_staff = False
         # user.is_superuser = False
@@ -170,57 +170,7 @@ class CustomUserCreationForm(UserCreationForm):
         })
     )
     
-    # Informations de contact
-    telephone = forms.CharField(
-        label=_('Téléphone'),
-        max_length=20,
-        required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
-            'placeholder': '+226 XX XX XX XX'
-        })
-    )
-    
-    poste = forms.CharField(
-        label=_('Poste'),
-        max_length=100,
-        required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
-            'placeholder': 'Ex: Vendeur, Gérant, Comptable'
-        })
-    )
-    
-    adresse = forms.CharField(
-        label=_('Adresse'),
-        required=False,
-        widget=forms.Textarea(attrs={
-            'class': 'block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
-            'rows': '3',
-            'placeholder': 'Adresse complète'
-        })
-    )
-    
-    # Photo
-    photo = forms.ImageField(
-        label=_('Photo de profil'),
-        required=False,
-        widget=forms.FileInput(attrs={
-            'class': 'block w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-bolibana-50 file:text-bolibana-700 hover:file:bg-bolibana-100'
-        }),
-        help_text=_('Format recommandé: PNG, JPG. Taille max: 2MB')
-    )
-    
-    # Permissions et statut
-    est_actif = forms.BooleanField(
-        label=_('Compte actif'),
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={
-            'class': 'h-4 w-4 text-bolibana-600 focus:ring-bolibana-500 border-neutral-300 rounded'
-        }),
-        help_text=_('Décochez cette case pour désactiver le compte')
-    )
+
     
     is_staff = forms.BooleanField(
         label=_('Accès à l\'administration'),
@@ -247,8 +197,7 @@ class CustomUserCreationForm(UserCreationForm):
         fields = [
             'username', 'password1', 'password2',
             'first_name', 'last_name', 'email',
-            'telephone', 'poste', 'adresse', 'photo',
-            'est_actif', 'is_staff', 'is_superuser'
+            'is_staff', 'is_superuser'
         ]
 
     def __init__(self, *args, **kwargs):
@@ -262,11 +211,6 @@ class CustomUserCreationForm(UserCreationForm):
         self.fields['first_name'].label = _('Prénom')
         self.fields['last_name'].label = _('Nom')
         self.fields['email'].label = _('Adresse e-mail')
-        self.fields['telephone'].label = _('Téléphone')
-        self.fields['poste'].label = _('Poste')
-        self.fields['adresse'].label = _('Adresse')
-        self.fields['photo'].label = _('Photo de profil')
-        self.fields['est_actif'].label = _('Compte actif')
         self.fields['is_staff'].label = _('Accès à l\'administration')
         self.fields['is_superuser'].label = _('Administrateur')
 
@@ -294,10 +238,10 @@ class CustomUserCreationForm(UserCreationForm):
         user.email = self.cleaned_data['email']
         user.first_name = self.cleaned_data['first_name']
         user.last_name = self.cleaned_data['last_name']
-        user.telephone = self.cleaned_data.get('telephone', '')
-        user.poste = self.cleaned_data.get('poste', '')
-        user.adresse = self.cleaned_data.get('adresse', '')
-        user.est_actif = self.cleaned_data.get('est_actif', True)
+        # user.telephone = self.cleaned_data.get('telephone', '')  # Champ supprimé
+        # user.poste = self.cleaned_data.get('poste', '')          # Champ supprimé
+        # user.adresse = self.cleaned_data.get('adresse', '')      # Champ supprimé
+        # user.est_actif = self.cleaned_data.get('est_actif', True)  # Champ supprimé
         user.is_staff = self.cleaned_data.get('is_staff', False)
         user.is_superuser = self.cleaned_data.get('is_superuser', False)
         
@@ -316,8 +260,7 @@ class CustomUserUpdateForm(forms.ModelForm):
         model = User
         fields = [
             'username', 'first_name', 'last_name', 'email',
-            'telephone', 'poste', 'adresse', 'photo',
-            'est_actif', 'is_staff', 'is_superuser'
+            'is_staff', 'is_superuser'
         ]
         widgets = {
             'username': forms.TextInput(attrs={
@@ -336,25 +279,6 @@ class CustomUserUpdateForm(forms.ModelForm):
                 'class': 'block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
                 'placeholder': 'email@exemple.com'
             }),
-            'telephone': forms.TextInput(attrs={
-                'class': 'block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
-                'placeholder': '+226 XX XX XX XX'
-            }),
-            'poste': forms.TextInput(attrs={
-                'class': 'block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
-                'placeholder': 'Ex: Vendeur, Gérant, Comptable'
-            }),
-            'adresse': forms.Textarea(attrs={
-                'class': 'block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
-                'rows': '3',
-                'placeholder': 'Adresse complète'
-            }),
-            'photo': forms.FileInput(attrs={
-                'class': 'block w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-bolibana-50 file:text-bolibana-700 hover:file:bg-bolibana-100'
-            }),
-            'est_actif': forms.CheckboxInput(attrs={
-                'class': 'h-4 w-4 text-bolibana-600 focus:ring-bolibana-500 border-neutral-300 rounded'
-            }),
             'is_staff': forms.CheckboxInput(attrs={
                 'class': 'h-4 w-4 text-bolibana-600 focus:ring-bolibana-500 border-neutral-300 rounded'
             }),
@@ -371,19 +295,12 @@ class CustomUserUpdateForm(forms.ModelForm):
         self.fields['first_name'].label = _('Prénom')
         self.fields['last_name'].label = _('Nom')
         self.fields['email'].label = _('Adresse e-mail')
-        self.fields['telephone'].label = _('Téléphone')
-        self.fields['poste'].label = _('Poste')
-        self.fields['adresse'].label = _('Adresse')
-        self.fields['photo'].label = _('Photo de profil')
-        self.fields['est_actif'].label = _('Compte actif')
         self.fields['is_staff'].label = _('Accès à l\'administration')
         self.fields['is_superuser'].label = _('Administrateur')
         
         # Help text pour les permissions
-        self.fields['est_actif'].help_text = _('Décochez cette case pour désactiver le compte')
         self.fields['is_staff'].help_text = _('Permet d\'accéder à l\'interface d\'administration')
         self.fields['is_superuser'].help_text = _('Accorde tous les droits d\'administration')
-        self.fields['photo'].help_text = _('Format recommandé: PNG, JPG. Taille max: 2MB')
 
     def clean_email(self):
         email = self.cleaned_data.get('email')
