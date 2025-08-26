@@ -17,6 +17,9 @@ from app.core.utils import cache_result
 from app.core.storage import storage
 from django.http import Http404
 from django.db import transaction
+from django.core.paginator import Paginator
+from app.core.models import Configuration
+from .models import ProductCopy
 
 class ProductListView(SiteRequiredMixin, ListView):
     model = Product
@@ -1221,3 +1224,210 @@ class LabelGeneratorView(SiteRequiredMixin, View):
             'brands': Brand.objects.filter(site_configuration=request.user.site_configuration),
         }
         return render(request, self.template_name, context)
+
+class ProductCopyView(LoginRequiredMixin, View):
+    """
+    Vue pour copier des produits du site principal vers le site actuel
+    """
+    template_name = 'inventory/product_copy.html'
+    
+    def get(self, request):
+        """Affiche la liste des produits disponibles pour la copie"""
+        # Récupérer la configuration du site actuel
+        current_site = request.user.site_configuration
+        
+        if not current_site:
+            messages.error(request, "Aucune configuration de site trouvée.")
+            return redirect('inventory:product_list')
+        
+        # Récupérer les produits du site principal (première configuration)
+        main_site = Configuration.objects.first()
+        
+        if not main_site or main_site == current_site:
+            messages.error(request, "Aucun site principal disponible pour la copie.")
+            return redirect('inventory:product_list')
+        
+        # Récupérer les produits du site principal
+        main_products = Product.objects.filter(
+            site_configuration=main_site,
+            is_active=True
+        ).select_related('category', 'brand')
+        
+        # Filtrer les produits déjà copiés
+        copied_products = ProductCopy.objects.filter(
+            destination_site=current_site
+        ).values_list('original_product_id', flat=True)
+        
+        available_products = main_products.exclude(id__in=copied_products)
+        
+        # Recherche
+        search_query = request.GET.get('search', '').strip()
+        if search_query:
+            available_products = available_products.filter(
+                Q(name__icontains=search_query) |
+                Q(cug__icontains=search_query) |
+                Q(description__icontains=search_query)
+            )
+        
+        # Pagination
+        paginator = Paginator(available_products, 20)
+        page_number = request.GET.get('page')
+        page_obj = paginator.get_page(page_number)
+        
+        context = {
+            'page_obj': page_obj,
+            'search_query': search_query,
+            'main_site': main_site,
+            'current_site': current_site,
+        }
+        
+        return render(request, self.template_name, context)
+    
+    def post(self, request):
+        """Traite la copie de produits"""
+        product_ids = request.POST.getlist('products')
+        
+        if not product_ids:
+            messages.warning(request, "Aucun produit sélectionné pour la copie.")
+            return redirect('inventory:product_copy')
+        
+        current_site = request.user.site_configuration
+        main_site = Configuration.objects.first()
+        
+        if not current_site or not main_site:
+            messages.error(request, "Configuration de site invalide.")
+            return redirect('inventory:product_copy')
+        
+        copied_count = 0
+        
+        for product_id in product_ids:
+            try:
+                original_product = Product.objects.get(
+                    id=product_id,
+                    site_configuration=main_site
+                )
+                
+                # Créer une copie du produit
+                copied_product = Product.objects.create(
+                    name=original_product.name,
+                    slug=f"{original_product.slug}-{current_site.id}",
+                    cug=f"{original_product.cug}-{current_site.id}",
+                    description=original_product.description,
+                    purchase_price=original_product.purchase_price,
+                    selling_price=original_product.selling_price,
+                    quantity=0,  # Stock initial à 0
+                    alert_threshold=original_product.alert_threshold,
+                    category=original_product.category,
+                    brand=original_product.brand,
+                    image=original_product.image,
+                    is_active=True,
+                    site_configuration=current_site
+                )
+                
+                # Créer l'enregistrement de copie
+                ProductCopy.objects.create(
+                    original_product=original_product,
+                    copied_product=copied_product,
+                    source_site=main_site,
+                    destination_site=current_site
+                )
+                
+                copied_count += 1
+                
+            except Product.DoesNotExist:
+                continue
+            except Exception as e:
+                messages.error(request, f"Erreur lors de la copie du produit {product_id}: {e}")
+        
+        if copied_count > 0:
+            messages.success(request, f"{copied_count} produit(s) copié(s) avec succès.")
+        else:
+            messages.warning(request, "Aucun produit n'a pu être copié.")
+        
+        return redirect('inventory:product_list')
+
+class ProductCopyManagementView(LoginRequiredMixin, View):
+    """
+    Vue pour gérer les produits copiés (synchronisation, désactivation, etc.)
+    """
+    template_name = 'inventory/product_copy_management.html'
+    
+    def get(self, request):
+        """Affiche la liste des produits copiés"""
+        current_site = request.user.site_configuration
+        
+        if not current_site:
+            messages.error(request, "Aucune configuration de site trouvée.")
+            return redirect('inventory:product_list')
+        
+        # Récupérer les copies de produits
+        product_copies = ProductCopy.objects.filter(
+            destination_site=current_site
+        ).select_related(
+            'original_product', 
+            'copied_product', 
+            'source_site'
+        ).order_by('-copied_at')
+        
+        # Recherche
+        search_query = request.GET.get('search', '').strip()
+        if search_query:
+            product_copies = product_copies.filter(
+                Q(original_product__name__icontains=search_query) |
+                Q(copied_product__name__icontains=search_query) |
+                Q(original_product__cug__icontains=search_query)
+            )
+        
+        # Pagination
+        paginator = Paginator(product_copies, 20)
+        page_number = request.GET.get('page')
+        page_obj = paginator.get_page(page_number)
+        
+        context = {
+            'page_obj': page_obj,
+            'search_query': search_query,
+            'current_site': current_site,
+        }
+        
+        return render(request, self.template_name, context)
+    
+    def post(self, request):
+        """Traite les actions sur les copies (sync, activation/désactivation)"""
+        action = request.POST.get('action')
+        copy_id = request.POST.get('copy_id')
+        
+        if not action or not copy_id:
+            messages.warning(request, "Action invalide.")
+            return redirect('inventory:product_copy_management')
+        
+        try:
+            product_copy = ProductCopy.objects.get(
+                id=copy_id,
+                destination_site=request.user.site_configuration
+            )
+            
+            if action == 'sync':
+                if product_copy.sync_product():
+                    messages.success(request, f"Produit {product_copy.copied_product.name} synchronisé avec succès.")
+                else:
+                    messages.error(request, f"Erreur lors de la synchronisation de {product_copy.copied_product.name}.")
+            
+            elif action == 'toggle_active':
+                product_copy.is_active = not product_copy.is_active
+                product_copy.save()
+                status = "activée" if product_copy.is_active else "désactivée"
+                messages.success(request, f"Copie {status} pour {product_copy.copied_product.name}.")
+            
+            elif action == 'delete_copy':
+                # Supprimer le produit copié et l'enregistrement de copie
+                product_name = product_copy.copied_product.name
+                product_copy.copied_product.delete()
+                product_copy.delete()
+                messages.success(request, f"Copie supprimée pour {product_name}.")
+            
+        except ProductCopy.DoesNotExist:
+            messages.error(request, "Copie de produit introuvable.")
+        except Exception as e:
+            messages.error(request, f"Erreur lors de l'action: {e}")
+        
+        return redirect('inventory:product_copy_management')

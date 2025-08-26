@@ -47,6 +47,14 @@
                                                                     <a href="{% url 'inventory:product_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
                                     <i class="fas fa-box mr-1"></i>Produits
                                 </a>
+                                {% if user.site_configuration and user.site_configuration != user.site_configuration.get_site_configuration %}
+                                <a href="{% url 'inventory:product_copy' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                    <i class="fas fa-copy mr-1"></i>Copier Produits
+                                </a>
+                                <a href="{% url 'inventory:product_copy_management' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
+                                    <i class="fas fa-cogs mr-1"></i>Gérer Copies
+                                </a>
+                                {% endif %}
                                 <a href="{% url 'inventory:quick_scan' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
                                     <i class="fas fa-search mr-1"></i>Scan Rapide
                                 </a>

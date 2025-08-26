@@ -1,0 +1,375 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Copier des Produits - {{ block.super }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .product-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        transition: all 0.3s ease;
+    }
+    
+    .product-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-color: #007bff;
+    }
+    
+    .product-card.selected {
+        border-color: #28a745;
+        background-color: #f8fff9;
+    }
+    
+    .product-info {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    
+    .product-image {
+        width: 80px;
+        height: 80px;
+        object-fit: cover;
+        border-radius: 4px;
+    }
+    
+    .product-details {
+        flex: 1;
+    }
+    
+    .product-name {
+        font-size: 1.1em;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 5px;
+    }
+    
+    .product-cug {
+        font-family: monospace;
+        background-color: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.9em;
+    }
+    
+    .product-price {
+        color: #28a745;
+        font-weight: 600;
+    }
+    
+    .product-category {
+        color: #6c757d;
+        font-size: 0.9em;
+    }
+    
+    .copy-actions {
+        background-color: #f8f9fa;
+        border-top: 1px solid #e0e0e0;
+        padding: 20px;
+        position: sticky;
+        bottom: 0;
+        z-index: 100;
+    }
+    
+    .search-section {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .site-info {
+        background-color: #e3f2fd;
+        border: 1px solid #2196f3;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .site-info h4 {
+        color: #1976d2;
+        margin-bottom: 10px;
+    }
+    
+    .checkbox-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .checkbox-wrapper input[type="checkbox"] {
+        transform: scale(1.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <!-- En-tête -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0">
+                    <i class="fas fa-copy me-2"></i>
+                    Copier des Produits
+                </h1>
+                <a href="{% url 'inventory:product_list' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>
+                    Retour aux Produits
+                </a>
+            </div>
+
+            <!-- Informations sur les sites -->
+            <div class="site-info">
+                <h4><i class="fas fa-info-circle me-2"></i>Informations sur la Copie</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Site source :</strong> {{ main_site.site_name }} ({{ main_site.nom_societe }})
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Site destination :</strong> {{ current_site.site_name }} ({{ current_site.nom_societe }})
+                    </div>
+                </div>
+                <small class="text-muted">
+                    Les produits copiés seront créés dans votre site avec un stock initial de 0.
+                    Vous pourrez ensuite gérer le stock localement.
+                </small>
+            </div>
+
+            <!-- Recherche -->
+            <div class="search-section">
+                <form method="get" class="row g-3">
+                    <div class="col-md-8">
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="fas fa-search"></i>
+                            </span>
+                            <input type="text" 
+                                   class="form-control" 
+                                   name="search" 
+                                   value="{{ search_query }}"
+                                   placeholder="Rechercher par nom, CUG ou description...">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-2"></i>Rechercher
+                        </button>
+                        {% if search_query %}
+                            <a href="{% url 'inventory:product_copy' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i>Effacer
+                            </a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+
+            <!-- Liste des produits disponibles -->
+            <form method="post" id="copyForm">
+                {% csrf_token %}
+                
+                {% if page_obj %}
+                    <div class="row">
+                        {% for product in page_obj %}
+                            <div class="col-md-6 col-lg-4">
+                                <div class="product-card" data-product-id="{{ product.id }}">
+                                    <div class="product-info">
+                                        <div class="checkbox-wrapper">
+                                            <input type="checkbox" 
+                                                   name="products" 
+                                                   value="{{ product.id }}" 
+                                                   class="product-checkbox"
+                                                   id="product_{{ product.id }}">
+                                        </div>
+                                        
+                                        {% if product.image %}
+                                            <img src="{{ product.image.url }}" 
+                                                 alt="{{ product.name }}" 
+                                                 class="product-image">
+                                        {% else %}
+                                            <div class="product-image bg-light d-flex align-items-center justify-content-center">
+                                                <i class="fas fa-image text-muted"></i>
+                                            </div>
+                                        {% endif %}
+                                        
+                                        <div class="product-details">
+                                            <div class="product-name">{{ product.name }}</div>
+                                            <div class="product-cug">{{ product.cug }}</div>
+                                            <div class="product-price">{{ product.formatted_selling_price }}</div>
+                                            {% if product.category %}
+                                                <div class="product-category">
+                                                    <i class="fas fa-tag me-1"></i>{{ product.category.name }}
+                                                </div>
+                                            {% endif %}
+                                            {% if product.brand %}
+                                                <div class="product-category">
+                                                    <i class="fas fa-copyright me-1"></i>{{ product.brand.name }}
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if page_obj.has_other_pages %}
+                        <nav aria-label="Pagination des produits">
+                            <ul class="pagination justify-content-center">
+                                {% if page_obj.has_previous %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}">
+                                            <i class="fas fa-angle-double-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                            <i class="fas fa-angle-left"></i>
+                                        </a>
+                                    </li>
+                                {% endif %}
+
+                                {% for num in page_obj.paginator.page_range %}
+                                    {% if page_obj.number == num %}
+                                        <li class="page-item active">
+                                            <span class="page-link">{{ num }}</span>
+                                        </li>
+                                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}">{{ num }}</a>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% if page_obj.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                            <i class="fas fa-angle-right"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                            <i class="fas fa-angle-double-right"></i>
+                                        </a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                    {% endif %}
+
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                        <h4 class="text-muted">Aucun produit disponible</h4>
+                        <p class="text-muted">
+                            {% if search_query %}
+                                Aucun produit ne correspond à votre recherche "{{ search_query }}".
+                            {% else %}
+                                Tous les produits du site principal ont déjà été copiés dans votre site.
+                            {% endif %}
+                        </p>
+                        {% if search_query %}
+                            <a href="{% url 'inventory:product_copy' %}" class="btn btn-primary">
+                                <i class="fas fa-eye me-2"></i>Voir tous les produits
+                            </a>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+                <!-- Actions de copie -->
+                {% if page_obj %}
+                    <div class="copy-actions">
+                        <div class="row align-items-center">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="selectAll">
+                                    <label class="form-check-label" for="selectAll">
+                                        <strong>Sélectionner tous les produits affichés</strong>
+                                    </label>
+                                </div>
+                                <small class="text-muted">
+                                    <span id="selectedCount">0</span> produit(s) sélectionné(s)
+                                </small>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <button type="submit" 
+                                        class="btn btn-success btn-lg" 
+                                        id="copyButton" 
+                                        disabled>
+                                    <i class="fas fa-copy me-2"></i>
+                                    Copier les Produits Sélectionnés
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const productCheckboxes = document.querySelectorAll('.product-checkbox');
+    const selectedCountSpan = document.getElementById('selectedCount');
+    const copyButton = document.getElementById('copyButton');
+    
+    // Fonction pour mettre à jour le compteur et l'état du bouton
+    function updateSelection() {
+        const checkedBoxes = document.querySelectorAll('.product-checkbox:checked');
+        const count = checkedBoxes.length;
+        
+        selectedCountSpan.textContent = count;
+        copyButton.disabled = count === 0;
+        
+        // Mettre à jour l'état de "Sélectionner tout"
+        if (count === 0) {
+            selectAllCheckbox.indeterminate = false;
+            selectAllCheckbox.checked = false;
+        } else if (count === productCheckboxes.length) {
+            selectAllCheckbox.indeterminate = false;
+            selectAllCheckbox.checked = true;
+        } else {
+            selectAllCheckbox.indeterminate = true;
+        }
+    }
+    
+    // Gestionnaire pour "Sélectionner tout"
+    selectAllCheckbox.addEventListener('change', function() {
+        productCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateSelection();
+    });
+    
+    // Gestionnaire pour chaque checkbox de produit
+    productCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateSelection);
+    });
+    
+    // Mise à jour initiale
+    updateSelection();
+    
+    // Confirmation avant copie
+    document.getElementById('copyForm').addEventListener('submit', function(e) {
+        const checkedBoxes = document.querySelectorAll('.product-checkbox:checked');
+        if (checkedBoxes.length === 0) {
+            e.preventDefault();
+            alert('Veuillez sélectionner au moins un produit à copier.');
+            return;
+        }
+        
+        if (!confirm(`Êtes-vous sûr de vouloir copier ${checkedBoxes.length} produit(s) dans votre site ?`)) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %}

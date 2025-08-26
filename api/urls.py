@@ -44,14 +44,20 @@ urlpatterns = [
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     
-    # Authentification
+    # Authentification - Endpoints principaux
     path('auth/login/', LoginView.as_view(), name='api_login'),
+    path('auth/register/', PublicSignUpAPIView.as_view(), name='api_register'),  # Endpoint register principal
+    path('auth/signup/', PublicSignUpAPIView.as_view(), name='api_signup'),     # Alias pour compatibilité
     path('auth/refresh/', RefreshTokenView.as_view(), name='api_refresh'),
     path('auth/logout/', LogoutView.as_view(), name='api_logout'),
-    path('auth/signup/', PublicSignUpAPIView.as_view(), name='api_signup'),
     path('auth/logout-all/', ForceLogoutAllView.as_view(), name='api_logout_all'),
     path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # Gestion des utilisateurs
+    path('users/', UserProfileAPIView.as_view(), name='api_users'),  # Endpoint users principal
+    path('users/profile/', UserProfileAPIView.as_view(), name='api_profile'),  # Alias pour compatibilité
+    path('profile/', UserProfileAPIView.as_view(), name='api_profile_alt'),    # Alias alternatif
     
     # Configuration et paramètres
     path('configuration/', ConfigurationAPIView.as_view(), name='api_configuration'),
@@ -60,9 +66,6 @@ urlpatterns = [
     
     # Tableau de bord
     path('dashboard/', DashboardView.as_view(), name='api_dashboard'),
-    
-    # Profil utilisateur
-    path('profile/', UserProfileAPIView.as_view(), name='api_profile'),
     
     # Génération d'étiquettes
     path('labels/generate/', LabelGeneratorAPIView.as_view(), name='api_label_generator'),

@@ -110,7 +110,7 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-    print("💻 Configuration SQLite locale détectée")
+    print("Configuration SQLite locale detectee")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

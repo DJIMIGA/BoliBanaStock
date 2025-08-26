@@ -7,6 +7,7 @@ from .models import (
 from .catalog_models import CatalogTemplate, CatalogGeneration, CatalogItem
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
+from .models import ProductCopy
 
 class CategoryResource(resources.ModelResource):
     class Meta:
@@ -212,3 +213,75 @@ class CatalogItemAdmin(admin.ModelAdmin):
     list_display = ('batch', 'product', 'cug_value', 'position', 'page_number')
     list_filter = ('batch__status', 'page_number')
     search_fields = ('product__name', 'product__cug', 'batch__name', 'cug_value')
+
+@admin.register(ProductCopy)
+class ProductCopyAdmin(admin.ModelAdmin):
+    list_display = (
+        'original_product', 'copied_product', 'source_site', 'destination_site', 
+        'copied_at', 'last_sync', 'is_active', 'sync_status_display'
+    )
+    list_filter = (
+        'is_active', 'sync_prices', 'sync_stock', 'sync_images', 'sync_description',
+        'source_site', 'destination_site', 'copied_at'
+    )
+    search_fields = (
+        'original_product__name', 'original_product__cug',
+        'copied_product__name', 'copied_product__cug'
+    )
+    readonly_fields = ('copied_at', 'last_sync')
+    fieldsets = (
+        ('Produits', {
+            'fields': ('original_product', 'copied_product')
+        }),
+        ('Sites', {
+            'fields': ('source_site', 'destination_site')
+        }),
+        ('Options de synchronisation', {
+            'fields': ('sync_prices', 'sync_stock', 'sync_images', 'sync_description')
+        }),
+        ('Statut', {
+            'fields': ('is_active', 'copied_at', 'last_sync')
+        }),
+    )
+    
+    def sync_status_display(self, obj):
+        """Affiche le statut de synchronisation de manière lisible"""
+        return obj.get_sync_status()
+    sync_status_display.short_description = 'Statut de synchronisation'
+    
+    actions = ['synchroniser_produits', 'activer_copies', 'desactiver_copies']
+    
+    def synchroniser_produits(self, request, queryset):
+        """Synchronise les produits copiés sélectionnés"""
+        count = 0
+        for copy in queryset:
+            if copy.sync_product():
+                count += 1
+        
+        if count == 1:
+            message = "1 produit a été synchronisé avec succès."
+        else:
+            message = f"{count} produits ont été synchronisés avec succès."
+        
+        self.message_user(request, message)
+    synchroniser_produits.short_description = "Synchroniser les produits sélectionnés"
+    
+    def activer_copies(self, request, queryset):
+        """Active les copies sélectionnées"""
+        updated = queryset.update(is_active=True)
+        if updated == 1:
+            message = "1 copie a été activée."
+        else:
+            message = f"{updated} copies ont été activées."
+        self.message_user(request, message)
+    activer_copies.short_description = "Activer les copies sélectionnées"
+    
+    def desactiver_copies(self, request, queryset):
+        """Désactive les copies sélectionnées"""
+        updated = queryset.update(is_active=False)
+        if updated == 1:
+            message = "1 copie a été désactivée."
+        else:
+            message = f"{updated} copies ont été désactivées."
+        self.message_user(request, message)
+    desactiver_copies.short_description = "Désactiver les copies sélectionnées"

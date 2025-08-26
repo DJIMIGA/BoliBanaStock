@@ -36,6 +36,8 @@ import {
   BarcodeTest,
   CategoriesScreen,
   BrandsScreen,
+  ProductCopyScreen,
+  ProductCopyManagementScreen,
 } from './src/screens';
 import { RootStackParamList } from './src/types';
 import theme, { actionColors } from './src/utils/theme';
@@ -166,6 +168,8 @@ const AppContent: React.FC = () => {
             <Stack.Screen name="BarcodeTest" component={BarcodeTest} />
             <Stack.Screen name="Categories" component={CategoriesScreen} />
             <Stack.Screen name="Brands" component={BrandsScreen} />
+            <Stack.Screen name="ProductCopy" component={ProductCopyScreen} />
+            <Stack.Screen name="ProductCopyManagement" component={ProductCopyManagementScreen} />
           </>
         )}
       </Stack.Navigator>

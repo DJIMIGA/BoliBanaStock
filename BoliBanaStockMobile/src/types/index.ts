@@ -170,6 +170,8 @@ export type RootStackParamList = {
   BarcodeTest: undefined;
   Categories: undefined;
   Brands: undefined;
+  ProductCopy: undefined;
+  ProductCopyManagement: undefined;
 };
 
 // Types pour les états de chargement
@@ -192,4 +194,68 @@ export interface SaleFilters {
   date_to?: string;
   payment_method?: string;
   search?: string;
+}
+
+// Types pour la copie de produits entre sites
+export interface ProductCopy {
+  id: number;
+  original_product: Product;
+  copied_product: Product;
+  source_site: {
+    id: number;
+    site_name: string;
+    nom_societe: string;
+  };
+  destination_site: {
+    id: number;
+    site_name: string;
+    nom_societe: string;
+  };
+  copied_at: string;
+  last_sync: string;
+  is_active: boolean;
+  sync_prices: boolean;
+  sync_stock: boolean;
+  sync_images: boolean;
+  sync_description: boolean;
+}
+
+export interface ProductCopyListResponse {
+  count: number;
+  next?: string;
+  previous?: string;
+  results: ProductCopy[];
+}
+
+export interface CopyProductRequest {
+  product_ids: number[];
+}
+
+export interface CopyProductResponse {
+  message: string;
+  copied_count: number;
+  copied_products: Product[];
+}
+
+export interface SyncProductRequest {
+  copy_id: number;
+}
+
+export interface SyncProductResponse {
+  message: string;
+  success: boolean;
+}
+
+export interface ToggleCopyStatusRequest {
+  copy_id: number;
+  is_active: boolean;
+}
+
+export interface DeleteCopyRequest {
+  copy_id: number;
+}
+
+export interface DeleteCopyResponse {
+  message: string;
+  success: boolean;
 } 

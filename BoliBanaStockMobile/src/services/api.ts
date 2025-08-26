@@ -1047,6 +1047,88 @@ export const profileService = {
   },
 };
 
+// Service pour la copie de produits entre sites
+export const productCopyService = {
+  // Récupérer les produits disponibles pour la copie
+  getAvailableProductsForCopy: async (search?: string, page?: number) => {
+    try {
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (page) params.append('page', page.toString());
+      
+      const response = await api.get(`/inventory/copy/?${params.toString()}`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Copier des produits
+  copyProducts: async (productIds: number[]) => {
+    try {
+      const response = await api.post('/inventory/copy/', {
+        products: productIds
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Récupérer la liste des produits copiés
+  getCopiedProducts: async (search?: string, page?: number) => {
+    try {
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (page) params.append('page', page.toString());
+      
+      const response = await api.get(`/inventory/copy/management/?${params.toString()}`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Synchroniser un produit copié
+  syncProduct: async (copyId: number) => {
+    try {
+      const response = await api.post('/inventory/copy/management/', {
+        action: 'sync',
+        copy_id: copyId
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Activer/désactiver une copie
+  toggleCopyStatus: async (copyId: number, isActive: boolean) => {
+    try {
+      const response = await api.post('/inventory/copy/management/', {
+        action: 'toggle_active',
+        copy_id: copyId
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Supprimer une copie
+  deleteCopy: async (copyId: number) => {
+    try {
+      const response = await api.post('/inventory/copy/management/', {
+        action: 'delete_copy',
+        copy_id: copyId
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+};
+
 // Fonction de test de connectivité simplifiée
 export const testConnectivity = async () => {
   console.log('🔍 Test de connectivité Railway...');

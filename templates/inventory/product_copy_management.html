@@ -1,0 +1,425 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Gestion des Produits Copiés - {{ block.super }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .copy-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+    }
+    
+    .copy-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .copy-card.inactive {
+        opacity: 0.6;
+        background-color: #f8f9fa;
+    }
+    
+    .copy-header {
+        display: flex;
+        justify-content-between;
+        align-items: flex-start;
+        margin-bottom: 15px;
+    }
+    
+    .copy-title {
+        font-size: 1.2em;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 5px;
+    }
+    
+    .copy-status {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.8em;
+        font-weight: 500;
+    }
+    
+    .status-active {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .status-inactive {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .copy-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 15px;
+    }
+    
+    .detail-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .detail-label {
+        font-weight: 600;
+        color: #6c757d;
+        font-size: 0.9em;
+    }
+    
+    .detail-value {
+        color: #333;
+    }
+    
+    .copy-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .sync-options {
+        background-color: #f8f9fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 15px;
+        margin-top: 15px;
+    }
+    
+    .sync-options h6 {
+        color: #495057;
+        margin-bottom: 10px;
+    }
+    
+    .sync-checkboxes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+    }
+    
+    .form-check {
+        margin-bottom: 0;
+    }
+    
+    .search-section {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .stats-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+    }
+    
+    .stat-number {
+        font-size: 2em;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }
+    
+    .stat-label {
+        font-size: 0.9em;
+        opacity: 0.9;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <!-- En-tête -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0">
+                    <i class="fas fa-cogs me-2"></i>
+                    Gestion des Produits Copiés
+                </h1>
+                <div>
+                    <a href="{% url 'inventory:product_copy' %}" class="btn btn-primary me-2">
+                        <i class="fas fa-copy me-2"></i>
+                        Copier de Nouveaux Produits
+                    </a>
+                    <a href="{% url 'inventory:product_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Retour aux Produits
+                    </a>
+                </div>
+            </div>
+
+            <!-- Statistiques -->
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-number">{{ page_obj.paginator.count }}</div>
+                    <div class="stat-label">Produits Copiés</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">
+                        {{ page_obj.paginator.count|default:0|add:"-1"|add:"1" }}
+                    </div>
+                    <div class="stat-label">Total</div>
+                </div>
+            </div>
+
+            <!-- Recherche -->
+            <div class="search-section">
+                <form method="get" class="row g-3">
+                    <div class="col-md-8">
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="fas fa-search"></i>
+                            </span>
+                            <input type="text" 
+                                   class="form-control" 
+                                   name="search" 
+                                   value="{{ search_query }}"
+                                   placeholder="Rechercher par nom de produit ou CUG...">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-2"></i>Rechercher
+                        </button>
+                        {% if search_query %}
+                            <a href="{% url 'inventory:product_copy_management' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i>Effacer
+                            </a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+
+            <!-- Liste des produits copiés -->
+            {% if page_obj %}
+                {% for product_copy in page_obj %}
+                    <div class="copy-card {% if not product_copy.is_active %}inactive{% endif %}">
+                        <div class="copy-header">
+                            <div>
+                                <div class="copy-title">
+                                    {{ product_copy.copied_product.name }}
+                                </div>
+                                <small class="text-muted">
+                                    Copié depuis {{ product_copy.source_site.site_name }}
+                                </small>
+                            </div>
+                            <div class="copy-status {% if product_copy.is_active %}status-active{% else %}status-inactive{% endif %}">
+                                {% if product_copy.is_active %}
+                                    <i class="fas fa-check-circle me-1"></i>Actif
+                                {% else %}
+                                    <i class="fas fa-pause-circle me-1"></i>Inactif
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="copy-details">
+                            <div class="detail-group">
+                                <div class="detail-label">CUG Original</div>
+                                <div class="detail-value">{{ product_copy.original_product.cug }}</div>
+                            </div>
+                            <div class="detail-group">
+                                <div class="detail-label">CUG Copié</div>
+                                <div class="detail-value">{{ product_copy.copied_product.cug }}</div>
+                            </div>
+                            <div class="detail-group">
+                                <div class="detail-label">Prix de Vente</div>
+                                <div class="detail-value">{{ product_copy.copied_product.formatted_selling_price }}</div>
+                            </div>
+                            <div class="detail-group">
+                                <div class="detail-label">Stock Local</div>
+                                <div class="detail-value">
+                                    <span class="badge {% if product_copy.copied_product.quantity == 0 %}bg-danger{% elif product_copy.copied_product.quantity <= product_copy.copied_product.alert_threshold %}bg-warning{% else %}bg-success{% endif %}">
+                                        {{ product_copy.copied_product.quantity }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="detail-group">
+                                <div class="detail-label">Date de Copie</div>
+                                <div class="detail-value">{{ product_copy.copied_at|date:"d/m/Y H:i" }}</div>
+                            </div>
+                            <div class="detail-group">
+                                <div class="detail-label">Dernière Sync</div>
+                                <div class="detail-value">{{ product_copy.last_sync|date:"d/m/Y H:i" }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Options de synchronisation -->
+                        <div class="sync-options">
+                            <h6><i class="fas fa-sync-alt me-2"></i>Options de Synchronisation</h6>
+                            <div class="sync-checkboxes">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           {% if product_copy.sync_prices %}checked{% endif %} disabled>
+                                    <label class="form-check-label">
+                                        Prix
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           {% if product_copy.sync_stock %}checked{% endif %} disabled>
+                                    <label class="form-check-label">
+                                        Stock
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           {% if product_copy.sync_images %}checked{% endif %} disabled>
+                                    <label class="form-check-label">
+                                        Images
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           {% if product_copy.sync_description %}checked{% endif %} disabled>
+                                    <label class="form-check-label">
+                                        Description
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="copy-actions">
+                            <form method="post" style="display: inline;">
+                                {% csrf_token %}
+                                <input type="hidden" name="copy_id" value="{{ product_copy.id }}">
+                                
+                                <button type="submit" name="action" value="sync" 
+                                        class="btn btn-primary btn-sm">
+                                    <i class="fas fa-sync-alt me-1"></i>
+                                    Synchroniser
+                                </button>
+                                
+                                <button type="submit" name="action" value="toggle_active" 
+                                        class="btn btn-{% if product_copy.is_active %}warning{% else %}success{% endif %} btn-sm">
+                                    <i class="fas fa-{% if product_copy.is_active %}pause{% else %}play{% endif %} me-1"></i>
+                                    {% if product_copy.is_active %}Désactiver{% else %}Activer{% endif %}
+                                </button>
+                                
+                                <button type="submit" name="action" value="delete_copy" 
+                                        class="btn btn-danger btn-sm"
+                                        onclick="return confirm('Êtes-vous sûr de vouloir supprimer cette copie ? Le produit local sera également supprimé.')">
+                                    <i class="fas fa-trash me-1"></i>
+                                    Supprimer
+                                </button>
+                            </form>
+                            
+                            <a href="{% url 'inventory:product_detail' product_copy.copied_product.pk %}" 
+                               class="btn btn-outline-info btn-sm">
+                                <i class="fas fa-eye me-1"></i>
+                                Voir le Produit
+                            </a>
+                        </div>
+                    </div>
+                {% endfor %}
+
+                <!-- Pagination -->
+                {% if page_obj.has_other_pages %}
+                    <nav aria-label="Pagination des copies">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}">
+                                        <i class="fas fa-angle-double-left"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                        <i class="fas fa-angle-left"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ num }}</span>
+                                    </li>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}">{{ num }}</a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                        <i class="fas fa-angle-right"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                        <i class="fas fa-angle-double-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-copy fa-3x text-muted mb-3"></i>
+                    <h4 class="text-muted">Aucun produit copié</h4>
+                    <p class="text-muted">
+                        {% if search_query %}
+                            Aucune copie ne correspond à votre recherche "{{ search_query }}".
+                        {% else %}
+                            Vous n'avez pas encore copié de produits depuis le site principal.
+                        {% endif %}
+                    </p>
+                    {% if search_query %}
+                        <a href="{% url 'inventory:product_copy_management' %}" class="btn btn-primary">
+                            <i class="fas fa-eye me-2"></i>Voir toutes les copies
+                        </a>
+                    {% else %}
+                        <a href="{% url 'inventory:product_copy' %}" class="btn btn-primary">
+                            <i class="fas fa-copy me-2"></i>Copier des Produits
+                        </a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Confirmation pour les actions destructives
+    const deleteButtons = document.querySelectorAll('button[value="delete_copy"]');
+    deleteButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer cette copie ? Le produit local sera également supprimé.')) {
+                e.preventDefault();
+            }
+        });
+    });
+    
+    // Animation pour les cartes
+    const copyCards = document.querySelectorAll('.copy-card');
+    copyCards.forEach((card, index) => {
+        card.style.animationDelay = `${index * 0.1}s`;
+        card.classList.add('animate__animated', 'animate__fadeInUp');
+    });
+});
+</script>
+{% endblock %}

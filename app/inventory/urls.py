@@ -54,4 +54,8 @@ urlpatterns = [
     
     path('labels/', views.LabelGeneratorView.as_view(), name='label_generator'),
 
+    # URLs pour la copie de produits entre sites
+    path('copy/', views.ProductCopyView.as_view(), name='product_copy'),
+    path('copy/management/', views.ProductCopyManagementView.as_view(), name='product_copy_management'),
+
 ] 

@@ -641,3 +641,110 @@ class LabelItem(models.Model):
         verbose_name = "Étiquette à imprimer"
         verbose_name_plural = "Étiquettes à imprimer"
         ordering = ['position', 'id']
+
+class ProductCopy(models.Model):
+    """
+    Modèle pour gérer la copie de produits entre sites
+    """
+    # Produit original (du site principal)
+    original_product = models.ForeignKey(
+        Product, 
+        on_delete=models.CASCADE, 
+        related_name='copies',
+        verbose_name=_('Produit original')
+    )
+    
+    # Produit copié (dans le site enfant)
+    copied_product = models.ForeignKey(
+        Product, 
+        on_delete=models.CASCADE, 
+        related_name='original_products',
+        verbose_name=_('Produit copié')
+    )
+    
+    # Site source et destination
+    source_site = models.ForeignKey(
+        'core.Configuration',
+        on_delete=models.CASCADE,
+        related_name='products_shared',
+        verbose_name=_('Site source')
+    )
+    
+    destination_site = models.ForeignKey(
+        'core.Configuration',
+        on_delete=models.CASCADE,
+        related_name='products_copied',
+        verbose_name=_('Site destination')
+    )
+    
+    # Métadonnées de la copie
+    copied_at = models.DateTimeField(auto_now_add=True, verbose_name=_('Date de copie'))
+    last_sync = models.DateTimeField(auto_now=True, verbose_name=_('Dernière synchronisation'))
+    is_active = models.BooleanField(default=True, verbose_name=_('Copie active'))
+    
+    # Options de synchronisation
+    sync_prices = models.BooleanField(default=True, verbose_name=_('Synchroniser les prix'))
+    sync_stock = models.BooleanField(default=False, verbose_name=_('Synchroniser le stock'))
+    sync_images = models.BooleanField(default=True, verbose_name=_('Synchroniser les images'))
+    sync_description = models.BooleanField(default=True, verbose_name=_('Synchroniser la description'))
+    
+    class Meta:
+        verbose_name = _('Copie de produit')
+        verbose_name_plural = _('Copies de produits')
+        unique_together = ('original_product', 'destination_site')
+        ordering = ['-copied_at']
+    
+    def __str__(self):
+        return f"{self.original_product.name} → {self.destination_site.site_name}"
+    
+    def sync_product(self):
+        """
+        Synchronise le produit copié avec l'original
+        """
+        if not self.is_active:
+            return False
+            
+        try:
+            original = self.original_product
+            copied = self.copied_product
+            
+            # Synchroniser les champs selon les options
+            if self.sync_prices:
+                copied.purchase_price = original.purchase_price
+                copied.selling_price = original.selling_price
+            
+            if self.sync_description:
+                copied.description = original.description
+            
+            if self.sync_images and original.image:
+                # Copier l'image si elle n'existe pas déjà
+                if not copied.image:
+                    copied.image = original.image
+            
+            # Ne pas synchroniser le stock par défaut (sécurité)
+            # Le stock est géré localement par chaque site
+            
+            copied.save()
+            self.last_sync = timezone.now()
+            self.save()
+            
+            return True
+            
+        except Exception as e:
+            print(f"Erreur lors de la synchronisation: {e}")
+            return False
+    
+    def get_sync_status(self):
+        """Retourne le statut de synchronisation"""
+        if not self.is_active:
+            return "Copie désactivée"
+        
+        days_since_sync = (timezone.now() - self.last_sync).days
+        if days_since_sync == 0:
+            return "Synchronisé aujourd'hui"
+        elif days_since_sync == 1:
+            return "Synchronisé hier"
+        elif days_since_sync < 7:
+            return f"Synchronisé il y a {days_since_sync} jours"
+        else:
+            return f"Synchronisé il y a {days_since_sync} jours (ancien)"

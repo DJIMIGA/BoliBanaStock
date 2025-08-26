@@ -26,3 +26,5 @@ export { default as TestScannerScreen } from './TestScannerScreen';
 export { default as TransactionsScreen } from './TransactionsScreen';
 export { default as CategoriesScreen } from './CategoriesScreen';
 export { default as BrandsScreen } from './BrandsScreen';
+export { default as ProductCopyScreen } from './ProductCopyScreen';
+export { default as ProductCopyManagementScreen } from './ProductCopyManagementScreen';
