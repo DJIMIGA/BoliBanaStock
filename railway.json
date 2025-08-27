@@ -12,7 +12,8 @@
   },
   "env": {
     "PYTHON_VERSION": "3.11",
-    "DJANGO_SETTINGS_MODULE": "bolibanastock.settings",
+    "DJANGO_SETTINGS_MODULE": "bolibanastock.settings_railway",
+    "RAILWAY_ENVIRONMENT": "production",
     "NIXPACKS_NODE_VERSION": "",
     "NIXPACKS_PYTHON_VERSION": "3.11"
   }

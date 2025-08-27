@@ -11,6 +11,10 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bolibanastock.settings')
+# Utiliser les paramètres Railway en production
+if os.getenv('RAILWAY_ENVIRONMENT') == 'production':
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bolibanastock.settings_railway')
+else:
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bolibanastock.settings')
 
 application = get_wsgi_application()
