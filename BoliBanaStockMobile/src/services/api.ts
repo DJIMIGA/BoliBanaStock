@@ -160,7 +160,8 @@ export const authService = {
     email: string;
   }) => {
     try {
-      const response = await api.post('/auth/signup/', userData);
+      // Utiliser l'endpoint simplifié qui fonctionne
+      const response = await api.post('/auth/signup-simple/', userData);
       
       // Si l'inscription retourne des tokens, les adapter au format attendu
       if (response.data.tokens) {
