@@ -1,0 +1,3 @@
+# Fichier temporaire pour déclencher le redéploiement Railway
+# Date: $(date)
+# Objectif: Forcer l'installation de psycopg2-binary
