@@ -14,6 +14,7 @@ from django.utils import timezone
 from apps.core.forms import CustomUserUpdateForm, PublicSignUpForm
 from apps.core.models import User, Configuration, Parametre, Activite
 from apps.core.views import PublicSignUpView
+from django.db import transaction
 
 from .serializers import (
     ProductSerializer, ProductListSerializer, CategorySerializer, BrandSerializer,
@@ -1533,109 +1534,109 @@ class PublicSignUpAPIView(APIView):
             form = PublicSignUpForm(request.data)
             
             if form.is_valid():
-                # Créer l'utilisateur
-                user = form.save(commit=False)
-                
-                # Générer un nom de site unique basé sur le nom de l'utilisateur et un timestamp
-                import time
-                timestamp = int(time.time())
-                base_site_name = f"{user.first_name}-{user.last_name}".replace(' ', '-').lower()
-                site_name = f"{base_site_name}-{timestamp}"
-                
-                # Vérifier l'unicité du nom de site (au cas où)
-                counter = 1
-                original_site_name = site_name
-                while Configuration.objects.filter(site_name=site_name).exists():
-                    site_name = f"{original_site_name}-{counter}"
-                    counter += 1
-                
-                # D'abord sauvegarder l'utilisateur sans site_configuration
-                user.est_actif = True
-                user.is_staff = False
-                user.is_superuser = False
-                user.save()
-                
-                # Maintenant créer la configuration du nouveau site
-                site_config = Configuration(
-                    site_name=site_name,
-                    site_owner=user,
-                    nom_societe=f"Entreprise {user.first_name} {user.last_name}",
-                    adresse="Adresse à configurer",
-                    telephone="",
-                    email=user.email,
-                    devise="€",
-                    tva=0,
-                    description=f"Site créé automatiquement pour {user.get_full_name()}"
-                )
-                site_config.save()
-                
-                # Maintenant mettre à jour l'utilisateur avec sa site_configuration
-                user.site_configuration = site_config
-                user.is_site_admin = True
-                user.save()
-                
-                # Journaliser l'activité (optionnel) - Désactivé temporairement
-                # try:
-                #     Activite.objects.create(
-                #         utilisateur=user,
-                #         type_action='creation',
-                #         description=f'Inscription publique - Création du site: {site_name}',
-                #         ip_address=request.META.get('REMOTE_ADDR'),
-                #         user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                #         url=request.path
-                #     )
-                # except Exception as e:
-                #     print(f"⚠️ Erreur création activité: {e}")
-                #     # Continuer sans journaliser l'activité
-                
-                # Générer les tokens d'authentification
-                refresh = RefreshToken.for_user(user)
-                access_token = str(refresh.access_token)
-                refresh_token = str(refresh)
-                
-                # Retourner les informations de l'utilisateur créé avec les tokens
-                user_data = {
-                    'id': user.id,
-                    'username': user.username,
-                    'email': user.email,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name,
-                    'is_staff': user.is_staff,
-                    'is_active': user.is_active,
-                    'date_joined': user.date_joined.isoformat(),
-                    'site_name': site_name,
-                    'site_config_id': site_config.id
-                }
-                
-                return Response({
-                    'success': True,
-                    'message': 'Compte créé avec succès ! Vous êtes maintenant connecté.',
-                    'user': user_data,
-                    'site_info': {
+                # Utiliser une transaction atomique pour garantir la cohérence
+                with transaction.atomic():
+                    # Créer l'utilisateur
+                    user = form.save(commit=False)
+                    
+                    # Générer un nom de site unique basé sur le nom de l'utilisateur et un timestamp
+                    import time
+                    timestamp = int(time.time())
+                    base_site_name = f"{user.first_name}-{user.last_name}".replace(' ', '-').lower()
+                    site_name = f"{base_site_name}-{timestamp}"
+                    
+                    # Vérifier l'unicité du nom de site (au cas où)
+                    counter = 1
+                    original_site_name = site_name
+                    while Configuration.objects.filter(site_name=site_name).exists():
+                        site_name = f"{original_site_name}-{counter}"
+                        counter += 1
+                    
+                    # D'abord sauvegarder l'utilisateur sans site_configuration
+                    user.est_actif = True
+                    user.is_staff = False
+                    user.is_superuser = False
+                    user.save()
+                    
+                    # Maintenant créer la configuration du nouveau site
+                    site_config = Configuration(
+                        site_name=site_name,
+                        site_owner=user,
+                        nom_societe=f"Entreprise {user.first_name} {user.last_name}",
+                        adresse="Adresse à configurer",
+                        telephone="",
+                        email=user.email,
+                        devise="€",
+                        tva=0,
+                        description=f"Site créé automatiquement pour {user.get_full_name()}"
+                    )
+                    site_config.save()
+                    
+                    # Maintenant mettre à jour l'utilisateur avec sa site_configuration
+                    user.site_configuration = site_config
+                    user.is_site_admin = True
+                    user.save()
+                    
+                    # Journaliser l'activité de manière sécurisée
+                    try:
+                        Activite.objects.create(
+                            utilisateur=user,
+                            type_action='creation',
+                            description=f'Inscription publique - Création du site: {site_name}',
+                            ip_address=request.META.get('REMOTE_ADDR'),
+                            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                            url=request.path
+                        )
+                    except Exception as e:
+                        print(f"⚠️ Erreur création activité: {e}")
+                        # Continuer sans journaliser l'activité - ce n'est pas critique
+                    
+                    # Générer les tokens d'authentification
+                    refresh = RefreshToken.for_user(user)
+                    access_token = str(refresh.access_token)
+                    refresh_token = str(refresh)
+                    
+                    # Retourner les informations de l'utilisateur créé avec les tokens
+                    user_data = {
+                        'id': user.id,
+                        'username': user.username,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'is_staff': user.is_staff,
+                        'is_active': user.is_active,
+                        'date_joined': user.date_joined.isoformat(),
                         'site_name': site_name,
-                        'nom_societe': site_config.nom_societe
-                    },
-                    'tokens': {
-                        'access': access_token,
-                        'refresh': refresh_token
+                        'site_config_id': site_config.id
                     }
-                }, status=status.HTTP_201_CREATED)
+                    
+                    return Response({
+                        'success': True,
+                        'message': 'Compte créé avec succès ! Vous êtes maintenant connecté.',
+                        'user': user_data,
+                        'site_info': {
+                            'site_name': site_name,
+                            'nom_societe': site_config.nom_societe
+                        },
+                        'tokens': {
+                            'access': access_token,
+                            'refresh': refresh_token
+                        }
+                    })
             else:
-                # Retourner les erreurs de validation
+                # Erreurs de validation du formulaire
                 return Response({
                     'success': False,
                     'error': 'Données invalides',
                     'details': form.errors
-                }, status=status.HTTP_400_BAD_REQUEST)
+                }, status=400)
                 
         except Exception as e:
-            print(f"❌ Erreur détaillée: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ Erreur lors de la création du compte: {e}")
             return Response({
                 'success': False,
                 'error': f'Erreur lors de la création du compte: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            }, status=500)
 
 
 # ============ Labels API ============
