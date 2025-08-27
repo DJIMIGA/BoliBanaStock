@@ -1,0 +1,5 @@
+[33m43e45bf[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Fix: Résolution des problèmes d'inscription - transactions atomiques et gestion d'erreur robuste
+[33m35b6b28[m Fix: Correction des chemins d'apps et configuration Railway
+[33m68e77c0[m Fix: Forcer redéploiement pour installation psycopg2-binary
+[33m0ede6ea[m Fix: Configuration Railway complète - Base de données, WSGI intelligent, paramètres Railway
+[33m16ca6e1[m  Correction configuration base de données Railway - Utilisation de DATABASE_URL au lieu de variables séparées
