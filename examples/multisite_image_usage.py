@@ -14,8 +14,8 @@ from bolibanastock.storage_backends import (
     CategoryImageStorage,
     BrandLogoStorage
 )
-from app.inventory.models import Product, Category, Brand
-from app.inventory.forms import ProductForm
+from apps.inventory.models import Product, Category, Brand
+from apps.inventory.forms import ProductForm
 
 # ===== EXEMPLE 1: Création de produit avec stockage multisite =====
 

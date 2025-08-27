@@ -42,10 +42,10 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'tailwind',
     'theme',
-    'app.core',
-    'app.inventory',
-    'app.sales',
-    'app.users',
+    'apps.core',
+    'apps.inventory',
+    'apps.sales',
+    'apps.users',
     'crispy_forms',
     'crispy_tailwind',
     'import_export',
@@ -227,7 +227,7 @@ SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
 # Test runner configuration
-TEST_RUNNER = 'app.inventory.tests.test_runner.CustomTestRunner'
+TEST_RUNNER = 'apps.inventory.tests.test_runner.CustomTestRunner'
 
 # REST Framework Configuration
 REST_FRAMEWORK = {

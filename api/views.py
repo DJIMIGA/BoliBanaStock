@@ -11,9 +11,9 @@ from django.db.models import Q, Sum, F
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils import timezone
-from app.core.forms import CustomUserUpdateForm, PublicSignUpForm
-from app.core.models import User, Configuration, Parametre, Activite
-from app.core.views import PublicSignUpView
+from apps.core.forms import CustomUserUpdateForm, PublicSignUpForm
+from apps.core.models import User, Configuration, Parametre, Activite
+from apps.core.views import PublicSignUpView
 
 from .serializers import (
     ProductSerializer, ProductListSerializer, CategorySerializer, BrandSerializer,
@@ -22,14 +22,14 @@ from .serializers import (
     LoginSerializer, RefreshTokenSerializer, ProductScanSerializer,
     StockUpdateSerializer, SaleCreateSerializer, LabelBatchCreateSerializer
 )
-from app.inventory.models import Product, Category, Brand, Transaction, LabelTemplate, LabelBatch, LabelItem, Barcode
-from app.sales.models import Sale, SaleItem
-from app.core.views import ConfigurationUpdateView, ParametreListView, ParametreUpdateView
+from apps.inventory.models import Product, Category, Brand, Transaction, LabelTemplate, LabelBatch, LabelItem, Barcode
+from apps.sales.models import Sale, SaleItem
+from apps.core.views import ConfigurationUpdateView, ParametreListView, ParametreUpdateView
 from django.http import JsonResponse
 import json
 from django.http import Http404
-from app.inventory.printing.pdf import render_label_batch_pdf
-from app.inventory.printing.tsc import render_label_batch_tsc
+from apps.inventory.printing.pdf import render_label_batch_pdf
+from apps.inventory.printing.tsc import render_label_batch_tsc
 from django.shortcuts import get_object_or_404
 from django.core.management import call_command
 from rest_framework.decorators import api_view, permission_classes
@@ -1696,7 +1696,7 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
         # Créer les items
         position = 0
         total_copies = 0
-        from app.inventory.models import Product
+        from apps.inventory.models import Product
         for item in payload['items']:
             product = Product.objects.get(id=item['product_id'])
             copies = item.get('copies', 1)

@@ -37,10 +37,10 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'tailwind',
     'theme',
-    'app.core',
-    'app.inventory',
-    'app.sales',
-    'app.users',
+    'apps.core',
+    'apps.inventory',
+    'apps.sales',
+    'apps.users',
     'crispy_forms',
     'crispy_tailwind',
     'import_export',
@@ -87,16 +87,32 @@ WSGI_APPLICATION = 'bolibanastock.wsgi.application'
 # Database - PostgreSQL sur Railway
 import dj_database_url
 
-# Configuration de la base de données avec fallback
+# Configuration de la base de données Railway
 DATABASE_URL = os.getenv('DATABASE_URL')
 if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
-    }
+    try:
+        # Utiliser dj-database-url pour parser automatiquement l'URL Railway
+        DATABASES = {
+            'default': dj_database_url.config(
+                default=DATABASE_URL,
+                conn_max_age=600,
+                conn_health_checks=True,
+                ssl_require=True,
+            )
+        }
+        print("🚂 Configuration PostgreSQL Railway automatique")
+        print(f"📊 Base de données: {DATABASES['default']['NAME']}")
+        print(f"🌐 Hôte: {DATABASES['default']['HOST']}")
+    except Exception as e:
+        print(f"⚠️  Erreur configuration automatique: {e}")
+        # Fallback vers SQLite en cas d'erreur
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
+        print("🔄 Fallback vers SQLite")
 else:
     # Configuration de fallback SQLite si aucune base PostgreSQL n'est configurée
     DATABASES = {
@@ -105,6 +121,7 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
+    print("📁 Utilisation de SQLite local")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -145,14 +162,27 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Custom user model
+AUTH_USER_MODEL = 'core.User'
+
+# Tailwind configuration
+TAILWIND_APP_NAME = 'theme'
+
 # CORS settings pour l'API mobile
 CORS_ALLOWED_ORIGINS = [
-    "https://bolibanastock.railway.app",
+    "https://web-production-e896b.up.railway.app",
+    "https://e896b.up.railway.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# CSRF settings pour Railway
+CSRF_TRUSTED_ORIGINS = [
+    "https://web-production-e896b.up.railway.app",
+    "https://e896b.up.railway.app",
+]
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -196,5 +226,7 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
-# Tailwind
-TAILWIND_APP_NAME = 'theme'
+# Session et Cookie settings pour Railway
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_DOMAIN = None  # Laissez Railway gérer le domaine

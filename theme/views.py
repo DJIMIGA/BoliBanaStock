@@ -1,10 +1,10 @@
 from django.views.generic import TemplateView
 from django.db.models import Sum, Count, Q, F, ExpressionWrapper, DecimalField
 from django.utils import timezone
-from app.inventory.models import Product, Category, Transaction
-from app.sales.models import Sale
-from app.core.models import Configuration
-from app.core.utils import get_configuration
+from apps.inventory.models import Product, Category, Transaction
+from apps.sales.models import Sale
+from apps.core.models import Configuration
+from apps.core.utils import get_configuration
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse
 from datetime import datetime, timedelta

@@ -1,0 +1,22 @@
+# Configuration Django pour BoliBana Stock (Développement local)
+# Copiez ce contenu dans un fichier .env
+
+DJANGO_SECRET_KEY=(!&eedcMMzBN$Og#-7IjspErlG5Kmu9fFF(av2tGin5f5tVGqE
+DJANGO_DEBUG=True
+DJANGO_SETTINGS_MODULE=bolibanastock.settings
+
+# Configuration locale (SQLite par défaut)
+# DATABASE_URL n'est pas définie pour utiliser SQLite
+
+# Configuration CORS pour le développement
+CORS_ALLOW_ALL_ORIGINS=True
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8081
+
+# Configuration de l'application
+APP_NAME=BoliBana Stock
+APP_ENV=development
+
+# Pour Railway, ajoutez ces variables dans le dashboard :
+# DATABASE_URL=postgresql://user:password@host:port/database
+# RAILWAY_ENVIRONMENT=production
+# DJANGO_DEBUG=False

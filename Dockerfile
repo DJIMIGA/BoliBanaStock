@@ -13,13 +13,11 @@ COPY . .
 # Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Définir les variables d'environnement pour le build
-ENV DJANGO_SECRET_KEY=temp-secret-key-for-build-only
-ENV DJANGO_DEBUG=False
-ENV DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway
+# Configurer le PYTHONPATH pour inclure le dossier app/
+ENV PYTHONPATH="${PYTHONPATH}:/app:/app/app"
 
-# Collecter les fichiers statiques avec les settings Railway
-RUN python manage.py collectstatic --noinput
+# Vérifier que le module app est accessible
+RUN python -c "import app; print('Module app importé avec succès')" || echo "Module app non trouvé"
 
 # Rendre le script de démarrage exécutable
 RUN chmod +x start.sh

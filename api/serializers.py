@@ -1,7 +1,7 @@
 from rest_framework import serializers
-from app.inventory.models import Product, Category, Brand, Transaction, Barcode, LabelTemplate, LabelBatch, LabelItem
-from app.sales.models import Sale, SaleItem
-from app.core.models import Configuration
+from apps.inventory.models import Product, Category, Brand, Transaction, Barcode, LabelTemplate, LabelBatch, LabelItem
+from apps.sales.models import Sale, SaleItem
+from apps.core.models import Configuration
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import os
