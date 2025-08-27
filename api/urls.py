@@ -8,7 +8,7 @@ from rest_framework import permissions
 from .views import (
     LoginView, LogoutView, DashboardView,
     ConfigurationAPIView, ParametresAPIView, ConfigurationResetAPIView,
-    UserProfileAPIView, PublicSignUpAPIView,
+    UserProfileAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
     RefreshTokenView, ForceLogoutAllView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
@@ -49,6 +49,7 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='api_login'),
     path('auth/register/', PublicSignUpAPIView.as_view(), name='api_register'),  # Endpoint register principal
     path('auth/signup/', PublicSignUpAPIView.as_view(), name='api_signup'),     # Alias pour compatibilité
+    path('auth/signup-simple/', SimpleSignUpAPIView.as_view(), name='api_signup_simple'),  # Version simplifiée
     path('auth/refresh/', RefreshTokenView.as_view(), name='api_refresh'),
     path('auth/logout/', LogoutView.as_view(), name='api_logout'),
     path('auth/logout-all/', ForceLogoutAllView.as_view(), name='api_logout_all'),

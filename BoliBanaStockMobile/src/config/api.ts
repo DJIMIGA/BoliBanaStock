@@ -1,132 +1,189 @@
-// Import de la configuration réseau centralisée
-import { getCurrentApiUrl, ERROR_MESSAGES, MOBILE_CONFIG } from './networkConfig';
-
-// Configuration de l'API pour l'application mobile
+// Configuration de l'API
 export const API_CONFIG = {
   // URL de base de l'API
-  BASE_URL: __DEV__ 
-    ? (process.env.EXPO_PUBLIC_API_BASE_URL || getCurrentApiUrl())
-    : (process.env.EXPO_PUBLIC_API_BASE_URL || getCurrentApiUrl()), // Utilise Railway même en production
+  BASE_URL: 'https://web-production-e896b.up.railway.app/api/v1',
   
-  // Timeout des requêtes (en millisecondes)
-  TIMEOUT: 15000, // Augmenté pour les connexions réseau lentes
-  
-  // Headers par défaut
-  DEFAULT_HEADERS: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
+  // Endpoints d'authentification
+  AUTH: {
+    LOGIN: '/auth/login/',
+    SIGNUP: '/auth/signup/',
+    SIGNUP_SIMPLE: '/auth/signup-simple/', // Endpoint alternatif sans journalisation d'activité
+    REFRESH: '/auth/refresh/',
+    LOGOUT: '/auth/logout/',
+    LOGOUT_ALL: '/auth/logout-all/',
   },
   
-  // Endpoints de l'API
-  ENDPOINTS: {
-    // Authentification
-    AUTH: {
-      LOGIN: '/auth/login/',
-      REFRESH: '/auth/refresh/',
-      LOGOUT: '/auth/logout/',
-      SIGNUP: '/auth/signup/',
-    },
-    
-    // Produits
-    PRODUCTS: {
-      LIST: '/products/',
-      DETAIL: (id: number) => `/products/${id}/`,
-      SCAN: '/products/scan/',
-      CREATE: '/products/',
-      UPDATE: (id: number) => `/products/${id}/`,
-      DELETE: (id: number) => `/products/${id}/`,
-      UPDATE_STOCK: (id: number) => `/products/${id}/update_stock/`,
-    },
-    
-    // Ventes
-    SALES: {
-      LIST: '/sales/',
-      DETAIL: (id: number) => `/sales/${id}/`,
-      CREATE: '/sales/',
-      UPDATE: (id: number) => `/sales/${id}/`,
-      DELETE: (id: number) => `/products/${id}/`,
-      COMPLETE: (id: number) => `/sales/${id}/complete/`,
-      CANCEL: (id: number) => `/sales/${id}/cancel/`,
-    },
-    
-    // Transactions
-    TRANSACTIONS: {
-      LIST: '/transactions/',
-      DETAIL: (id: number) => `/transactions/${id}/`,
-      CREATE: '/transactions/',
-      UPDATE: (id: number) => `/transactions/${id}/`,
-      DELETE: (id: number) => `/transactions/${id}/`,
-    },
-    
-    // Tableau de bord
-    DASHBOARD: '/dashboard/',
-    
-    // Configuration
-    CONFIGURATION: '/configuration/',
+  // Endpoints des produits
+  PRODUCTS: {
+    LIST: '/products/',
+    CREATE: '/products/',
+    DETAIL: (id: number) => `/products/${id}/`,
+    UPDATE: (id: number) => `/products/${id}/`,
+    DELETE: (id: number) => `/products/${id}/`,
+    SCAN: '/products/scan/',
+    UPLOAD_IMAGE: (id: number) => `/products/${id}/upload_image/`,
+    UPDATE_STOCK: (id: number) => `/products/${id}/update_stock/`,
+    ADD_STOCK: (id: number) => `/products/${id}/add_stock/`,
+    REMOVE_STOCK: (id: number) => `/products/${id}/remove_stock/`,
+    ADJUST_STOCK: (id: number) => `/products/${id}/adjust_stock/`,
+    STOCK_MOVEMENTS: (id: number) => `/products/${id}/stock_movements/`,
+    LOW_STOCK: '/products/low_stock/',
+    OUT_OF_STOCK: '/products/out_of_stock/',
+  },
+  
+  // Endpoints des catégories
+  CATEGORIES: {
+    LIST: '/categories/',
+    CREATE: '/categories/',
+    DETAIL: (id: number) => `/categories/${id}/`,
+    UPDATE: (id: number) => `/categories/${id}/`,
+    DELETE: (id: number) => `/categories/${id}/`,
+  },
+  
+  // Endpoints des marques
+  BRANDS: {
+    LIST: '/brands/',
+    CREATE: '/brands/',
+    DETAIL: (id: number) => `/brands/${id}/`,
+    UPDATE: (id: number) => `/brands/${id}/`,
+    DELETE: (id: number) => `/brands/${id}/`,
+  },
+  
+  // Endpoints des ventes
+  SALES: {
+    LIST: '/sales/',
+    CREATE: '/sales/',
+    DETAIL: (id: number) => `/sales/${id}/`,
+    UPDATE: (id: number) => `/sales/${id}/`,
+    DELETE: (id: number) => `/sales/${id}/`,
+  },
+  
+  // Endpoints des transactions
+  TRANSACTIONS: {
+    LIST: '/transactions/',
+    CREATE: '/transactions/',
+    DETAIL: (id: number) => `/transactions/${id}/`,
+    UPDATE: (id: number) => `/transactions/${id}/`,
+    DELETE: (id: number) => `/transactions/${id}/`,
+  },
+  
+  // Endpoints des codes-barres
+  BARCODES: {
+    LIST: '/barcodes/',
+    ALL: '/barcodes/all_barcodes/',
+    SEARCH: '/barcodes/search/',
+    STATISTICS: '/barcodes/statistics/',
+  },
+  
+  // Endpoints des étiquettes
+  LABELS: {
+    TEMPLATES: '/labels/templates/',
+    BATCHES: '/labels/batches/',
+    GENERATE: '/labels/generate/',
+    CREATE_BATCH: '/labels/batches/create_batch/',
+    PDF: (id: number) => `/labels/batches/${id}/pdf/`,
+    TSC: (id: number) => `/labels/batches/${id}/tsc/`,
+  },
+  
+  // Endpoints de configuration
+  CONFIGURATION: {
+    GET: '/configuration/',
+    UPDATE: '/configuration/',
+    RESET: '/configuration/reset/',
     PARAMETRES: '/parametres/',
-    
-    // Profil utilisateur
-    PROFILE: '/profile/',
   },
   
-  // Configuration des erreurs (utilise la configuration centralisée)
-  ERROR_MESSAGES,
+  // Endpoints des utilisateurs
+  USERS: {
+    PROFILE: '/users/profile/',
+    UPDATE: '/users/profile/',
+  },
   
-  // Codes de statut HTTP
-  STATUS_CODES: {
-    OK: 200,
-    CREATED: 201,
-    NO_CONTENT: 204,
-    BAD_REQUEST: 400,
-    UNAUTHORIZED: 401,
-    FORBIDDEN: 403,
-    NOT_FOUND: 404,
-    INTERNAL_SERVER_ERROR: 500,
+  // Endpoints du tableau de bord
+  DASHBOARD: '/dashboard/',
+  
+  // Endpoints d'administration
+  ADMIN: {
+    COLLECT_STATIC: '/admin/collectstatic/',
+  },
+  
+  // Configuration des timeouts
+  TIMEOUTS: {
+    DEFAULT: 15000, // 15 secondes
+    UPLOAD: 60000,  // 60 secondes pour les uploads
+    AUTH: 30000,    // 30 secondes pour l'authentification
+  },
+  
+  // Configuration des retry
+  RETRY: {
+    MAX_ATTEMPTS: 3,
+    DELAY: 1000, // 1 seconde
+  },
+  
+  // Configuration des endpoints de fallback
+  FALLBACK: {
+    // En cas de problème avec l'inscription principale, utiliser l'inscription simplifiée
+    SIGNUP_ENDPOINT: 'SIGNUP_SIMPLE', // 'SIGNUP' ou 'SIGNUP_SIMPLE'
   },
 };
 
-// Configuration pour différents environnements (utilise la configuration centralisée)
-export const ENV_CONFIG = {
-  development: {
-    API_URL: getCurrentApiUrl(), // Utilise Railway
-    DEBUG: true,
-    LOG_LEVEL: 'debug',
-  },
-  staging: {
-    API_URL: getCurrentApiUrl(), // Utilise Railway
-    DEBUG: false,
-    LOG_LEVEL: 'info',
-  },
-  production: {
-    API_URL: getCurrentApiUrl(), // Utilise Railway
-    DEBUG: false,
-    LOG_LEVEL: 'error',
-  },
+// Configuration des headers par défaut
+export const DEFAULT_HEADERS = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json',
 };
 
-// Fonction pour obtenir la configuration selon l'environnement
-export const getApiConfig = () => {
-  if (__DEV__) {
-    return ENV_CONFIG.development;
+// Configuration des codes d'erreur
+export const ERROR_CODES = {
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  TIMEOUT_ERROR: 'TIMEOUT_ERROR',
+  AUTH_ERROR: 'AUTH_ERROR',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  SERVER_ERROR: 'SERVER_ERROR',
+  UNKNOWN_ERROR: 'UNKNOWN_ERROR',
+};
+
+// Configuration des messages d'erreur
+export const ERROR_MESSAGES = {
+  [ERROR_CODES.NETWORK_ERROR]: 'Erreur de connexion réseau',
+  [ERROR_CODES.TIMEOUT_ERROR]: 'Délai d\'attente dépassé',
+  [ERROR_CODES.AUTH_ERROR]: 'Erreur d\'authentification',
+  [ERROR_CODES.VALIDATION_ERROR]: 'Données invalides',
+  [ERROR_CODES.SERVER_ERROR]: 'Erreur du serveur',
+  [ERROR_CODES.UNKNOWN_ERROR]: 'Erreur inconnue',
+};
+
+// Configuration des endpoints d'inscription
+export const SIGNUP_ENDPOINTS = {
+  PRIMARY: API_CONFIG.AUTH.SIGNUP,
+  SIMPLE: API_CONFIG.AUTH.SIGNUP_SIMPLE,
+};
+
+// Fonction pour obtenir l'endpoint d'inscription à utiliser
+export const getSignupEndpoint = (): string => {
+  // Vérifier la configuration de fallback
+  if (API_CONFIG.FALLBACK.SIGNUP_ENDPOINT === 'SIGNUP_SIMPLE') {
+    console.log('🔧 Utilisation de l\'endpoint d\'inscription simplifié');
+    return SIGNUP_ENDPOINTS.SIMPLE;
   }
-  // Vous pouvez ajouter une logique pour détecter staging/production
-  return ENV_CONFIG.production;
+  
+  console.log('🔧 Utilisation de l\'endpoint d\'inscription principal');
+  return SIGNUP_ENDPOINTS.PRIMARY;
 };
 
-// Fonction pour construire l'URL complète d'un endpoint
-export const buildApiUrl = (endpoint: string) => {
-  const baseUrl = getApiConfig().API_URL;
-  return `${baseUrl}${endpoint}`;
+// Configuration des logs
+export const LOG_CONFIG = {
+  ENABLED: true,
+  LEVEL: 'INFO', // 'DEBUG', 'INFO', 'WARN', 'ERROR'
+  SHOW_API_CALLS: true,
+  SHOW_RESPONSES: false,
+  SHOW_ERRORS: true,
 };
 
-// Configuration réseau pour le développement mobile (utilise la configuration centralisée)
-export const NETWORK_CONFIG = {
-  // Adresses IP alternatives pour le développement
-  ALTERNATIVE_IPS: MOBILE_CONFIG.FALLBACK_IPS,
-  
-  // Ports à tester
-  PORTS: MOBILE_CONFIG.PORTS_TO_TEST,
-  
-  // Timeout pour la détection réseau
-  DISCOVERY_TIMEOUT: MOBILE_CONFIG.DISCOVERY_TIMEOUT,
+// Configuration de debug
+export const DEBUG_CONFIG = {
+  ENABLED: __DEV__,
+  SHOW_NETWORK_LOGS: true,
+  SHOW_STATE_LOGS: false,
+  SHOW_PERFORMANCE_LOGS: false,
 };

@@ -1577,19 +1577,51 @@ class PublicSignUpAPIView(APIView):
                     user.is_site_admin = True
                     user.save()
                     
+                    # Vérifier que l'utilisateur existe bien dans la base avant de créer l'activité
+                    user.refresh_from_db()
+                    
                     # Journaliser l'activité de manière sécurisée
                     try:
-                        Activite.objects.create(
-                            utilisateur=user,
-                            type_action='creation',
-                            description=f'Inscription publique - Création du site: {site_name}',
-                            ip_address=request.META.get('REMOTE_ADDR'),
-                            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                            url=request.path
-                        )
+                        # Vérifier que l'utilisateur existe toujours
+                        if User.objects.filter(id=user.id).exists():
+                            # Utiliser une transaction séparée pour la création de l'activité
+                            with transaction.atomic():
+                                Activite.objects.create(
+                                    utilisateur=user,
+                                    type_action='creation',
+                                    description=f'Inscription publique - Création du site: {site_name}',
+                                    ip_address=request.META.get('REMOTE_ADDR'),
+                                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                                    url=request.path
+                                )
+                            print(f"✅ Activité journalisée pour l'utilisateur {user.username}")
+                        else:
+                            print(f"⚠️ Utilisateur {user.username} non trouvé lors de la journalisation")
                     except Exception as e:
                         print(f"⚠️ Erreur création activité: {e}")
                         # Continuer sans journaliser l'activité - ce n'est pas critique
+                        # L'utilisateur et le site ont été créés avec succès
+                        
+                        # Essayer de créer l'activité de manière différée
+                        try:
+                            # Attendre un peu et réessayer
+                            import time
+                            time.sleep(0.1)  # Attendre 100ms
+                            
+                            if User.objects.filter(id=user.id).exists():
+                                with transaction.atomic():
+                                    Activite.objects.create(
+                                        utilisateur=user,
+                                        type_action='creation',
+                                        description=f'Inscription publique - Création du site: {site_name} (différée)',
+                                        ip_address=request.META.get('REMOTE_ADDR'),
+                                        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                                        url=request.path
+                                    )
+                                print(f"✅ Activité journalisée de manière différée pour l'utilisateur {user.username}")
+                        except Exception as retry_e:
+                            print(f"⚠️ Échec de la création différée de l'activité: {retry_e}")
+                            # Finalement, abandonner la journalisation de l'activité
                     
                     # Générer les tokens d'authentification
                     refresh = RefreshToken.for_user(user)
@@ -1633,6 +1665,108 @@ class PublicSignUpAPIView(APIView):
                 
         except Exception as e:
             print(f"❌ Erreur lors de la création du compte: {e}")
+            return Response({
+                'success': False,
+                'error': f'Erreur lors de la création du compte: {str(e)}'
+            }, status=500)
+
+
+class SimpleSignUpAPIView(APIView):
+    """
+    Vue d'inscription simplifiée sans journalisation d'activité
+    Pour éviter les problèmes de contrainte de clé étrangère
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """Créer un nouveau compte utilisateur et site sans journalisation d'activité"""
+        try:
+            form = PublicSignUpForm(request.data)
+            
+            if form.is_valid():
+                with transaction.atomic():
+                    # Créer l'utilisateur
+                    user = form.save(commit=False)
+                    
+                    # Générer un nom de site unique
+                    import time
+                    timestamp = int(time.time())
+                    base_site_name = f"{user.first_name}-{user.last_name}".replace(' ', '-').lower()
+                    site_name = f"{base_site_name}-{timestamp}"
+                    
+                    # Vérifier l'unicité du nom de site
+                    counter = 1
+                    original_site_name = site_name
+                    while Configuration.objects.filter(site_name=site_name).exists():
+                        site_name = f"{original_site_name}-{counter}"
+                        counter += 1
+                    
+                    # Sauvegarder l'utilisateur
+                    user.est_actif = True
+                    user.is_staff = False
+                    user.is_superuser = False
+                    user.save()
+                    
+                    # Créer la configuration du site
+                    site_config = Configuration(
+                        site_name=site_name,
+                        site_owner=user,
+                        nom_societe=f"Entreprise {user.first_name} {user.last_name}",
+                        adresse="Adresse à configurer",
+                        telephone="",
+                        email=user.email,
+                        devise="€",
+                        tva=0,
+                        description=f"Site créé automatiquement pour {user.get_full_name()}"
+                    )
+                    site_config.save()
+                    
+                    # Lier l'utilisateur à sa configuration
+                    user.site_configuration = site_config
+                    user.is_site_admin = True
+                    user.save()
+                    
+                    # Générer les tokens d'authentification
+                    refresh = RefreshToken.for_user(user)
+                    access_token = str(refresh.access_token)
+                    refresh_token = str(refresh)
+                    
+                    # Retourner la réponse
+                    user_data = {
+                        'id': user.id,
+                        'username': user.username,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'is_staff': user.is_staff,
+                        'is_active': user.is_active,
+                        'date_joined': user.date_joined.isoformat(),
+                        'site_name': site_name,
+                        'site_config_id': site_config.id
+                    }
+                    
+                    return Response({
+                        'success': True,
+                        'message': 'Compte créé avec succès ! Vous êtes maintenant connecté.',
+                        'user': user_data,
+                        'site_info': {
+                            'site_name': site_name,
+                            'nom_societe': site_config.nom_societe
+                        },
+                        'tokens': {
+                            'access': access_token,
+                            'refresh': refresh_token
+                        }
+                    })
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Données invalides',
+                    'details': form.errors
+                }, status=400)
+                
+        except Exception as e:
+            print(f"❌ Erreur lors de la création du compte (SimpleSignUp): {e}")
             return Response({
                 'success': False,
                 'error': f'Erreur lors de la création du compte: {str(e)}'
