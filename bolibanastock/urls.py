@@ -23,7 +23,11 @@ from . import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('theme.urls')),
+    # Health check en premier pour éviter les erreurs
+    path('health/', views.health_check, name='health_check'),
+    # Page d'accueil simplifiée pour Railway
+    path('', views.simple_home, name='simple_home'),
+    path('home/', include('theme.urls')),
     path('inventory/', include('apps.inventory.urls')),
     path('sales/', include('apps.sales.urls')),
     path('core/', include('apps.core.urls')),
@@ -31,6 +35,4 @@ urlpatterns = [
     path('signup/', PublicSignUpView.as_view(), name='signup'),
     # API Mobile
     path('api/v1/', include('api.urls')),
-    # Health check
-    path('health/', views.health_check, name='health_check'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

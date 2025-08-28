@@ -169,6 +169,12 @@ if not DEBUG and AWS_S3_ENABLED:
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
     DEFAULT_FILE_STORAGE = 'bolibanastock.storage_backends.MediaStorage'
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+elif not DEBUG:
+    # Production Railway sans S3: stockage local avec URL absolue
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 else:
     # Développement: Stockage local
     STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'

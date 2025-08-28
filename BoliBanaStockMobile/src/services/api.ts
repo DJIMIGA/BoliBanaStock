@@ -364,23 +364,83 @@ export const productService = {
         }
         console.log('✅ Token d\'authentification trouvé');
         
-        // Configuration optimisée pour les uploads d'images
-        const response = await api.post('/products/', formData, {
-          // Ne pas définir manuellement Content-Type pour laisser Axios ajouter le boundary
-          timeout: 60000, // Timeout plus long pour les uploads (1 minute)
-          maxContentLength: 50 * 1024 * 1024, // 50MB max
-          maxBodyLength: 50 * 1024 * 1024, // 50MB max
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-          },
-          validateStatus: (status) => {
-            return status >= 200 && status < 300; // Accepter seulement les succès
-          },
-        });
+        // Validation de la taille de l'image avant upload
+        if (productData.image?.size && productData.image.size > 10 * 1024 * 1024) { // 10MB max
+          console.warn('⚠️ Image trop volumineuse, compression recommandée');
+        }
         
-        console.log('✅ Upload réussi:', response.status);
-        return response.data;
+        // Solution alternative : Utiliser FileSystem.uploadAsync pour éviter les problèmes FormData
+        try {
+          console.log('🔁 Tentative upload via FileSystem.uploadAsync...');
+          
+          // Extraire l'URI de l'image du FormData
+          const imageUri = (formData as any)?._parts?.find?.((p: any) => p?.[0] === 'image')?.[1]?.uri || '';
+          
+          if (!imageUri) {
+            throw new Error('URI de l\'image non trouvée dans FormData');
+          }
+          
+          // Préparer les paramètres pour l'upload
+          const uploadParams: any = {};
+          for (const [key, value] of Object.entries(productData)) {
+            if (key !== 'image' && value !== null && value !== undefined) {
+              uploadParams[key] = String(value);
+            }
+          }
+          
+          console.log('📤 Upload via FileSystem.uploadAsync avec params:', uploadParams);
+          
+          const uploadResult = await FileSystem.uploadAsync(
+            `${API_BASE_URL}/products/`,
+            imageUri,
+            {
+              httpMethod: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+              },
+              uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+              fieldName: 'image',
+              parameters: uploadParams,
+            }
+          );
+          
+          if (uploadResult.status >= 200 && uploadResult.status < 300) {
+            console.log('✅ Upload via FileSystem.uploadAsync réussi:', uploadResult.status);
+            const parsed = (() => {
+              try { return JSON.parse(uploadResult.body || '{}'); } catch { return {}; }
+            })();
+            return parsed;
+          } else {
+            throw new Error(`Upload échec: ${uploadResult.status} - ${uploadResult.body}`);
+          }
+          
+        } catch (uploadError: any) {
+          console.warn('⚠️ FileSystem.uploadAsync échoué, fallback vers Axios:', uploadError?.message || uploadError);
+          
+          // Fallback vers Axios avec configuration optimisée
+          const response = await api.post('/products/', formData, {
+            timeout: 120000,
+            maxContentLength: 100 * 1024 * 1024,
+            maxBodyLength: 100 * 1024 * 1024,
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json',
+            },
+            validateStatus: (status) => {
+              return status >= 200 && status < 300;
+            },
+            onUploadProgress: (progressEvent) => {
+              if (progressEvent.total) {
+                const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                console.log(`📤 Upload progress: ${percentCompleted}%`);
+              }
+            },
+          });
+          
+          console.log('✅ Upload via Axios fallback réussi:', response.status);
+          return response.data;
+        }
       } else {
         // Pas d'image, requête normale
         const response = await api.post('/products/', productData);
@@ -396,7 +456,19 @@ export const productService = {
           message: error.message,
           config: error.config,
         });
+        
+        // Suggestions spécifiques pour Railway
+        if (error.config?.baseURL?.includes('railway')) {
+          throw new Error('Erreur de connexion avec Railway. Vérifiez votre connexion internet et que le serveur est accessible.');
+        }
+        
         throw new Error('Erreur de connexion réseau. Vérifiez votre connexion et réessayez.');
+      }
+      
+      // Gestion des timeouts
+      if (error.code === 'ECONNABORTED') {
+        console.error('⏰ Timeout upload:', error.config?.timeout);
+        throw new Error('L\'upload a pris trop de temps. Vérifiez votre connexion et la taille de l\'image.');
       }
       
       if (error.code === 'ECONNABORTED') {

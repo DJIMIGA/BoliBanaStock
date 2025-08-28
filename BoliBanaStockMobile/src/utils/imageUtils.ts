@@ -22,9 +22,9 @@ export const compressImage = async (uri: string): Promise<string> => {
     
     const result = await ImageManipulator.manipulateAsync(
       uri,
-      [{ resize: { width: 800 } }], // Redimensionner à 800px max
+      [{ resize: { width: 400 } }], // Redimensionner à 400px max (encore plus petit)
       {
-        compress: 0.7, // Compression 70%
+        compress: 0.3, // Compression 30% (très agressive pour Railway)
         format: ImageManipulator.SaveFormat.JPEG,
       }
     );
