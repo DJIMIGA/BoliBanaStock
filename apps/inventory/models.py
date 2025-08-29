@@ -8,7 +8,7 @@ from django.utils.text import slugify
 from django.urls import reverse
 import random
 from django.utils.translation import gettext_lazy as _
-from bolibanastock.local_storage import LocalProductImageStorage
+# Import supprimé - stockage automatique selon l'environnement
 
 class Category(models.Model):
     name = models.CharField(max_length=100, verbose_name="Nom")
@@ -140,7 +140,7 @@ class Product(models.Model):
     brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Marque")
     image = models.ImageField(
         upload_to='products/', 
-        storage=LocalProductImageStorage(),  # Stockage local multisite
+        # ✅ Stockage automatique selon l'environnement (local ou S3)
         blank=True, 
         null=True, 
         verbose_name="Image"
@@ -236,6 +236,9 @@ class Product(models.Model):
                 })
 
     def save(self, *args, **kwargs):
+        # ✅ Gestion automatique du stockage selon l'environnement
+        from django.conf import settings
+        
         if not self.slug:
             # Créer un slug unique en ajoutant le CUG si nécessaire
             base_slug = slugify(self.name)
@@ -252,6 +255,10 @@ class Product(models.Model):
         if not self.pk:  # Nouvel objet
             self.created_at = timezone.now()
         self.updated_at = timezone.now()
+        
+        # ✅ Le stockage sera automatiquement géré par Django selon DEFAULT_FILE_STORAGE
+        # - En local : FileSystemStorage (media/sites/{site_id}/products/)
+        # - Sur Railway avec S3 : MediaStorage (S3 avec structure multisite)
         
         super().save(*args, **kwargs)
 
