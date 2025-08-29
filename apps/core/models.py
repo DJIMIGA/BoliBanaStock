@@ -143,7 +143,7 @@ class Configuration(BaseModel):
     devise = models.CharField(max_length=10, default='FCFA', verbose_name=_('Devise'))
     tva = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name=_('TVA (%)'))
     logo = models.ImageField(
-        upload_to='config/', 
+        upload_to='assets/logos/site-default/',  # ✅ NOUVELLE STRUCTURE S3
         storage=LocalSiteLogoStorage(),  # Stockage local multisite
         blank=True, 
         null=True, 

@@ -193,7 +193,7 @@ def secure_image_view(request, site_id, image_path):
     # Vous pouvez utiliser get_site_storage(site_id, ProductImageStorage)
     # pour récupérer l'image depuis le bon stockage
     
-    return JsonResponse({'image_url': f'/media/sites/{site_id}/{image_path}'})
+    return JsonResponse({'image_url': f'/assets/products/site-{site_id}/{image_path}'})
 
 # ===== EXEMPLE 7: Utilisation dans les modèles =====
 

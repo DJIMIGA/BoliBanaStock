@@ -68,13 +68,13 @@ def test_storage_paths():
         
         # Chemin pour produits
         product_storage = get_site_storage(site_id, 'product')
-        expected_product_path = f'media/sites/{site_id}/products'
+        expected_product_path = f'assets/products/site-{site_id}'
         print(f"   - Produits: {product_storage.location} (attendu: {expected_product_path})")
         print(f"     ✅ {'OK' if product_storage.location == expected_product_path else '❌'}")
         
         # Chemin pour logos
         logo_storage = get_site_storage(site_id, 'logo')
-        expected_logo_path = f'media/sites/{site_id}/config'
+        expected_logo_path = f'assets/logos/site-{site_id}'
         print(f"   - Logos: {logo_storage.location} (attendu: {expected_logo_path})")
         print(f"     ✅ {'OK' if logo_storage.location == expected_logo_path else '❌'}")
 

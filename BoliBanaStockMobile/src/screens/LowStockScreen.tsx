@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { productService } from '../services/api';
 import theme, { stockColors } from '../utils/theme';
+import ProductImage from '../components/ProductImage';
 
 interface Product {
   id: number;
@@ -22,6 +24,7 @@ interface Product {
   selling_price: number;
   category_name: string;
   brand_name: string;
+  image_url?: string;
 }
 
 export default function LowStockScreen({ navigation }: any) {
@@ -57,6 +60,15 @@ export default function LowStockScreen({ navigation }: any) {
       onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
     >
       <View style={styles.productHeader}>
+        {/* Image du produit */}
+        <View style={styles.productImageContainer}>
+          <ProductImage 
+            imageUrl={item.image_url}
+            size={60}
+            borderRadius={8}
+          />
+        </View>
+        
         <View style={styles.productInfo}>
           <Text style={styles.productName} numberOfLines={2}>
             {item.name}
@@ -174,9 +186,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
+    alignItems: 'flex-start',
+  },
+  productImageContainer: {
+    marginRight: 12,
+  },
+  productImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  noImageContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   productInfo: {
     flex: 1,
+    marginRight: 10,
   },
   productName: {
     fontSize: 16,

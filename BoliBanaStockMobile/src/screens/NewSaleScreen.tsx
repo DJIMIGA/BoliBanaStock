@@ -9,9 +9,11 @@ import {
   Alert,
   ActivityIndicator,
   FlatList,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import ProductImage from '../components/ProductImage';
 import { productService, saleService } from '../services/api';
 
 interface Product {
@@ -21,6 +23,7 @@ interface Product {
   selling_price: number;
   quantity: number;
   stock_status: string;
+  image_url?: string;
 }
 
 interface CartItem {
@@ -184,6 +187,15 @@ export default function NewSaleScreen({ navigation }: any) {
       onPress={() => addToCart(item)}
       disabled={item.stock_status === 'out_of_stock'}
     >
+      {/* Image du produit */}
+      <View style={styles.productImageContainer}>
+        <ProductImage 
+          imageUrl={item.image_url}
+          size={50}
+          borderRadius={6}
+        />
+      </View>
+      
       <View style={styles.productInfo}>
         <Text style={styles.productName}>{item.name}</Text>
         <Text style={styles.productCug}>CUG: {item.cug}</Text>
@@ -554,8 +566,26 @@ const styles = StyleSheet.create({
   productOutOfStock: {
     opacity: 0.5,
   },
+  productImageContainer: {
+    marginRight: 12,
+  },
+  productImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 6,
+    backgroundColor: '#f5f5f5',
+  },
+  noImageContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 6,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   productInfo: {
     flex: 1,
+    marginRight: 10,
   },
   productName: {
     fontSize: 16,

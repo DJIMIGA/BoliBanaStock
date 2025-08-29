@@ -9,14 +9,48 @@ from django.urls import reverse
 import random
 from django.utils.translation import gettext_lazy as _
 import os
-# Import supprimé - stockage automatique selon l'environnement
+
+# ===== FONCTIONS DYNAMIQUES POUR UPLOAD_TO =====
+
+def get_product_image_path(instance, filename):
+    """
+    Génère le chemin dynamique pour les images de produits
+    Structure: assets/products/site-{site_id}/{filename}
+    """
+    if hasattr(instance, 'site_configuration') and instance.site_configuration:
+        site_id = str(instance.site_configuration.id)
+        return f'assets/products/site-{site_id}/{filename}'
+    else:
+        return f'assets/products/site-default/{filename}'
+
+def get_category_image_path(instance, filename):
+    """
+    Génère le chemin dynamique pour les images de catégories
+    Structure: assets/categories/site-{site_id}/{filename}
+    """
+    if hasattr(instance, 'site_configuration') and instance.site_configuration:
+        site_id = str(instance.site_configuration.id)
+        return f'assets/categories/site-{site_id}/{filename}'
+    else:
+        return f'assets/categories/site-default/{filename}'
+
+def get_brand_logo_path(instance, filename):
+    """
+    Génère le chemin dynamique pour les logos de marques
+    Structure: assets/brands/site-{site_id}/{filename}
+    """
+    # Les marques n'ont pas de site_configuration directe, utiliser le site par défaut
+    return f'assets/brands/site-default/{filename}'
+
+# ===== MODÈLES =====
 
 class Category(models.Model):
     name = models.CharField(max_length=100, verbose_name="Nom")
     slug = models.SlugField(max_length=100, unique=True, blank=True, null=True, verbose_name="Slug")
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children', verbose_name="Catégorie parente")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
-    image = models.ImageField(upload_to='categories/', blank=True, null=True, verbose_name="Image")
+    # ✅ NOUVELLE STRUCTURE: Chemin dynamique pour les images
+    image = models.ImageField(upload_to=get_category_image_path, blank=True, null=True, verbose_name="Image")
     level = models.PositiveIntegerField(default=0, editable=False, verbose_name="Niveau")
     order = models.PositiveIntegerField(default=0, verbose_name="Ordre d'affichage")
     is_active = models.BooleanField(default=True, verbose_name="Active")
@@ -94,7 +128,8 @@ class Category(models.Model):
 class Brand(models.Model):
     name = models.CharField(max_length=100, verbose_name="Nom")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
-    logo = models.ImageField(upload_to='brands/', blank=True, null=True, verbose_name="Logo")
+    # ✅ NOUVELLE STRUCTURE: Chemin dynamique pour les logos
+    logo = models.ImageField(upload_to=get_brand_logo_path, blank=True, null=True, verbose_name="Logo")
     is_active = models.BooleanField(default=True, verbose_name="Active")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Dernière modification")
@@ -140,7 +175,7 @@ class Product(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Catégorie")
     brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Marque")
     image = models.ImageField(
-        upload_to='sites/default/products/', 
+        upload_to=get_product_image_path, 
         # ✅ Stockage automatique selon l'environnement (local ou S3)
         blank=True, 
         null=True, 
@@ -260,8 +295,7 @@ class Product(models.Model):
         # ✅ Gestion dynamique du chemin d'upload selon le site avec nouvelle structure S3
         if hasattr(self, 'site_configuration') and self.site_configuration:
             site_id = str(self.site_configuration.id)
-            # Nouvelle structure S3: assets/products/site-{site_id}/
-            # Structure locale: sites/{site_id}/products/
+            # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_id}/
             if not self.image.name or not self.image.name.startswith(f'assets/products/site-{site_id}/'):
                 # Si l'image n'a pas encore le bon chemin, on le corrige
                 if self.image.name:
@@ -271,7 +305,7 @@ class Product(models.Model):
                     self.image.name = f'assets/products/site-{site_id}/{filename}'
         
         # ✅ Le stockage sera automatiquement géré par Django selon DEFAULT_FILE_STORAGE
-        # - En local : FileSystemStorage (sites/{site_id}/products/)
+        # - En local : FileSystemStorage (assets/products/site-{site_id}/)
         # - Sur Railway avec S3 : ProductImageStorage (assets/products/site-{site_id}/)
         
         super().save(*args, **kwargs)

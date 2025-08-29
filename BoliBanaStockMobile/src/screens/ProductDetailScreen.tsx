@@ -20,6 +20,8 @@ import { RootStackParamList } from '../types';
 import { productService } from '../services/api';
 import BarcodeManager from '../components/BarcodeManager';
 import theme, { stockColors } from '../utils/theme';
+import ProductImage from '../components/ProductImage';
+import S3ImageTest from '../components/S3ImageTest';
 
 type ProductDetailScreenRouteProp = RouteProp<RootStackParamList, 'ProductDetail'>;
 
@@ -318,13 +320,17 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
 
   const renderDetailsTab = () => (
     <ScrollView contentContainerStyle={styles.tabContent}>
-      {product?.image_url || product?.image ? (
-        <Image source={{ uri: (product.image_url || product.image) || '' }} style={styles.productImage} resizeMode="contain" />
-      ) : (
-        <View style={styles.imagePlaceholder}>
-          <Ionicons name="cube-outline" size={56} color={theme.colors.neutral[300]} />
-        </View>
-      )}
+      {/* Image principale du produit */}
+      <View style={styles.mainImageContainer}>
+        <ProductImage 
+          imageUrl={product?.image_url}
+          size={200}
+          borderRadius={16}
+        />
+      </View>
+
+      {/* Test S3 - À supprimer après résolution */}
+      <S3ImageTest />
 
       {/* Boutons de gestion du produit - encadrés avec titre */}
       <View style={styles.compactCard}>
@@ -476,6 +482,15 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
 
   const renderStockAndMovementsTab = () => (
     <ScrollView contentContainerStyle={styles.tabContent}>
+      {/* Image du produit dans l'onglet Stock */}
+      <View style={styles.tabImageContainer}>
+        <ProductImage 
+          imageUrl={product?.image_url}
+          size={120}
+          borderRadius={12}
+        />
+      </View>
+      
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Informations de Stock</Text>
         
@@ -640,6 +655,16 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={22} color={theme.colors.text.inverse} />
         </TouchableOpacity>
+        
+        {/* Image du produit dans l'en-tête */}
+        <View style={styles.headerImageContainer}>
+          <ProductImage 
+            imageUrl={product.image_url}
+            size={40}
+            borderRadius={20}
+          />
+        </View>
+        
         <Text style={styles.headerTitle} numberOfLines={1}>
           {product.name}
         </Text>
@@ -770,6 +795,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.1)'
   },
+  headerImageContainer: {
+    marginRight: theme.spacing.sm,
+  },
   headerTitle: {
     flex: 1,
     marginHorizontal: theme.spacing.sm,
@@ -809,6 +837,19 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     padding: theme.spacing.md,
+  },
+  mainImageContainer: {
+    alignItems: 'center',
+    marginBottom: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: theme.borderRadius.lg,
+    ...theme.shadows.sm,
+  },
+  tabImageContainer: {
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
   },
   imagePlaceholder: {
     width: '100%',

@@ -53,7 +53,7 @@ your-bucket/
 
 class Product(models.Model):
     image = models.ImageField(upload_to='products/', blank=True, null=True)
-    # L'image sera automatiquement stockée dans media/sites/{site_id}/products/
+    # assets/products/site-{site_id}/
 ```
 
 ### 2. Stockage Spécialisé par Site

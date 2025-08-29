@@ -63,30 +63,44 @@ class ProductSerializer(serializers.ModelSerializer):
         return None
     
     def get_image_url(self, obj):
-        """Retourne l'URL complète de l'image"""
+        """Retourne l'URL complète de l'image avec la nouvelle structure S3"""
         if obj.image:
             try:
                 # ✅ Retourner directement l'URL S3 si configuré
                 from django.conf import settings
                 if getattr(settings, 'AWS_S3_ENABLED', False):
-                    # URL S3 directe
+                    # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_id}/
+                    # L'URL est déjà correcte car obj.image.name utilise la nouvelle structure
                     return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{obj.image.name}"
                 else:
-                    # URL locale (fallback)
-                    try:
-                        file_path = obj.image.path  # Peut lever une exception selon le backend
-                        if file_path and not os.path.exists(file_path):
-                            return None
-                    except Exception:
-                        # Si le backend ne fournit pas path (ex: S3), on ne vérifie pas l'existence
-                        pass
+                    # URL locale (fallback) - pour Railway sans S3
                     request = self.context.get('request')
                     url = obj.image.url
-                    return request.build_absolute_uri(url) if request else url
+                    
+                    # Si on a une requête, construire l'URL absolue
+                    if request:
+                        # Vérifier si l'URL est déjà absolue
+                        if url.startswith('http'):
+                            return url
+                        else:
+                            return request.build_absolute_uri(url)
+                    else:
+                        # Fallback pour Railway: utiliser l'URL absolue configurée
+                        media_url = getattr(settings, 'MEDIA_URL', '/media/')
+                        if media_url.startswith('http'):
+                            # URL absolue déjà configurée (Railway)
+                            return f"{media_url.rstrip('/')}/{obj.image.name}"
+                        else:
+                            # URL relative, la convertir en absolue
+                            return f"https://web-production-e896b.up.railway.app{url}"
             except (ValueError, AttributeError) as e:
-                # En cas d'erreur de configuration S3 ou autre problème
-                # Retourner None au lieu de faire planter l'API
-                return None
+                # En cas d'erreur, essayer de retourner une URL de base
+                print(f"⚠️ Erreur dans get_image_url: {e}")
+                try:
+                    # Fallback: URL directe de l'image
+                    return obj.image.url
+                except:
+                    return None
         return None
     
     class Meta:
@@ -189,30 +203,44 @@ class ProductListSerializer(serializers.ModelSerializer):
         return 0
     
     def get_image_url(self, obj):
-        """Retourne l'URL complète de l'image"""
+        """Retourne l'URL complète de l'image avec la nouvelle structure S3"""
         if obj.image:
             try:
                 # ✅ Retourner directement l'URL S3 si configuré
                 from django.conf import settings
                 if getattr(settings, 'AWS_S3_ENABLED', False):
-                    # URL S3 directe
+                    # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_ids}/
+                    # L'URL est déjà correcte car obj.image.name utilise la nouvelle structure
                     return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{obj.image.name}"
                 else:
-                    # URL locale (fallback)
-                    try:
-                        file_path = obj.image.path  # Peut lever une exception selon le backend
-                        if file_path and not os.path.exists(file_path):
-                            return None
-                    except Exception:
-                        # Si le backend ne fournit pas path (ex: S3), on ne vérifie pas l'existence
-                        pass
+                    # URL locale (fallback) - pour Railway sans S3
                     request = self.context.get('request')
                     url = obj.image.url
-                    return request.build_absolute_uri(url) if request else url
+                    
+                    # Si on a une requête, construire l'URL absolue
+                    if request:
+                        # Vérifier si l'URL est déjà absolue
+                        if url.startswith('http'):
+                            return url
+                        else:
+                            return request.build_absolute_uri(url)
+                    else:
+                        # Fallback pour Railway: utiliser l'URL absolue configurée
+                        media_url = getattr(settings, 'MEDIA_URL', '/media/')
+                        if media_url.startswith('http'):
+                            # URL absolue déjà configurée (Railway)
+                            return f"{media_url.rstrip('/')}/{obj.image.name}"
+                        else:
+                            # URL relative, la convertir en absolue
+                            return f"https://web-production-e896b.up.railway.app{url}"
             except (ValueError, AttributeError) as e:
-                # En cas d'erreur de configuration S3 ou autre problème
-                # Retourner None au lieu de faire planter l'API
-                return None
+                # En cas d'erreur, essayer de retourner une URL de base
+                print(f"⚠️ Erreur dans get_image_url: {e}")
+                try:
+                    # Fallback: URL directe de l'image
+                    return obj.image.url
+                except:
+                    return None
         return None
     
     class Meta:

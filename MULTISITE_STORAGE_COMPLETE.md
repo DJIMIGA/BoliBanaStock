@@ -75,7 +75,7 @@ class Product(models.Model):
         null=True, 
         verbose_name="Image"
     )
-    # L'image sera automatiquement stockée dans media/sites/{site_id}/products/
+    # assets/products/site-{site_id}/
 ```
 
 ### 2. **Logos de Sites** (à configurer)

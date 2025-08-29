@@ -141,7 +141,7 @@ class S3StructureMigrator:
                 continue
             
             # Extraire les composants du chemin
-            # Ancien: media/sites/{site_id}/products/{filename}
+            # assets/products/site-{site_id}/{filename}
             # Nouveau: assets/products/site-{site_id}/{filename}
             path_parts = old_key.split('/')
             

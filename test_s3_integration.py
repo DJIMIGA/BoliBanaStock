@@ -108,8 +108,8 @@ def test_serializer():
             class MockProduct:
                 def __init__(self):
                     self.image = type('MockImage', (), {
-                        'name': 'sites/default/products/test.jpg',
-                        'url': lambda: 'sites/default/products/test.jpg'
+                        'name': 'assets/products/site-default/test.jpg',
+                        'url': lambda: 'assets/products/site-default/test.jpg'
                     })()
             
             mock_product = MockProduct()

@@ -52,7 +52,7 @@ class Product(models.Model):
     )
     
     # L'image sera automatiquement stockée dans :
-    # media/sites/{site_id}/products/{date}/{slug}{extension}
+    # assets/products/site-{site_id}/{date}/{slug}{extension}
 ```
 
 ### 2. Dans vos vues
@@ -291,9 +291,9 @@ media/sites/{site_id}/products/{YYYY}/{MM}/{DD}/{slug-produit}.{extension}
 
 **Exemple :**
 ```
-media/sites/1/products/2025/01/15/ordinateur-portable.jpg
-media/sites/1/products/2025/01/15/smartphone-samsung.png
-media/sites/2/products/2025/01/15/tablette-ipad.jpg
+media/assets/products/site-1/2025/01/15/ordinateur-portable.jpg
+media/assets/products/site-1/2025/01/15/smartphone-samsung.png
+media/assets/products/site-2/2025/01/15/tablette-ipad.jpg
 ```
 
 Votre système est maintenant prêt pour gérer les images de produits de manière simple et multisite ! 🎉

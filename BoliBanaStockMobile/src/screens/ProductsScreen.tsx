@@ -9,10 +9,13 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { productService } from '../services/api';
+import ProductImage from '../components/ProductImage';
+import QuickImageTest from '../components/QuickImageTest';
 
 interface Product {
   id: number;
@@ -25,6 +28,7 @@ interface Product {
   stock_status: string;
   margin_rate: number;
   is_active: boolean;
+  image_url?: string;
 }
 
 export default function ProductsScreen({ navigation }: any) {
@@ -118,6 +122,20 @@ export default function ProductsScreen({ navigation }: any) {
       onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
     >
       <View style={styles.productHeader}>
+        {/* Image du produit */}
+        <View style={styles.productImageContainer}>
+          <ProductImage 
+            imageUrl={item.image_url}
+            size={60}
+            borderRadius={8}
+          />
+          
+          {/* Test temporaire - à supprimer après résolution */}
+          <QuickImageTest 
+            imageUrl={item.image_url}
+          />
+        </View>
+        
         <View style={styles.productInfo}>
           <Text style={styles.productName} numberOfLines={2}>
             {item.name}
@@ -365,9 +383,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
+    alignItems: 'flex-start',
+  },
+  productImageContainer: {
+    marginRight: 12,
+  },
+  productImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  noImageContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   productInfo: {
     flex: 1,
+    marginRight: 10,
   },
   productName: {
     fontSize: 16,

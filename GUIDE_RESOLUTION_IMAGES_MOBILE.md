@@ -111,12 +111,12 @@ GET /api/v1/products/{id}/
 
 #### URLs Locales (Railway)
 ```
-https://web-production-e896b.up.railway.app/media/sites/default/products/image.jpg
+https://web-production-e896b.up.railway.app/media/assets/products/site-default/image.jpg
 ```
 
 #### URLs S3
 ```
-https://bucket-name.s3.amazonaws.com/media/sites/default/products/image.jpg
+https://bucket-name.s3.amazonaws.com/media/assets/products/site-default/image.jpg
 ```
 
 ### 3. Test Côté Mobile

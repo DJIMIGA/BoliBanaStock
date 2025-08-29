@@ -41,7 +41,7 @@ class Product(models.Model):
     image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name="Image")
     
     # L'image sera automatiquement stockée dans :
-    # media/sites/{site_id}/products/
+    # assets/products/site-{site_id}/
 ```
 
 ### 2. Dans vos vues (pour plus de contrôle)

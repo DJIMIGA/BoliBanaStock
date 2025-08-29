@@ -1,6 +1,7 @@
 """
 Backends de stockage local multisite pour BoliBana Stock
 Fonctionne en développement sans configuration S3
+Utilise la nouvelle structure de dossiers organisée
 """
 
 import os
@@ -10,13 +11,14 @@ from django.core.files.storage import FileSystemStorage
 class LocalProductImageStorage(FileSystemStorage):
     """
     Stockage local avec séparation par site pour les produits
+    Utilise la nouvelle structure: assets/products/site-{site_id}/
     """
     def __init__(self, site_id=None, *args, **kwargs):
         self.site_id = site_id or 'default'
-        # Dossier racine du site: media/sites/{site_id}/
-        location = os.path.join(settings.MEDIA_ROOT, 'sites', self.site_id)
+        # ✅ NOUVELLE STRUCTURE: assets/products/site-{site_id}/
+        location = os.path.join(settings.MEDIA_ROOT, 'assets', 'products', f'site-{self.site_id}')
         # Base URL doit être une URL HTTP, ne pas utiliser os.path.join
-        base_url = f"{settings.MEDIA_URL.rstrip('/')}/sites/{self.site_id}/"
+        base_url = f"{settings.MEDIA_URL.rstrip('/')}/assets/products/site-{self.site_id}/"
         super().__init__(location=location, base_url=base_url, *args, **kwargs)
     
     def get_available_name(self, name, max_length=None):
@@ -26,11 +28,12 @@ class LocalProductImageStorage(FileSystemStorage):
 class LocalSiteLogoStorage(FileSystemStorage):
     """
     Stockage local avec séparation par site pour les logos
+    Utilise la nouvelle structure: assets/logos/site-{site_id}/
     """
     def __init__(self, site_id=None, *args, **kwargs):
         self.site_id = site_id or 'default'
-        # Chemin local: media/sites/{site_id}/config/
-        location = os.path.join(settings.MEDIA_ROOT, 'sites', self.site_id, 'config')
+        # ✅ NOUVELLE STRUCTURE: assets/logos/site-{site_id}/
+        location = os.path.join(settings.MEDIA_ROOT, 'assets', 'logos', f'site-{self.site_id}')
         super().__init__(location=location, *args, **kwargs)
     
     def get_available_name(self, name, max_length=None):

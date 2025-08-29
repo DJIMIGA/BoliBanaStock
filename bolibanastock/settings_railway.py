@@ -156,7 +156,7 @@ STATICFILES_DIRS = [
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
-AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'eu-west-3')
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'eu-north-1')
 
 # Vérifier si la configuration S3 est complète
 AWS_S3_ENABLED = all([
@@ -165,7 +165,7 @@ AWS_S3_ENABLED = all([
     AWS_STORAGE_BUCKET_NAME
 ])
 
-AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com' if AWS_STORAGE_BUCKET_NAME else None
+AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com' if AWS_STORAGE_BUCKET_NAME else None
 AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
 AWS_DEFAULT_ACL = None
 AWS_QUERYSTRING_AUTH = True
@@ -176,9 +176,11 @@ if AWS_S3_ENABLED:
     print("🚀 Configuration S3 activée pour Railway")
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
     DEFAULT_FILE_STORAGE = 'bolibanastock.storage_backends.MediaStorage'
-    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+    # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_id}/
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/assets/'
     print(f"📁 Stockage S3: {AWS_STORAGE_BUCKET_NAME}")
     print(f"🔗 URL médias: {MEDIA_URL}")
+    print("📁 Structure S3: assets/products/site-{site_id}/")
 else:
     # Production Railway sans S3: stockage local persistant avec URL absolue
     print("⚠️ Configuration S3 non trouvée, utilisation du stockage local persistant")

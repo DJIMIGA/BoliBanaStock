@@ -228,8 +228,8 @@ class LocalProductImageStorage:
     def get_site_path(self, name):
         """Retourne le chemin complet avec séparation par site"""
         import os
-        # Nouvelle structure locale: sites/{site_id}/products/
-        site_path = os.path.join(self.base_path, 'sites', self.site_id, 'products')
+        # ✅ NOUVELLE STRUCTURE: assets/products/site-{site_id}/
+        site_path = os.path.join(self.base_path, 'assets', 'products', f'site-{self.site_id}')
         os.makedirs(site_path, exist_ok=True)
         return os.path.join(site_path, name)
     
@@ -248,4 +248,4 @@ class LocalProductImageStorage:
     
     def url(self, name):
         """Retourne l'URL du fichier"""
-        return f'/media/sites/{self.site_id}/products/{name}'
+        return f'/media/assets/products/site-{self.site_id}/{name}'
