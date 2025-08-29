@@ -66,17 +66,23 @@ class ProductSerializer(serializers.ModelSerializer):
         """Retourne l'URL complète de l'image"""
         if obj.image:
             try:
-                # Éviter de retourner une URL si le fichier n'existe pas réellement en local
-                try:
-                    file_path = obj.image.path  # Peut lever une exception selon le backend
-                    if file_path and not os.path.exists(file_path):
-                        return None
-                except Exception:
-                    # Si le backend ne fournit pas path (ex: S3), on ne vérifie pas l'existence
-                    pass
-                request = self.context.get('request')
-                url = obj.image.url
-                return request.build_absolute_uri(url) if request else url
+                # ✅ Retourner directement l'URL S3 si configuré
+                from django.conf import settings
+                if getattr(settings, 'AWS_S3_ENABLED', False):
+                    # URL S3 directe
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{obj.image.name}"
+                else:
+                    # URL locale (fallback)
+                    try:
+                        file_path = obj.image.path  # Peut lever une exception selon le backend
+                        if file_path and not os.path.exists(file_path):
+                            return None
+                    except Exception:
+                        # Si le backend ne fournit pas path (ex: S3), on ne vérifie pas l'existence
+                        pass
+                    request = self.context.get('request')
+                    url = obj.image.url
+                    return request.build_absolute_uri(url) if request else url
             except (ValueError, AttributeError) as e:
                 # En cas d'erreur de configuration S3 ou autre problème
                 # Retourner None au lieu de faire planter l'API
@@ -186,16 +192,26 @@ class ProductListSerializer(serializers.ModelSerializer):
         """Retourne l'URL complète de l'image"""
         if obj.image:
             try:
-                try:
-                    file_path = obj.image.path
-                    if file_path and not os.path.exists(file_path):
-                        return None
-                except Exception:
-                    pass
-                request = self.context.get('request')
-                url = obj.image.url
-                return request.build_absolute_uri(url) if request else url
-            except Exception:
+                # ✅ Retourner directement l'URL S3 si configuré
+                from django.conf import settings
+                if getattr(settings, 'AWS_S3_ENABLED', False):
+                    # URL S3 directe
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{obj.image.name}"
+                else:
+                    # URL locale (fallback)
+                    try:
+                        file_path = obj.image.path  # Peut lever une exception selon le backend
+                        if file_path and not os.path.exists(file_path):
+                            return None
+                    except Exception:
+                        # Si le backend ne fournit pas path (ex: S3), on ne vérifie pas l'existence
+                        pass
+                    request = self.context.get('request')
+                    url = obj.image.url
+                    return request.build_absolute_uri(url) if request else url
+            except (ValueError, AttributeError) as e:
+                # En cas d'erreur de configuration S3 ou autre problème
+                # Retourner None au lieu de faire planter l'API
                 return None
         return None
     

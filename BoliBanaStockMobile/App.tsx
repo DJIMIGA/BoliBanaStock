@@ -8,8 +8,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { store } from './src/store';
-import { checkAuthStatus } from './src/store/slices/authSlice';
+import { checkAuthStatus, logout } from './src/store/slices/authSlice';
 import { RootState } from './src/store';
+import { AuthWrapper } from './src/components/AuthWrapper';
 import {
   LoginScreen,
   SignupScreen,
@@ -181,7 +182,9 @@ export default function App() {
   return (
     <Provider store={store}>
       <StatusBar style="auto" />
-      <AppContent />
+      <AuthWrapper>
+        <AppContent />
+      </AuthWrapper>
     </Provider>
   );
 }

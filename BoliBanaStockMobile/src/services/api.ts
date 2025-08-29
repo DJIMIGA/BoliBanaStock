@@ -18,6 +18,14 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://web-produc
 console.log('🔗 URL API utilisée:', API_BASE_URL);
 console.log('🌐 Mode développement:', __DEV__);
 
+// Callback pour déclencher la déconnexion Redux
+let onSessionExpired: (() => void) | null = null;
+
+// Fonction pour enregistrer le callback de déconnexion
+export const setSessionExpiredCallback = (callback: () => void) => {
+  onSessionExpired = callback;
+};
+
 // Instance axios avec configuration de base
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -121,7 +129,16 @@ api.interceptors.response.use(
       
       // Si on arrive ici, c'est qu'on n'a pas pu résoudre l'erreur 401
       console.error('🔑 Erreur 401 non résolue - redirection vers login requise');
-      throw new Error('Session expirée. Veuillez vous reconnecter.');
+      
+      // Déclencher la déconnexion Redux si le callback est disponible
+      if (onSessionExpired) {
+        console.log('🔄 Déclenchement de la déconnexion Redux...');
+        onSessionExpired();
+      }
+      
+      // Ne pas propager l'erreur - la déconnexion sera gérée automatiquement
+      // Retourner une réponse vide pour éviter l'affichage d'erreur
+      return Promise.resolve({ data: null });
     }
     return Promise.reject(error);
   }
@@ -1021,6 +1038,14 @@ export const dashboardService = {
   getStats: async () => {
     try {
       const response = await api.get('/dashboard/');
+      
+      // Vérifier si la réponse est vide (session expirée)
+      if (!response.data) {
+        console.log('🔑 Session expirée détectée dans dashboard - déconnexion automatique');
+        // La déconnexion sera gérée par l'intercepteur
+        return null;
+      }
+      
       return response.data;
     } catch (error) {
       console.error('❌ Erreur API dashboard:', error);

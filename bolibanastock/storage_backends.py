@@ -1,15 +1,16 @@
 """
 Backends de stockage personnalisés pour BoliBana Stock
-Gère le stockage des médias sur S3 et des fichiers statiques localement
+Gère le stockage des médias sur S3 avec une structure organisée et logique
 """
 
 from storages.backends.s3boto3 import S3Boto3Storage
 from django.conf import settings
+import os
 
-class MediaStorage(S3Boto3Storage):
-    location = 'media'
-    file_overwrite = False
-    default_acl = None
+# ===== STOCKAGE DE BASE S3 =====
+
+class BaseS3Storage(S3Boto3Storage):
+    """Classe de base pour tous les stockages S3 avec configuration commune"""
     
     def __init__(self, *args, **kwargs):
         # Vérifier si S3 est configuré avant d'initialiser
@@ -21,28 +22,6 @@ class MediaStorage(S3Boto3Storage):
         self.region_name = settings.AWS_S3_REGION_NAME
         self.custom_domain = settings.AWS_S3_CUSTOM_DOMAIN
         self.querystring_auth = True
-        self.object_parameters = settings.AWS_S3_OBJECT_PARAMETERS
-        self.access_key = settings.AWS_ACCESS_KEY_ID
-        self.secret_key = settings.AWS_SECRET_ACCESS_KEY
-        self.auto_create_bucket = True
-        self.auto_create_acl = True
-
-# Optionnel si un jour vous voulez aussi les statics sur S3
-class StaticStorage(S3Boto3Storage):
-    location = 'static'
-    file_overwrite = True
-    default_acl = 'public-read'
-    
-    def __init__(self, *args, **kwargs):
-        # Vérifier si S3 est configuré avant d'initialiser
-        if not getattr(settings, 'AWS_S3_ENABLED', False):
-            raise ValueError("S3 storage is not properly configured. Check your environment variables.")
-        
-        super().__init__(*args, **kwargs)
-        self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
-        self.region_name = settings.AWS_S3_REGION_NAME
-        self.custom_domain = settings.AWS_S3_CUSTOM_DOMAIN
-        self.querystring_auth = False
         self.object_parameters = settings.AWS_S3_OBJECT_PARAMETERS
         self.access_key = settings.AWS_ACCESS_KEY_ID
         self.secret_key = settings.AWS_SECRET_ACCESS_KEY
@@ -51,61 +30,103 @@ class StaticStorage(S3Boto3Storage):
 
 # ===== STOCKAGE MULTISITE POUR PRODUITS =====
 
-class ProductImageStorage(S3Boto3Storage):
+class ProductImageStorage(BaseS3Storage):
     """
     Stockage spécialisé pour les images de produits avec séparation multisite
-    Structure: media/sites/{site_id}/products/
+    Structure: assets/products/site-{site_id}/
     """
     def __init__(self, site_id=None, *args, **kwargs):
-        # Vérifier si S3 est configuré avant d'initialiser
-        if not getattr(settings, 'AWS_S3_ENABLED', False):
-            raise ValueError("S3 storage is not properly configured. Check your environment variables.")
-        
         super().__init__(*args, **kwargs)
         self.site_id = site_id or 'default'
-        # Le dossier sera: media/sites/{site_id}/products/
-        self.location = f'media/sites/{self.site_id}/products'
-        
-        # Configuration S3
-        self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
-        self.region_name = settings.AWS_S3_REGION_NAME
-        self.custom_domain = settings.AWS_S3_CUSTOM_DOMAIN
-        self.querystring_auth = True
-        self.object_parameters = settings.AWS_S3_OBJECT_PARAMETERS
-        self.access_key = settings.AWS_ACCESS_KEY_ID
-        self.secret_key = settings.AWS_SECRET_ACCESS_KEY
-        self.auto_create_bucket = True
-        self.auto_create_acl = True
+        # Nouvelle structure: assets/products/site-{site_id}/
+        self.location = f'assets/products/site-{self.site_id}'
+        self.file_overwrite = False
 
-# ===== STOCKAGE MULTISITE POUR CONFIGURATION =====
+# ===== STOCKAGE MULTISITE POUR LOGOS =====
 
-class SiteLogoStorage(S3Boto3Storage):
+class SiteLogoStorage(BaseS3Storage):
     """
     Stockage spécialisé pour les logos de sites avec séparation multisite
-    Structure: media/sites/{site_id}/config/
+    Structure: assets/logos/site-{site_id}/
     """
     def __init__(self, site_id=None, *args, **kwargs):
-        # Vérifier si S3 est configuré avant d'initialiser
-        if not getattr(settings, 'AWS_S3_ENABLED', False):
-            raise ValueError("S3 storage is not properly configured. Check your environment variables.")
-        
         super().__init__(*args, **kwargs)
         self.site_id = site_id or 'default'
-        # Le dossier sera: media/sites/{site_id}/config/
-        self.location = f'media/sites/{self.site_id}/config'
-        
-        # Configuration S3
-        self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
-        self.region_name = settings.AWS_S3_REGION_NAME
-        self.custom_domain = settings.AWS_S3_CUSTOM_DOMAIN
-        self.querystring_auth = True
-        self.object_parameters = settings.AWS_S3_OBJECT_PARAMETERS
-        self.access_key = settings.AWS_ACCESS_KEY_ID
-        self.secret_key = settings.AWS_SECRET_ACCESS_KEY
-        self.auto_create_bucket = True
-        self.auto_create_acl = True
+        # Nouvelle structure: assets/logos/site-{site_id}/
+        self.location = f'assets/logos/site-{self.site_id}'
+        self.file_overwrite = True
 
+# ===== STOCKAGE POUR DOCUMENTS =====
 
+class DocumentStorage(BaseS3Storage):
+    """
+    Stockage pour les documents divers (factures, rapports, etc.)
+    Structure: assets/documents/{document_type}/
+    """
+    def __init__(self, document_type='general', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.document_type = document_type
+        # Structure: assets/documents/{document_type}/
+        self.location = f'assets/documents/{document_type}'
+        self.file_overwrite = False
+
+# ===== STOCKAGE POUR FACTURES =====
+
+class InvoiceStorage(DocumentStorage):
+    """Stockage spécialisé pour les factures"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(document_type='invoices', *args, **kwargs)
+
+# ===== STOCKAGE POUR RAPPORTS =====
+
+class ReportStorage(DocumentStorage):
+    """Stockage spécialisé pour les rapports"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(document_type='reports', *args, **kwargs)
+
+# ===== STOCKAGE POUR SAUVEGARDES =====
+
+class BackupStorage(BaseS3Storage):
+    """
+    Stockage pour les sauvegardes
+    Structure: assets/backups/{date}/
+    """
+    def __init__(self, backup_type='daily', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.backup_type = backup_type
+        # Structure: assets/backups/{backup_type}/
+        self.location = f'assets/backups/{backup_type}'
+        self.file_overwrite = False
+
+# ===== STOCKAGE POUR FICHIERS TEMPORAIRES =====
+
+class TempStorage(BaseS3Storage):
+    """
+    Stockage pour les fichiers temporaires
+    Structure: temp/{site_id}/{timestamp}/
+    """
+    def __init__(self, site_id=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.site_id = site_id or 'default'
+        # Structure: temp/{site_id}/
+        self.location = f'temp/{self.site_id}'
+        self.file_overwrite = True
+
+# ===== STOCKAGE POUR FICHIERS STATIQUES =====
+
+class StaticStorage(BaseS3Storage):
+    """Stockage pour les fichiers statiques"""
+    location = 'static'
+    file_overwrite = True
+    default_acl = 'public-read'
+    querystring_auth = False
+
+# ===== STOCKAGE MÉDIA GÉNÉRAL =====
+
+class MediaStorage(BaseS3Storage):
+    """Stockage général pour les médias (compatibilité)"""
+    location = 'assets/media'
+    file_overwrite = False
 
 # ===== FACTORY POUR STOCKAGE DYNAMIQUE =====
 
@@ -115,11 +136,20 @@ def get_site_storage(site_id, storage_type='product'):
     Usage: 
     - storage = get_site_storage('site_1', 'product')     # Pour les produits
     - storage = get_site_storage('site_1', 'logo')        # Pour les logos
+    - storage = get_site_storage('site_1', 'temp')        # Pour les fichiers temporaires
     """
     if storage_type == 'product':
         return ProductImageStorage(site_id=site_id)
     elif storage_type == 'logo':
         return SiteLogoStorage(site_id=site_id)
+    elif storage_type == 'temp':
+        return TempStorage(site_id=site_id)
+    elif storage_type == 'invoice':
+        return InvoiceStorage()
+    elif storage_type == 'report':
+        return ReportStorage()
+    elif storage_type == 'backup':
+        return BackupStorage()
     else:
         return ProductImageStorage(site_id=site_id)  # Par défaut
 
@@ -138,11 +168,58 @@ def get_current_site_storage(request, storage_type='product'):
     # Fallback vers le stockage par défaut
     return get_site_storage('default', storage_type)
 
+# ===== UTILITAIRES POUR GESTION DES CHEMINS =====
+
+def get_s3_path_prefix(site_id=None, asset_type='products'):
+    """
+    Génère le préfixe de chemin S3 selon le type d'asset
+    Usage:
+    - get_s3_path_prefix('site_1', 'products') -> 'assets/products/site-site_1/'
+    - get_s3_path_prefix('site_1', 'logos') -> 'assets/logos/site-site_1/'
+    """
+    if not site_id:
+        site_id = 'default'
+    
+    if asset_type == 'products':
+        return f'assets/products/site-{site_id}/'
+    elif asset_type == 'logos':
+        return f'assets/logos/site-{site_id}/'
+    elif asset_type == 'documents':
+        return f'assets/documents/'
+    elif asset_type == 'backups':
+        return f'assets/backups/'
+    elif asset_type == 'temp':
+        return f'temp/{site_id}/'
+    else:
+        return f'assets/{asset_type}/site-{site_id}/'
+
+def clean_s3_path(file_path):
+    """
+    Nettoie et normalise un chemin de fichier S3
+    Supprime les doubles slashes et normalise les séparateurs
+    """
+    if not file_path:
+        return ''
+    
+    # Remplacer les backslashes par des forward slashes
+    clean_path = file_path.replace('\\', '/')
+    
+    # Supprimer les doubles slashes
+    while '//' in clean_path:
+        clean_path = clean_path.replace('//', '/')
+    
+    # Supprimer le slash initial s'il existe
+    if clean_path.startswith('/'):
+        clean_path = clean_path[1:]
+    
+    return clean_path
+
 # ===== STOCKAGE LOCAL AVEC SÉPARATION MULTISITE =====
 
 class LocalProductImageStorage:
     """
     Stockage local avec séparation par site pour les produits (pour le développement)
+    Utilise la nouvelle structure de dossiers
     """
     def __init__(self, site_id=None):
         self.site_id = site_id or 'default'
@@ -151,6 +228,7 @@ class LocalProductImageStorage:
     def get_site_path(self, name):
         """Retourne le chemin complet avec séparation par site"""
         import os
+        # Nouvelle structure locale: sites/{site_id}/products/
         site_path = os.path.join(self.base_path, 'sites', self.site_id, 'products')
         os.makedirs(site_path, exist_ok=True)
         return os.path.join(site_path, name)

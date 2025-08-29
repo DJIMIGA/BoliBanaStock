@@ -8,6 +8,7 @@ from django.utils.text import slugify
 from django.urls import reverse
 import random
 from django.utils.translation import gettext_lazy as _
+import os
 # Import supprimé - stockage automatique selon l'environnement
 
 class Category(models.Model):
@@ -139,7 +140,7 @@ class Product(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Catégorie")
     brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Marque")
     image = models.ImageField(
-        upload_to='products/', 
+        upload_to='sites/default/products/', 
         # ✅ Stockage automatique selon l'environnement (local ou S3)
         blank=True, 
         null=True, 
@@ -256,9 +257,22 @@ class Product(models.Model):
             self.created_at = timezone.now()
         self.updated_at = timezone.now()
         
+        # ✅ Gestion dynamique du chemin d'upload selon le site avec nouvelle structure S3
+        if hasattr(self, 'site_configuration') and self.site_configuration:
+            site_id = str(self.site_configuration.id)
+            # Nouvelle structure S3: assets/products/site-{site_id}/
+            # Structure locale: sites/{site_id}/products/
+            if not self.image.name or not self.image.name.startswith(f'assets/products/site-{site_id}/'):
+                # Si l'image n'a pas encore le bon chemin, on le corrige
+                if self.image.name:
+                    # Extraire le nom du fichier
+                    filename = os.path.basename(self.image.name)
+                    # Utiliser la nouvelle structure S3
+                    self.image.name = f'assets/products/site-{site_id}/{filename}'
+        
         # ✅ Le stockage sera automatiquement géré par Django selon DEFAULT_FILE_STORAGE
-        # - En local : FileSystemStorage (media/sites/{site_id}/products/)
-        # - Sur Railway avec S3 : MediaStorage (S3 avec structure multisite)
+        # - En local : FileSystemStorage (sites/{site_id}/products/)
+        # - Sur Railway avec S3 : ProductImageStorage (assets/products/site-{site_id}/)
         
         super().save(*args, **kwargs)
 

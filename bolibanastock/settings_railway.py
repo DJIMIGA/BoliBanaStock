@@ -152,9 +152,47 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
 ]
 
-# Media files
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# Configuration S3 pour Railway
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'eu-west-3')
+
+# Vérifier si la configuration S3 est complète
+AWS_S3_ENABLED = all([
+    AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY,
+    AWS_STORAGE_BUCKET_NAME
+])
+
+AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com' if AWS_STORAGE_BUCKET_NAME else None
+AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
+AWS_DEFAULT_ACL = None
+AWS_QUERYSTRING_AUTH = True
+
+# Configuration du stockage conditionnel pour Railway
+if AWS_S3_ENABLED:
+    # Production Railway avec S3: WhiteNoise pour statics, S3 pour médias
+    print("🚀 Configuration S3 activée pour Railway")
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    DEFAULT_FILE_STORAGE = 'bolibanastock.storage_backends.MediaStorage'
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+    print(f"📁 Stockage S3: {AWS_STORAGE_BUCKET_NAME}")
+    print(f"🔗 URL médias: {MEDIA_URL}")
+else:
+    # Production Railway sans S3: stockage local persistant avec URL absolue
+    print("⚠️ Configuration S3 non trouvée, utilisation du stockage local persistant")
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    
+    # URL absolue pour Railway avec stockage local persistant
+    MEDIA_URL = 'https://web-production-e896b.up.railway.app/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+    
+    print(f"📁 Stockage local persistant: {MEDIA_ROOT}")
+    print(f"🔗 URL médias: {MEDIA_URL}")
+    print("💡 Note: Les images seront stockées localement sur Railway")
+    print("⚠️  Attention: Les images peuvent être perdues lors des redéploiements")
 
 # WhiteNoise pour les fichiers statiques
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

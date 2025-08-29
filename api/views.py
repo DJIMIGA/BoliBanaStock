@@ -310,6 +310,23 @@ class ProductViewSet(viewsets.ModelViewSet):
             print(f"⚠️  Erreur lors du logging d'upload: {e}")
 
         product = get_object_or_404(Product, pk=pk)
+        
+        # ✅ Gestion explicite de l'image pour S3
+        if 'image' in request.FILES:
+            print(f"🖼️  Gestion explicite de l'image pour le produit {product.name}")
+            # Supprimer l'ancienne image si elle existe
+            if product.image:
+                print(f"🗑️  Suppression de l'ancienne image: {product.image.name}")
+                try:
+                    product.image.delete()
+                    print(f"✅ Ancienne image supprimée avec succès")
+                except Exception as e:
+                    print(f"⚠️  Erreur lors de la suppression de l'ancienne image: {e}")
+                    print(f"💡 L'upload continuera avec la nouvelle image")
+            
+            # L'image sera sauvegardée automatiquement par le modèle avec le bon storage
+            print(f"💾 Sauvegarde de la nouvelle image via le modèle")
+        
         serializer = self.get_serializer(product, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)

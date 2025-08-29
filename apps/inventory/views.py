@@ -168,15 +168,13 @@ class ProductUpdateView(SiteFilterMixin, UpdateView):
         # Sauvegarder l'ancienne quantité pour la comparaison
         old_quantity = self.object.quantity if self.object.quantity else 0
         
-        # Utiliser le stockage optimisé pour l'image
+        # Gérer l'image avec le stockage du modèle (multisite)
         if 'image' in self.request.FILES:
             # Supprimer l'ancienne image si elle existe
             if self.object.image:
-                storage.delete(self.object.image.name)
-            form.instance.image = storage.save(
-                f'products/{self.request.FILES["image"].name}',
-                self.request.FILES['image']
-            )
+                self.object.image.delete()  # Utiliser la méthode du modèle
+            # L'image sera sauvegardée automatiquement par le modèle
+            # avec le bon storage (LocalProductImageStorage)
         
         # Sauvegarder le formulaire
         response = super().form_valid(form)
@@ -234,7 +232,7 @@ class ProductDeleteView(SiteFilterMixin, DeleteView):
         product = self.get_object()
         # Supprimer l'image si elle existe
         if product.image:
-            storage.delete(product.image.name)
+            product.image.delete()  # Utiliser la méthode du modèle
         return super().delete(request, *args, **kwargs)
 
 @login_required
@@ -331,12 +329,8 @@ class CategoryCreateView(SiteRequiredMixin, CreateView):
         if not self.request.user.is_superuser:
             form.instance.site_configuration = self.request.user.site_configuration
         
-        # Utiliser le stockage optimisé pour l'image
-        if 'image' in self.request.FILES:
-            form.instance.image = storage.save(
-                f'categories/{self.request.FILES["image"].name}',
-                self.request.FILES['image']
-            )
+        # L'image sera sauvegardée automatiquement par le modèle
+        # avec le stockage par défaut
         response = super().form_valid(form)
         messages.success(self.request, 'La catégorie a été créée avec succès.')
         return response
@@ -348,15 +342,12 @@ class CategoryUpdateView(SiteFilterMixin, UpdateView):
     success_url = reverse_lazy('inventory:category_list')
 
     def form_valid(self, form):
-        # Utiliser le stockage optimisé pour l'image
+        # Gérer l'image avec le stockage du modèle
         if 'image' in self.request.FILES:
             # Supprimer l'ancienne image si elle existe
             if self.object.image:
-                storage.delete(self.object.image.name)
-            form.instance.image = storage.save(
-                f'categories/{self.request.FILES["image"].name}',
-                self.request.FILES['image']
-            )
+                self.object.image.delete()  # Utiliser la méthode du modèle
+            # L'image sera sauvegardée automatiquement par le modèle
         response = super().form_valid(form)
         messages.success(self.request, 'La catégorie a été mise à jour avec succès.')
         return response
@@ -369,7 +360,7 @@ class CategoryDeleteView(SiteFilterMixin, DeleteView):
     def delete(self, request, *args, **kwargs):
         category = self.get_object()
         if category.image:
-            storage.delete(category.image.name)
+            category.image.delete()  # Utiliser la méthode du modèle
         return super().delete(request, *args, **kwargs)
 
 class BrandListView(SiteFilterMixin, ListView):
@@ -392,12 +383,8 @@ class BrandCreateView(SiteRequiredMixin, CreateView):
         if not self.request.user.is_superuser:
             form.instance.site_configuration = self.request.user.site_configuration
         
-        # Utiliser le stockage optimisé pour le logo
-        if 'logo' in self.request.FILES:
-            form.instance.logo = storage.save(
-                f'brands/{self.request.FILES["logo"].name}',
-                self.request.FILES['logo']
-            )
+        # Le logo sera sauvegardé automatiquement par le modèle
+        # avec le stockage par défaut
         response = super().form_valid(form)
         messages.success(self.request, 'La marque a été créée avec succès.')
         return response
@@ -409,15 +396,12 @@ class BrandUpdateView(SiteFilterMixin, UpdateView):
     success_url = reverse_lazy('inventory:brand_list')
 
     def form_valid(self, form):
-        # Utiliser le stockage optimisé pour le logo
+        # Gérer le logo avec le stockage du modèle
         if 'logo' in self.request.FILES:
             # Supprimer l'ancien logo s'il existe
             if self.object.logo:
-                storage.delete(self.object.logo.name)
-            form.instance.logo = storage.save(
-                f'brands/{self.request.FILES["logo"].name}',
-                self.request.FILES['logo']
-            )
+                self.object.logo.delete()  # Utiliser la méthode du modèle
+            # Le logo sera sauvegardé automatiquement par le modèle
         response = super().form_valid(form)
         messages.success(self.request, 'La marque a été mise à jour avec succès.')
         return response

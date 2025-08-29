@@ -14,6 +14,8 @@ import { dashboardService, configurationService } from '../services/api';
 import { useDispatch } from 'react-redux';
 import { logout } from '../store/slices/authSlice';
 import { AppDispatch } from '../store';
+import { useAuthError } from '../hooks/useAuthError';
+import { SessionExpiredNotification } from '../components/SessionExpiredNotification';
 import theme, { stockColors, actionColors } from '../utils/theme';
 
 interface DashboardStats {
@@ -40,6 +42,7 @@ interface Configuration {
 
 export default function DashboardScreen({ navigation }: any) {
   const dispatch = useDispatch<AppDispatch>();
+  const { handleApiError, showNotification, setShowNotification } = useAuthError();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,9 +52,22 @@ export default function DashboardScreen({ navigation }: any) {
     try {
       setLoading(true);
       const data = await dashboardService.getStats();
+      
+      // Vérifier si la réponse est null (session expirée)
+      if (data === null) {
+        console.log('🔑 Session expirée - déconnexion automatique en cours...');
+        return; // La déconnexion sera gérée automatiquement
+      }
+      
       setStats(data.stats);
     } catch (error: any) {
       console.error('❌ Erreur chargement dashboard:', error);
+      
+      // Vérifier si c'est une erreur d'authentification
+      if (handleApiError(error)) {
+        return; // La déconnexion sera gérée automatiquement
+      }
+      
       // Utiliser des données par défaut en cas d'erreur
       setStats({
         total_products: 0,
@@ -126,6 +142,12 @@ export default function DashboardScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Notification de session expirée */}
+      <SessionExpiredNotification
+        visible={showNotification}
+        onHide={() => setShowNotification(false)}
+      />
+      
       <ScrollView
         style={styles.scrollView}
         refreshControl={
