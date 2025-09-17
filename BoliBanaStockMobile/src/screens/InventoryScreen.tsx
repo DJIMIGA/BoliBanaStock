@@ -6,16 +6,27 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
-import { ContinuousBarcodeScanner } from '../components';
+import ContinuousBarcodeScanner from '../components/ContinuousBarcodeScanner';
 import { useContinuousScanner } from '../hooks';
+import { productService } from '../services/api';
 
 function InventoryScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [adjustmentData, setAdjustmentData] = useState({
+    productId: '',
+    productName: '',
+    currentStock: 0,
+    newQuantity: '',
+    notes: ''
+  });
   const scanner = useContinuousScanner('inventory');
 
   const handleStockCount = () => {
@@ -27,11 +38,81 @@ function InventoryScreen({ navigation }: any) {
   };
 
   const handleStockAdjustment = () => {
-    Alert.alert(
-      'Ajustement de stock',
-      'Cette fonctionnalité sera disponible prochainement',
-      [{ text: 'OK' }]
-    );
+    // Ouvrir le modal d'ajustement de stock
+    setShowAdjustmentModal(true);
+  };
+
+  const handleProductSearch = async () => {
+    if (!adjustmentData.productId.trim()) {
+      Alert.alert('Erreur', 'Veuillez saisir un ID de produit');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const product = await productService.getProduct(parseInt(adjustmentData.productId));
+      setAdjustmentData(prev => ({
+        ...prev,
+        productName: product.name,
+        currentStock: product.quantity
+      }));
+    } catch (error: any) {
+      Alert.alert('Erreur', 'Produit non trouvé');
+      setAdjustmentData(prev => ({
+        ...prev,
+        productName: '',
+        currentStock: 0
+      }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdjustmentSubmit = async () => {
+    if (!adjustmentData.productId || !adjustmentData.newQuantity.trim()) {
+      Alert.alert('Erreur', 'Veuillez saisir un produit et une quantité');
+      return;
+    }
+
+    const newQuantity = parseInt(adjustmentData.newQuantity);
+    if (isNaN(newQuantity) || newQuantity < 0) {
+      Alert.alert('Erreur', 'Veuillez saisir une quantité valide');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await productService.adjustStock(
+        parseInt(adjustmentData.productId),
+        newQuantity,
+        adjustmentData.notes || 'Ajustement d\'inventaire'
+      );
+
+      Alert.alert('Succès', result.message);
+      setShowAdjustmentModal(false);
+      setAdjustmentData({
+        productId: '',
+        productName: '',
+        currentStock: 0,
+        newQuantity: '',
+        notes: ''
+      });
+    } catch (error: any) {
+      Alert.alert('Erreur', error.response?.data?.error || 'Erreur lors de l\'ajustement');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdjustmentCancel = () => {
+    setShowAdjustmentModal(false);
+    setAdjustmentData({
+      productId: '',
+      productName: '',
+      currentStock: 0,
+      newQuantity: '',
+      notes: ''
+    });
   };
 
   const handleStockReport = () => {
@@ -146,6 +227,17 @@ function InventoryScreen({ navigation }: any) {
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={[styles.optionCard, { backgroundColor: theme.colors.info[500] }]}
+              onPress={() => navigation.navigate('Delivery')}
+            >
+              <Ionicons name="car-outline" size={32} color={theme.colors.text.inverse} />
+              <Text style={styles.optionTitle}>Livraison</Text>
+              <Text style={styles.optionDescription}>
+                Réception de produits
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.optionCard, { backgroundColor: theme.colors.warning[500] }]}
               onPress={handleContinuousScan}
             >
@@ -193,6 +285,104 @@ function InventoryScreen({ navigation }: any) {
         title="Scanner d'Inventaire"
         showQuantityInput={true}
       />
+
+      {/* Modal d'ajustement de stock */}
+      <Modal
+        visible={showAdjustmentModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={handleAdjustmentCancel}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Ajustement de Stock</Text>
+              <TouchableOpacity onPress={handleAdjustmentCancel}>
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>ID du Produit</Text>
+                <View style={styles.searchContainer}>
+                  <TextInput
+                    style={[styles.textInput, styles.searchInput]}
+                    value={adjustmentData.productId}
+                    onChangeText={(text) => setAdjustmentData(prev => ({ ...prev, productId: text }))}
+                    placeholder="Saisir l'ID du produit"
+                    keyboardType="numeric"
+                  />
+                  <TouchableOpacity
+                    style={styles.searchButton}
+                    onPress={handleProductSearch}
+                    disabled={loading}
+                  >
+                    <Ionicons 
+                      name="search" 
+                      size={20} 
+                      color={theme.colors.text.inverse} 
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {adjustmentData.productName && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Produit Trouvé</Text>
+                  <Text style={styles.productNameText}>{adjustmentData.productName}</Text>
+                </View>
+              )}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Stock Actuel</Text>
+                <Text style={styles.currentStockText}>{adjustmentData.currentStock}</Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Nouvelle Quantité</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={adjustmentData.newQuantity}
+                  onChangeText={(text) => setAdjustmentData(prev => ({ ...prev, newQuantity: text }))}
+                  placeholder="Quantité après inventaire"
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Notes (optionnel)</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea]}
+                  value={adjustmentData.notes}
+                  onChangeText={(text) => setAdjustmentData(prev => ({ ...prev, notes: text }))}
+                  placeholder="Notes sur l'ajustement"
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={handleAdjustmentCancel}
+              >
+                <Text style={styles.cancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.submitButton]}
+                onPress={handleAdjustmentSubmit}
+                disabled={loading}
+              >
+                <Text style={styles.submitButtonText}>
+                  {loading ? 'Ajustement...' : 'Ajuster'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -252,7 +442,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   optionCard: {
-    width: '48%',
+    width: '31%', // Ajusté pour 3 colonnes
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -288,6 +478,113 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: theme.colors.text.primary,
+  },
+  // Styles pour le modal d'ajustement
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '80%',
+    ...theme.shadows.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[300],
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: theme.colors.text.primary,
+    backgroundColor: theme.colors.background.secondary,
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  currentStockText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.colors.primary[500],
+    padding: 12,
+    backgroundColor: theme.colors.primary[50],
+    borderRadius: 8,
+    textAlign: 'center',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+  },
+  searchButton: {
+    backgroundColor: theme.colors.primary[500],
+    padding: 12,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 48,
+  },
+  productNameText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.success[600],
+    padding: 12,
+    backgroundColor: theme.colors.success[50],
+    borderRadius: 8,
+    textAlign: 'center',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.neutral[200],
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitButton: {
+    backgroundColor: theme.colors.primary[500],
+  },
+  submitButtonText: {
+    color: theme.colors.text.inverse,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

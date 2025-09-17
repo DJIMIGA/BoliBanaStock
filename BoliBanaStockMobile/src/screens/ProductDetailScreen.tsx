@@ -19,9 +19,10 @@ import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../types';
 import { productService } from '../services/api';
 import BarcodeManager from '../components/BarcodeManager';
+import BarcodeModal from '../components/BarcodeModal';
 import theme, { stockColors } from '../utils/theme';
 import ProductImage from '../components/ProductImage';
-import S3ImageTest from '../components/S3ImageTest';
+
 
 type ProductDetailScreenRouteProp = RouteProp<RootStackParamList, 'ProductDetail'>;
 
@@ -94,6 +95,9 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     quantity: '',
     notes: ''
   });
+  
+  // ✅ État pour le modal des codes-barres
+  const [barcodeModalVisible, setBarcodeModalVisible] = useState(false);
 
   const loadProduct = useCallback(async () => {
     try {
@@ -249,10 +253,12 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           result = await productService.addStock(product.id, quantity, actionModal.notes);
           break;
         case 'remove':
-          if (quantity > product.quantity) {
-            Alert.alert('Erreur', 'Stock insuffisant');
-            return;
-          }
+          // ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+          // Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
+          // if (quantity > product.quantity) {
+          //   Alert.alert('Erreur', 'Stock insuffisant');
+          //   return;
+          // }
           result = await productService.removeStock(product.id, quantity, actionModal.notes);
           break;
         case 'adjust':
@@ -318,19 +324,28 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     }
   };
 
+  // ✅ Fonction pour gérer la mise à jour des codes-barres via le modal
+  const handleBarcodesUpdate = (updatedBarcodes: any[]) => {
+    if (product) {
+      setProduct({
+        ...product,
+        barcodes: updatedBarcodes
+      });
+    }
+  };
+
   const renderDetailsTab = () => (
     <ScrollView contentContainerStyle={styles.tabContent}>
-      {/* Image principale du produit */}
+      {/* Image principale du produit - Agrandie pour plus d'impact visuel */}
       <View style={styles.mainImageContainer}>
         <ProductImage 
           imageUrl={product?.image_url}
-          size={200}
-          borderRadius={16}
+          size={280}
+          borderRadius={20}
         />
       </View>
 
-      {/* Test S3 - À supprimer après résolution */}
-      <S3ImageTest />
+
 
       {/* Boutons de gestion du produit - encadrés avec titre */}
       <View style={styles.compactCard}>
@@ -389,9 +404,17 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             <Ionicons name="barcode-outline" size={18} color={theme.colors.neutral[600]} />
             <Text style={styles.label}>EAN Principal</Text>
           </View>
-          <Text style={styles.value}>
-            {product?.barcodes?.find(b => b.is_primary)?.ean || 'Aucun'}
-          </Text>
+          <View style={styles.rowCenter}>
+            <Text style={styles.value}>
+              {product?.barcodes?.find(b => b.is_primary)?.ean || 'Aucun'}
+            </Text>
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={() => setBarcodeModalVisible(true)}
+            >
+              <Ionicons name="pencil" size={16} color={theme.colors.primary[500]} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.divider} />
@@ -656,14 +679,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           <Ionicons name="arrow-back" size={22} color={theme.colors.text.inverse} />
         </TouchableOpacity>
         
-        {/* Image du produit dans l'en-tête */}
-        <View style={styles.headerImageContainer}>
-          <ProductImage 
-            imageUrl={product.image_url}
-            size={40}
-            borderRadius={20}
-          />
-        </View>
+
         
         <Text style={styles.headerTitle} numberOfLines={1}>
           {product.name}
@@ -770,6 +786,15 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
       </Modal>
+
+      {/* ✅ Modal de gestion des codes-barres */}
+      <BarcodeModal
+        visible={barcodeModalVisible}
+        onClose={() => setBarcodeModalVisible(false)}
+        productId={product.id}
+        barcodes={product.barcodes || []}
+        onBarcodesUpdate={handleBarcodesUpdate}
+      />
     </SafeAreaView>
   );
 }
@@ -1170,6 +1195,10 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.neutral[500],
     fontWeight: 'bold',
+  },
+  editButton: {
+    marginLeft: theme.spacing.sm,
+    padding: 4,
   },
 });
 

@@ -11,6 +11,10 @@ import { store } from './src/store';
 import { checkAuthStatus, logout } from './src/store/slices/authSlice';
 import { RootState } from './src/store';
 import { AuthWrapper } from './src/components/AuthWrapper';
+// import { GlobalErrorHandler } from './src/components/GlobalErrorHandler'; // Supprimé - doublon avec ErrorBoundary
+import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { GlobalSessionNotification } from './src/components/GlobalSessionNotification';
+// import { SessionProvider } from './src/contexts/SessionContext'; // Supprimé - approche Redux simplifiée
 import {
   LoginScreen,
   SignupScreen,
@@ -28,13 +32,17 @@ import {
   StockValueScreen,
   NewSaleScreen,
   InventoryScreen,
+  DeliveryScreen,
   ReportsScreen,
   TransactionsScreen,
   AddProductScreen,
   TestScannerScreen,
   LabelGeneratorScreen,
   LabelPreviewScreen,
-  BarcodeTest,
+  PrintModeSelectionScreen,
+  CatalogPDFScreen,
+  LabelPrintScreen,
+  BarcodeTestScreen,
   CategoriesScreen,
   BrandsScreen,
   ProductCopyScreen,
@@ -135,45 +143,51 @@ const AppContent: React.FC = () => {
 
   return (
     <NavigationContainer>
+      {/* Notification globale de session expirée - maintenant à l'intérieur du NavigationContainer */}
+      <GlobalSessionNotification />
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
         }}
       >
-        {!isAuthenticated ? (
-          // Écrans d'authentification
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Signup" component={SignupScreen} />
-          </>
-        ) : (
-          // Application principale avec menu bas fixe (onglets)
-          <>
-            <Stack.Screen name="MainTabs" component={MainTabs} />
-            {/* Écrans secondaires accessibles depuis les onglets */}
-            <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
-            <Stack.Screen name="ScanProduct" component={ScanProductScreen} />
-            <Stack.Screen name="SaleDetail" component={SaleDetailScreen} />
-            <Stack.Screen name="Configuration" component={ConfigurationScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen name="Profile" component={ProfileScreen} />
-            <Stack.Screen name="LowStock" component={LowStockScreen} />
-            <Stack.Screen name="OutOfStock" component={OutOfStockScreen} />
-            <Stack.Screen name="StockValue" component={StockValueScreen} />
-            <Stack.Screen name="NewSale" component={NewSaleScreen} />
-            <Stack.Screen name="Inventory" component={InventoryScreen} />
-            <Stack.Screen name="Reports" component={ReportsScreen} />
-            <Stack.Screen name="AddProduct" component={AddProductScreen} />
-            <Stack.Screen name="TestScanner" component={TestScannerScreen} />
-            <Stack.Screen name="LabelPreview" component={LabelPreviewScreen} />
-            <Stack.Screen name="BarcodeTest" component={BarcodeTest} />
-            <Stack.Screen name="Categories" component={CategoriesScreen} />
-            <Stack.Screen name="Brands" component={BrandsScreen} />
-            <Stack.Screen name="ProductCopy" component={ProductCopyScreen} />
-            <Stack.Screen name="ProductCopyManagement" component={ProductCopyManagementScreen} />
-          </>
-        )}
-      </Stack.Navigator>
+      {!isAuthenticated ? (
+        // Écrans d'authentification
+        <>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Signup" component={SignupScreen} />
+        </>
+      ) : (
+        // Application principale avec menu bas fixe (onglets)
+        <>
+          <Stack.Screen name="MainTabs" component={MainTabs} />
+          {/* Écrans secondaires accessibles depuis les onglets */}
+          <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
+          <Stack.Screen name="ScanProduct" component={ScanProductScreen} />
+          <Stack.Screen name="SaleDetail" component={SaleDetailScreen} />
+          <Stack.Screen name="Configuration" component={ConfigurationScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="LowStock" component={LowStockScreen} />
+          <Stack.Screen name="OutOfStock" component={OutOfStockScreen} />
+          <Stack.Screen name="StockValue" component={StockValueScreen} />
+          <Stack.Screen name="NewSale" component={NewSaleScreen} />
+          <Stack.Screen name="Inventory" component={InventoryScreen} />
+          <Stack.Screen name="Delivery" component={DeliveryScreen} />
+          <Stack.Screen name="Reports" component={ReportsScreen} />
+          <Stack.Screen name="AddProduct" component={AddProductScreen} />
+          <Stack.Screen name="TestScanner" component={TestScannerScreen} />
+          <Stack.Screen name="LabelPreview" component={LabelPreviewScreen} />
+          <Stack.Screen name="PrintModeSelection" component={PrintModeSelectionScreen} />
+          <Stack.Screen name="CatalogPDF" component={CatalogPDFScreen} />
+          <Stack.Screen name="LabelPrint" component={LabelPrintScreen} />
+          <Stack.Screen name="BarcodeTest" component={BarcodeTestScreen} />
+          <Stack.Screen name="Categories" component={CategoriesScreen} />
+          <Stack.Screen name="Brands" component={BrandsScreen} />
+          <Stack.Screen name="ProductCopy" component={ProductCopyScreen} />
+          <Stack.Screen name="ProductCopyManagement" component={ProductCopyManagementScreen} />
+        </>
+      )}
+    </Stack.Navigator>
     </NavigationContainer>
   );
 };
@@ -182,9 +196,11 @@ export default function App() {
   return (
     <Provider store={store}>
       <StatusBar style="auto" />
-      <AuthWrapper>
-        <AppContent />
-      </AuthWrapper>
+      <ErrorBoundary>
+        <AuthWrapper>
+          <AppContent />
+        </AuthWrapper>
+      </ErrorBoundary>
     </Provider>
   );
 }

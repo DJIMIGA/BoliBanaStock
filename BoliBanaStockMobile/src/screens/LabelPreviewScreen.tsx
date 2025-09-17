@@ -9,7 +9,10 @@ import {
   Share,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeBarcode } from '../components';
+import theme from '../utils/theme';
 
 interface Label {
   product_id: number;
@@ -101,9 +104,21 @@ const LabelPreviewScreen: React.FC<LabelPreviewScreenProps> = ({ route, navigati
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>🏷️ Prévisualisation des Étiquettes</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Prévisualisation des Étiquettes</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerButton}>
+            <Ionicons name="help-circle-outline" size={20} color="#666" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.subtitleContainer}>
         <Text style={styles.subtitle}>
           {labels.length} étiquette(s) générée(s)
         </Text>
@@ -183,30 +198,52 @@ const LabelPreviewScreen: React.FC<LabelPreviewScreenProps> = ({ route, navigati
           ))}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background.secondary,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingTop: 32,
     backgroundColor: 'white',
-    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+  },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8,
+  },
+  subtitleContainer: {
+    backgroundColor: theme.colors.background.primary,
+    padding: theme.spacing.md,
+    paddingTop: 30,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: theme.fontSize.md,
+    color: theme.colors.text.secondary,
+    textAlign: 'center',
   },
   controls: {
     backgroundColor: 'white',

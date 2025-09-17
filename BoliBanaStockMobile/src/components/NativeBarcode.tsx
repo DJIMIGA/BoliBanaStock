@@ -28,28 +28,38 @@ const NativeBarcode: React.FC<NativeBarcodeProps> = ({
     );
   }
 
-  // Générer un code-barres simple avec des rectangles natifs
+  // Générer un code-barres EAN-13 avec des rectangles natifs
   const generateBarcode = () => {
     const bars: React.ReactElement[] = [];
     const totalWidth = size;
-    const barHeight = size * 0.3;
-    const barCount = 40; // Nombre total de barres
+    const barHeight = size * 0.4;
+    const barCount = 95; // Nombre de barres pour EAN-13
     const barWidth = totalWidth / barCount;
     
-    // Créer des barres alternées basées sur les chiffres du code EAN
-    for (let i = 0; i < barCount; i++) {
-      const digitIndex = i % eanCode.length;
-      const digit = parseInt(eanCode[digitIndex]);
-      const isVisible = (digit + i) % 2 === 0; // Alternance basée sur le chiffre et la position
-      
-      if (isVisible) {
+    // Pattern EAN-13 simplifié : barres de garde + données + barre centrale + données + barres de garde
+    const eanPattern = [
+      // Barres de garde gauche (3 barres)
+      true, false, true,
+      // Données (42 barres pour 6 chiffres)
+      ...generateEANPattern(eanCode.substring(0, 6)),
+      // Barre centrale (5 barres)
+      false, true, false, true, false,
+      // Données (42 barres pour 6 chiffres)
+      ...generateEANPattern(eanCode.substring(6, 12)),
+      // Barres de garde droite (3 barres)
+      true, false, true
+    ];
+    
+    // Créer les barres visuelles
+    for (let i = 0; i < eanPattern.length && i < barCount; i++) {
+      if (eanPattern[i]) {
         bars.push(
           <View
             key={i}
             style={[
               styles.bar,
               {
-                width: barWidth,
+                width: barWidth * (i % 3 === 1 ? 2 : 1), // Barres plus larges pour certains éléments
                 height: barHeight,
                 left: i * barWidth,
               }
@@ -60,6 +70,29 @@ const NativeBarcode: React.FC<NativeBarcodeProps> = ({
     }
     
     return bars;
+  };
+
+  // Générer le pattern EAN pour 6 chiffres
+  const generateEANPattern = (digits: string) => {
+    const patterns: boolean[] = [];
+    for (let i = 0; i < digits.length; i++) {
+      const digit = parseInt(digits[i]);
+      // Pattern simplifié : alternance basée sur le chiffre
+      const digitPattern = [
+        [false, true, false, true, false, true, false], // 0
+        [true, false, false, true, false, true, false], // 1
+        [false, false, true, true, false, true, false], // 2
+        [true, true, true, false, false, true, false], // 3
+        [false, true, false, false, true, true, false], // 4
+        [true, false, true, false, true, true, false], // 5
+        [false, false, false, true, true, true, false], // 6
+        [true, true, false, true, true, true, false], // 7
+        [false, true, true, true, true, true, false], // 8
+        [true, false, false, false, false, true, false], // 9
+      ];
+      patterns.push(...(digitPattern[digit] || digitPattern[0]));
+    }
+    return patterns;
   };
 
   return (
@@ -119,11 +152,13 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    overflow: 'hidden',
   },
   bar: {
     position: 'absolute',
     backgroundColor: 'black',
-    borderRadius: 1,
+    borderRadius: 0.5,
+    top: 0,
   },
   eanText: {
     fontSize: 12,

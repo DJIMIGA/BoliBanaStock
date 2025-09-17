@@ -313,6 +313,7 @@ class CategoryListView(SiteFilterMixin, ListView):
     model = Category
     template_name = 'inventory/category_list.html'
     context_object_name = 'categories'
+    paginate_by = 50  # Limiter à 50 catégories par page
 
     @cache_result(timeout=300)  # Cache pour 5 minutes
     def get_queryset(self):
@@ -531,16 +532,13 @@ class TransactionCreateView(SiteRequiredMixin, CreateView):
         product = transaction.product
         if transaction.type == 'in':
             product.quantity += transaction.quantity
-        elif transaction.type == 'out':
-            if product.quantity < transaction.quantity:
-                messages.error(self.request, f'Stock insuffisant pour {product.name}. Stock disponible: {product.quantity}')
-                return self.form_invalid(form)
+        elif transaction.type in ['out', 'loss', 'backorder']:
+            # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+            # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
             product.quantity -= transaction.quantity
-        elif transaction.type == 'loss':
-            if product.quantity < transaction.quantity:
-                messages.error(self.request, f'Stock insuffisant pour {product.name}. Stock disponible: {product.quantity}')
-                return self.form_invalid(form)
-            product.quantity -= transaction.quantity
+        elif transaction.type == 'adjustment':
+            # Ajustement manuel - la quantité est déjà définie dans le produit
+            pass
         
         # Sauvegarder les modifications
         product.save()
@@ -1415,3 +1413,46 @@ class ProductCopyManagementView(LoginRequiredMixin, View):
             messages.error(request, f"Erreur lors de l'action: {e}")
         
         return redirect('inventory:product_copy_management')
+
+
+class GetSubcategoriesView(LoginRequiredMixin, View):
+    """
+    Vue AJAX pour récupérer les sous-catégories d'un rayon
+    """
+    def get(self, request):
+        rayon_id = request.GET.get('rayon_id')
+        
+        if not rayon_id:
+            return JsonResponse({'error': 'ID du rayon manquant'}, status=400)
+        
+        try:
+            # Récupérer le rayon principal
+            rayon = Category.objects.get(id=rayon_id, level=0, is_rayon=True)
+            
+            # Récupérer les sous-catégories
+            subcategories = Category.objects.filter(
+                parent=rayon,
+                level=1,
+                is_active=True
+            ).order_by('order', 'name')
+            
+            # Préparer les données pour le JSON
+            subcategories_data = []
+            for subcat in subcategories:
+                subcategories_data.append({
+                    'id': subcat.id,
+                    'name': subcat.name,
+                    'description': subcat.description or '',
+                    'rayon_type': subcat.rayon_type
+                })
+            
+            return JsonResponse({
+                'success': True,
+                'rayon_name': rayon.name,
+                'subcategories': subcategories_data
+            })
+            
+        except Category.DoesNotExist:
+            return JsonResponse({'error': 'Rayon non trouvé'}, status=404)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)

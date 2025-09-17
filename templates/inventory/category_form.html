@@ -28,14 +28,66 @@
                     {% endif %}
                 </div>
 
-                <div class="form-group">
-                    <label for="{{ form.parent.id_for_label }}">Catégorie parente</label>
-                    {{ form.parent }}
+                <!-- Section pour les rayons -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Configuration du rayon</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <div class="custom-control custom-checkbox">
+                                {{ form.is_rayon }}
+                                <label class="custom-control-label" for="{{ form.is_rayon.id_for_label }}">
+                                    {{ form.is_rayon.label }}
+                                </label>
+                            </div>
+                            {% if form.is_rayon.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.is_rayon.errors }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group" id="rayon-type-group" style="display: none;">
+                            <label for="{{ form.rayon_type.id_for_label }}">{{ form.rayon_type.label }}</label>
+                            {{ form.rayon_type }}
+                            {% if form.rayon_type.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.rayon_type.errors }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <div class="custom-control custom-checkbox">
+                                {{ form.is_global }}
+                                <label class="custom-control-label" for="{{ form.is_global.id_for_label }}">
+                                    {{ form.is_global.label }}
+                                </label>
+                            </div>
+                            {% if form.is_global.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.is_global.errors }}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" id="parent-group">
+                    <label for="{{ form.parent.id_for_label }}">Rayon parent</label>
+                    <select name="{{ form.parent.name }}" id="{{ form.parent.id_for_label }}" class="form-control">
+                        <option value="">Sélectionnez un rayon parent</option>
+                        <!-- Les options seront chargées dynamiquement -->
+                    </select>
                     {% if form.parent.errors %}
                         <div class="invalid-feedback d-block">
                             {{ form.parent.errors }}
                         </div>
                     {% endif %}
+                    <small class="form-text text-muted">
+                        Sélectionnez le rayon principal pour cette sous-catégorie
+                    </small>
                 </div>
 
                 <div class="form-group">
@@ -124,7 +176,6 @@ function openGallery() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    // Pas de capture pour permettre la sélection depuis la galerie
     
     input.onchange = function(e) {
         if (e.target.files && e.target.files[0]) {
@@ -141,6 +192,65 @@ function openGallery() {
     
     input.click();
 }
+
+// Gestion de l'affichage dynamique des champs
+document.addEventListener('DOMContentLoaded', function() {
+    const isRayonCheckbox = document.getElementById('{{ form.is_rayon.id_for_label }}');
+    const rayonTypeGroup = document.getElementById('rayon-type-group');
+    const parentGroup = document.getElementById('parent-group');
+    const parentSelect = document.getElementById('{{ form.parent.id_for_label }}');
+    const isGlobalCheckbox = document.getElementById('{{ form.is_global.id_for_label }}');
+
+    // Charger les rayons disponibles
+    function loadRayons() {
+        fetch('/inventory/api/rayons/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    parentSelect.innerHTML = '<option value="">Sélectionnez un rayon parent</option>';
+                    data.rayons.forEach(rayon => {
+                        const option = document.createElement('option');
+                        option.value = rayon.id;
+                        option.textContent = rayon.name;
+                        parentSelect.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Erreur lors du chargement des rayons:', error);
+            });
+    }
+
+    function toggleFields() {
+        if (isRayonCheckbox.checked) {
+            // Si c'est un rayon principal
+            rayonTypeGroup.style.display = 'block';
+            parentGroup.style.display = 'none';
+            parentSelect.value = '';
+            // Décocher automatiquement is_global pour les rayons
+            isGlobalCheckbox.checked = false;
+        } else {
+            // Si c'est une sous-catégorie
+            rayonTypeGroup.style.display = 'none';
+            parentGroup.style.display = 'block';
+            // Charger les rayons si pas encore fait
+            if (parentSelect.children.length <= 1) {
+                loadRayons();
+            }
+        }
+    }
+
+    // Écouter les changements
+    isRayonCheckbox.addEventListener('change', toggleFields);
+    
+    // Initialiser l'affichage
+    toggleFields();
+    
+    // Charger les rayons au démarrage si c'est une sous-catégorie
+    if (!isRayonCheckbox.checked) {
+        loadRayons();
+    }
+});
 
 // Fonction pour afficher un aperçu de l'image sélectionnée
 document.addEventListener('DOMContentLoaded', function() {

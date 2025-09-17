@@ -27,17 +27,26 @@ interface Product {
 }
 
 export default function OutOfStockScreen({ navigation }: any) {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [outOfStockProducts, setOutOfStockProducts] = useState<Product[]>([]);
+  const [backorderProducts, setBackorderProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadOutOfStockProducts = async () => {
+  const loadProducts = async () => {
     try {
       setLoading(true);
-      const data = await productService.getProducts({ quantity: 0 });
-      setProducts(data.results || []);
+      
+      // ✅ Charger les produits en rupture de stock (quantité = 0)
+      const outOfStockData = await productService.getOutOfStockProducts();
+      const outOfStock = outOfStockData.filter((p: Product) => p.quantity === 0);
+      setOutOfStockProducts(outOfStock || []);
+      
+      // ✅ Charger les produits en backorder (stock négatif)
+      const backorderData = await productService.getBackorderProducts();
+      setBackorderProducts(backorderData || []);
+      
     } catch (error: any) {
-      console.error('❌ Erreur chargement rupture stock:', error);
+      console.error('❌ Erreur chargement produits:', error);
     } finally {
       setLoading(false);
     }
@@ -45,58 +54,74 @@ export default function OutOfStockScreen({ navigation }: any) {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadOutOfStockProducts();
+    await loadProducts();
     setRefreshing(false);
   };
 
   useEffect(() => {
-    loadOutOfStockProducts();
+    loadProducts();
   }, []);
 
-  const renderProduct = ({ item }: { item: Product }) => (
-    <TouchableOpacity
-      style={styles.productCard}
-      onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
-    >
-      <View style={styles.productHeader}>
-        {/* Image du produit */}
-        <View style={styles.productImageContainer}>
-          <ProductImage 
-            imageUrl={item.image_url}
-            size={60}
-            borderRadius={8}
-          />
-        </View>
-        
-        <View style={styles.productInfo}>
-          <Text style={styles.productName} numberOfLines={2}>
-            {item.name}
-          </Text>
-          <Text style={styles.productCug}>CUG: {item.cug}</Text>
-          <Text style={styles.productCategory}>
-            {item.category_name} • {item.brand_name}
-          </Text>
-        </View>
-        <View style={styles.stockInfo}>
-          <View style={[styles.stockBadge, { backgroundColor: stockColors.outOfStock }]}>
-            <Text style={styles.stockText}>Rupture</Text>
+  const renderProduct = ({ item, isBackorder = false }: { item: Product; isBackorder?: boolean }) => {
+    const isNegativeStock = item.quantity < 0;
+    const stockColor = isNegativeStock ? theme.colors.warning[500] : theme.colors.error[500];
+    const stockText = isNegativeStock ? 'Backorder' : 'Rupture';
+    const stockIcon = isNegativeStock ? 'warning-outline' : 'close-circle-outline';
+    
+    return (
+      <TouchableOpacity
+        style={[
+          styles.productCard,
+          isNegativeStock && styles.backorderCard
+        ]}
+        onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
+      >
+        <View style={styles.productHeader}>
+          {/* Image du produit */}
+          <View style={styles.productImageContainer}>
+            <ProductImage 
+              imageUrl={item.image_url}
+              size={60}
+              borderRadius={8}
+            />
+          </View>
+          
+          <View style={styles.productInfo}>
+            <Text style={styles.productName} numberOfLines={2}>
+              {item.name || 'Nom non défini'}
+            </Text>
+            <Text style={styles.productCug}>CUG: {item.cug || 'N/A'}</Text>
+            <Text style={styles.productCategory}>
+              {item.category_name || 'Catégorie non définie'} • {item.brand_name || 'Marque non définie'}
+            </Text>
+          </View>
+          <View style={styles.stockInfo}>
+            <View style={[
+              styles.stockBadge, 
+              { backgroundColor: isNegativeStock ? theme.colors.warning[500] : stockColors.outOfStock }
+            ]}>
+              <Text style={styles.stockText}>{stockText}</Text>
+            </View>
           </View>
         </View>
-      </View>
-      
-      <View style={styles.productFooter}>
-        <View style={styles.quantityContainer}>
-          <Ionicons name="close-circle-outline" size={16} color={theme.colors.error[500]} />
-          <Text style={[styles.quantityText, { color: theme.colors.error[600] }]}>
-            0 unités en stock
+        
+        <View style={styles.productFooter}>
+          <View style={styles.quantityContainer}>
+            <Ionicons name={stockIcon} size={16} color={stockColor} />
+            <Text style={[styles.quantityText, { color: stockColor }]}>
+              {isNegativeStock 
+                ? `${Math.abs(item.quantity)} unités en backorder` 
+                : `${item.quantity || 0} unités en stock`
+              }
+            </Text>
+          </View>
+          <Text style={styles.priceText}>
+            {item.selling_price ? `${item.selling_price.toLocaleString()} FCFA` : 'Prix non défini'}
           </Text>
         </View>
-        <Text style={styles.priceText}>
-          {item.selling_price?.toLocaleString()} FCFA
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -120,22 +145,41 @@ export default function OutOfStockScreen({ navigation }: any) {
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Liste des produits */}
-      <FlatList
-        data={products}
-        renderItem={renderProduct}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="checkmark-circle-outline" size={64} color={theme.colors.success[500]} />
-            <Text style={styles.emptyText}>Aucun produit en rupture de stock</Text>
+      {/* Section Backorders (Stock négatif) */}
+      {backorderProducts.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="warning-outline" size={24} color={theme.colors.warning[500]} />
+            <Text style={styles.sectionTitle}>Backorders (Stock négatif)</Text>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{backorderProducts.length}</Text>
+            </View>
           </View>
-        }
-      />
+          {backorderProducts.map((item) => renderProduct({ item, isBackorder: true }))}
+        </View>
+      )}
+
+      {/* Section Rupture de Stock (Quantité = 0) */}
+      {outOfStockProducts.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="close-circle-outline" size={24} color={theme.colors.error[500]} />
+            <Text style={styles.sectionTitle}>Rupture de Stock</Text>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{outOfStockProducts.length}</Text>
+            </View>
+          </View>
+          {outOfStockProducts.map((item) => renderProduct({ item }))}
+        </View>
+      )}
+
+      {/* Message si aucun produit en rupture ou backorder */}
+      {outOfStockProducts.length === 0 && backorderProducts.length === 0 && (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="checkmark-circle-outline" size={64} color={theme.colors.success[500]} />
+          <Text style={styles.emptyText}>Aucun produit en rupture de stock ou en backorder</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -263,6 +307,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.neutral[600],
     marginTop: 10,
+  },
+  // ✅ Nouveaux styles pour les sections
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
+    marginLeft: 12,
+    flex: 1,
+  },
+  badge: {
+    backgroundColor: theme.colors.primary[500],
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: theme.colors.text.inverse,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // ✅ Style pour les cartes de backorder
+  backorderCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.warning[500],
+    backgroundColor: theme.colors.warning[50],
   },
 });
 

@@ -236,6 +236,8 @@ document.addEventListener('DOMContentLoaded', function() {
         {% endif %}
     {% endif %}
 
+    // ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+    // Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
     // Gérer la validation du formulaire
     document.getElementById('transactionForm').addEventListener('submit', function(e) {
         if (!productInput.value) {
@@ -253,6 +255,10 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Veuillez entrer un prix unitaire valide');
             return false;
         }
+        
+        // ✅ PERMIS: Retrait de plus que le stock disponible (backorder)
+        // Plus de vérification de stock insuffisant
+        // Le système gère automatiquement les stocks négatifs
     });
 
     scanInput.focus();

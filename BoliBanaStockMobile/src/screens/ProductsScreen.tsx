@@ -10,12 +10,17 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { productService } from '../services/api';
+import { productService, categoryService } from '../services/api';
 import ProductImage from '../components/ProductImage';
-import QuickImageTest from '../components/QuickImageTest';
+import HierarchicalCategorySelector from '../components/HierarchicalCategorySelector';
+import CategorySelector from '../components/CategorySelector';
+import { Category } from '../types';
+
 
 interface Product {
   id: number;
@@ -37,15 +42,21 @@ export default function ProductsScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all'); // all, low_stock, out_of_stock
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   const loadProducts = async () => {
     try {
       setLoading(true);
       let data;
       
-      // Toujours charger tous les produits, puis filtrer côté client
-      data = await productService.getProducts();
+      // Charger les produits avec filtrage par catégorie si sélectionnée
+      const params: any = {};
+      if (selectedCategory) {
+        params.category = selectedCategory.id;
+      }
       
+      data = await productService.getProducts(params);
       setProducts(data.results || data);
     } catch (error: any) {
       console.error('❌ Erreur chargement produits:', error);
@@ -55,6 +66,7 @@ export default function ProductsScreen({ navigation }: any) {
     }
   };
 
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadProducts();
@@ -63,7 +75,8 @@ export default function ProductsScreen({ navigation }: any) {
 
   useEffect(() => {
     loadProducts();
-  }, [filter]);
+  }, [filter, selectedCategory]);
+
 
   const filteredProducts = products.filter(product => {
     // Filtre de recherche textuelle
@@ -116,6 +129,16 @@ export default function ProductsScreen({ navigation }: any) {
     return '#F44336'; // Marge faible
   };
 
+  const handleCategorySelect = (category: Category | null) => {
+    setSelectedCategory(category);
+    setCategoryModalVisible(false);
+  };
+
+  const clearCategoryFilter = () => {
+    setSelectedCategory(null);
+  };
+
+
   const renderProduct = ({ item }: { item: Product }) => (
     <TouchableOpacity
       style={styles.productCard}
@@ -130,10 +153,7 @@ export default function ProductsScreen({ navigation }: any) {
             borderRadius={8}
           />
           
-          {/* Test temporaire - à supprimer après résolution */}
-          <QuickImageTest 
-            imageUrl={item.image_url}
-          />
+
         </View>
         
         <View style={styles.productInfo}>
@@ -252,6 +272,28 @@ export default function ProductsScreen({ navigation }: any) {
         </View>
       </View>
 
+      {/* Category Filter */}
+      <View style={styles.categoryFilterContainer}>
+        <TouchableOpacity 
+          style={styles.categoryFilterButton}
+          onPress={() => setCategoryModalVisible(true)}
+        >
+          <Ionicons name="folder-outline" size={16} color="#4CAF50" />
+          <Text style={styles.categoryFilterText}>
+            {selectedCategory ? selectedCategory.name : 'Toutes les catégories'}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color="#666" />
+        </TouchableOpacity>
+        {selectedCategory && (
+          <TouchableOpacity 
+            style={styles.clearCategoryButton}
+            onPress={clearCategoryFilter}
+          >
+            <Ionicons name="close-circle" size={20} color="#F44336" />
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Filters */}
       <View style={styles.filtersContainer}>
         <FilterButton title="Tous" value="all" isActive={filter === 'all'} />
@@ -279,6 +321,22 @@ export default function ProductsScreen({ navigation }: any) {
           </View>
         }
       />
+
+      {/* Category Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={categoryModalVisible}
+        onRequestClose={() => setCategoryModalVisible(false)}
+      >
+        <CategorySelector
+          visible={categoryModalVisible}
+          onClose={() => setCategoryModalVisible(false)}
+          onCategorySelect={handleCategorySelect}
+          selectedCategory={selectedCategory}
+          title="Sélectionner une catégorie"
+        />
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -302,7 +360,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
@@ -475,5 +534,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#999',
     marginTop: 10,
+  },
+  // Category Filter Styles
+  categoryFilterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  categoryFilterButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 25,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  categoryFilterText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#333',
+  },
+  clearCategoryButton: {
+    marginLeft: 10,
+    padding: 5,
   },
 }); 

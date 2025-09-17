@@ -1,13 +1,18 @@
 // Export de tous les écrans
 export { default as AddProductScreen } from './AddProductScreen';
 export { default as BarcodeTest } from '../components/BarcodeTest';
+export { default as BarcodeTestScreen } from './BarcodeTestScreen';
 export { default as CashRegisterScreen } from './CashRegisterScreen';
 export { default as ConfigurationScreen } from './ConfigurationScreen';
 export { default as DashboardScreen } from './DashboardScreen';
 export { default as InventoryScannerScreen } from './InventoryScannerScreen';
 export { default as InventoryScreen } from './InventoryScreen';
+export { default as DeliveryScreen } from './DeliveryScreen';
 export { default as LabelGeneratorScreen } from './LabelGeneratorScreen';
 export { default as LabelPreviewScreen } from './LabelPreviewScreen';
+export { default as PrintModeSelectionScreen } from './PrintModeSelectionScreen';
+export { default as CatalogPDFScreen } from './CatalogPDFScreen';
+export { default as LabelPrintScreen } from './LabelPrintScreen';
 export { default as LoginScreen } from './LoginScreen';
 export { default as LowStockScreen } from './LowStockScreen';
 export { default as NewSaleScreen } from './NewSaleScreen';

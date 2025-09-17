@@ -24,6 +24,7 @@ from .serializers import (
     StockUpdateSerializer, SaleCreateSerializer, LabelBatchCreateSerializer
 )
 from apps.inventory.models import Product, Category, Brand, Transaction, LabelTemplate, LabelBatch, LabelItem, Barcode
+from apps.inventory.utils import generate_ean13_from_cug
 from apps.sales.models import Sale, SaleItem
 from apps.core.views import ConfigurationUpdateView, ParametreListView, ParametreUpdateView
 from django.http import JsonResponse
@@ -202,7 +203,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     # Support explicite du multipart pour upload d'images
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['category', 'brand', 'is_active']
+    filterset_fields = ['category', 'brand', 'is_active', 'quantity']  # ✅ Ajout de 'quantity'
     search_fields = ['name', 'cug', 'description']
     ordering_fields = ['name', 'selling_price', 'quantity', 'created_at']
     ordering = ['-updated_at']
@@ -444,8 +445,15 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def out_of_stock(self, request):
-        """Produits en rupture de stock"""
-        products = self.get_queryset().filter(quantity=0)
+        """Produits en rupture de stock (quantité = 0) ET en backorder (quantité < 0)"""
+        products = self.get_queryset().filter(quantity__lte=0)
+        serializer = ProductListSerializer(products, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def backorders(self, request):
+        """Produits en backorder (stock négatif) uniquement"""
+        products = self.get_queryset().filter(quantity__lt=0)
         serializer = ProductListSerializer(products, many=True)
         return Response(serializer.data)
     
@@ -568,7 +576,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def remove_stock(self, request, pk=None):
-        """Retirer du stock d'un produit"""
+        """Retirer du stock d'un produit - Permet les stocks négatifs (backorder)"""
         product = self.get_object()
         quantity = request.data.get('quantity')
         notes = request.data.get('notes', 'Retrait de stock')
@@ -579,32 +587,45 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        if product.quantity < quantity:
-            return Response(
-                {'error': 'Stock insuffisant'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+        # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
         
         # Mettre à jour le stock
         old_quantity = product.quantity
         product.quantity -= quantity
         product.save()
         
+        # Déterminer le type de transaction selon le stock final
+        transaction_type = 'out'
+        if product.quantity < 0:
+            transaction_type = 'backorder'  # Nouveau type pour les backorders
+        
         # Créer la transaction
         Transaction.objects.create(
             product=product,
-            type='out',
+            type=transaction_type,
             quantity=quantity,
             unit_price=product.purchase_price,
             notes=notes,
             user=request.user
         )
         
+        # Message adaptatif selon le stock final
+        if product.quantity < 0:
+            message = f'{quantity} unités retirées - Stock en backorder ({abs(product.quantity)} unités en attente)'
+        elif product.quantity == 0:
+            message = f'{quantity} unités retirées - Stock épuisé'
+        else:
+            message = f'{quantity} unités retirées du stock'
+        
         return Response({
             'success': True,
-            'message': f'{quantity} unités retirées du stock',
+            'message': message,
             'old_quantity': old_quantity,
             'new_quantity': product.quantity,
+            'stock_status': product.stock_status,
+            'has_backorder': product.has_backorder,
+            'backorder_quantity': product.backorder_quantity,
             'product': ProductSerializer(product).data
         })
 
@@ -905,21 +926,20 @@ class ProductViewSet(viewsets.ModelViewSet):
                     'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id})'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Vérifier que le code-barres n'est pas déjà utilisé dans le champ barcode d'un autre produit
-            existing_product = Product.objects.filter(ean=ean).exclude(pk=product.pk).first()
-            if existing_product:
-                return Response({
-                    'error': f'Ce code-barres "{ean}" est déjà utilisé comme code-barres principal du produit "{existing_product.name}" (ID: {existing_product.id})'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # Note: Le modèle Product n'a pas de champ 'ean' direct
+            # Les codes-barres sont gérés via la relation barcodes
+            # Cette vérification n'est pas nécessaire car l'unicité est gérée au niveau des codes-barres
             
             barcode.ean = ean
             barcode.notes = notes
             barcode.save()
             
             # Si c'est le code-barres principal, mettre à jour le champ du produit
+            # Note: Le modèle Product n'a pas de champ 'barcode' direct
+            # Le code-barres principal est géré via la relation barcodes
             if barcode.is_primary:
-                product.barcode = ean
-                product.save()
+                # Pas besoin de mettre à jour un champ inexistant
+                pass
             
             return Response({
                 'message': 'Code-barres modifié avec succès',
@@ -939,19 +959,27 @@ class CategoryViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'level', 'order']
     ordering = ['level', 'order', 'name']
+    pagination_class = None  # Désactiver la pagination pour les catégories
     
     def get_queryset(self):
-        """Filtrer les catégories par site de l'utilisateur"""
+        """Filtrer les catégories par site de l'utilisateur + rayons globaux"""
         user_site = self.request.user.site_configuration
         
         if self.request.user.is_superuser:
             # Superuser voit tout
-            return Category.objects.all()
+            return Category.objects.select_related('parent').all()
         else:
-            # Utilisateur normal voit seulement son site
+            # Utilisateur normal voit les catégories de son site + les rayons globaux
             if not user_site:
-                return Category.objects.none()
-            return Category.objects.filter(site_configuration=user_site)
+                # Si pas de site, voir seulement les rayons globaux
+                return Category.objects.select_related('parent').filter(is_global=True)
+            
+            # Catégories du site + rayons globaux
+            from django.db import models
+            return Category.objects.select_related('parent').filter(
+                models.Q(site_configuration=user_site) | 
+                models.Q(is_global=True)
+            )
 
 
 class BrandViewSet(viewsets.ModelViewSet):
@@ -1058,11 +1086,8 @@ class SaleViewSet(viewsets.ModelViewSet):
                 try:
                     product = Product.objects.get(id=product_id)
                     
-                    # Vérifier le stock disponible
-                    if product.quantity < quantity:
-                        raise ValidationError({
-                            "detail": f"Stock insuffisant pour {product.name}. Disponible: {product.quantity}, demandé: {quantity}"
-                        })
+                    # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+                    # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
                     
                     # Créer l'article de vente
                     SaleItem.objects.create(
@@ -1073,17 +1098,26 @@ class SaleViewSet(viewsets.ModelViewSet):
                         total_price=quantity * unit_price
                     )
                     
-                    # Mettre à jour le stock
+                    # Mettre à jour le stock (peut devenir négatif)
+                    old_quantity = product.quantity
                     product.quantity -= quantity
                     product.save()
+                    
+                    # Déterminer le type de transaction selon le stock final
+                    if product.quantity < 0:
+                        transaction_type = 'backorder'  # Nouveau type pour les backorders
+                        notes = f'Vente #{sale.id} - Stock en backorder ({abs(product.quantity)} unités en attente)'
+                    else:
+                        transaction_type = 'out'
+                        notes = f'Vente #{sale.id}'
                     
                     # Créer une transaction de sortie
                     Transaction.objects.create(
                         product=product,
-                        type='out',
+                        type=transaction_type,
                         quantity=quantity,
                         unit_price=unit_price,
-                        notes=f'Vente #{sale.id}',
+                        notes=notes,
                         user=self.request.user
                     )
                     
@@ -1997,15 +2031,12 @@ class LabelGeneratorAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Récupérer tous les produits avec codes-barres
+            # Récupérer tous les produits (avec ou sans codes-barres)
             if request.user.is_superuser:
-                products = Product.objects.filter(
-                    barcodes__isnull=False
-                ).select_related('category', 'brand').prefetch_related('barcodes')
+                products = Product.objects.all().select_related('category', 'brand').prefetch_related('barcodes')
             else:
                 products = Product.objects.filter(
-                    site_configuration=user_site,
-                    barcodes__isnull=False
+                    site_configuration=user_site
                 ).select_related('category', 'brand').prefetch_related('barcodes')
             
             # Organiser par catégorie et marque
@@ -2029,31 +2060,31 @@ class LabelGeneratorAPIView(APIView):
                 'generated_at': timezone.now().isoformat()
             }
             
-            # Ajouter les produits avec leurs codes-barres
+            # Ajouter tous les produits (avec ou sans codes-barres)
             for product in products:
                 primary_barcode = product.barcodes.filter(is_primary=True).first()
                 if not primary_barcode:
                     primary_barcode = product.barcodes.first()
                 
-                if primary_barcode:
-                    label_data['products'].append({
-                        'id': product.id,
-                        'name': product.name,
-                        'cug': product.cug,
-                        'barcode_ean': primary_barcode.ean,
-                        'selling_price': product.selling_price,
-                        'quantity': product.quantity,
-                        'category': {
-                            'id': product.category.id,
-                            'name': product.category.name
-                        } if product.category else None,
-                        'brand': {
-                            'id': product.brand.id,
-                            'name': product.brand.name
-                        } if product.brand else None,
-                        'has_barcodes': True,
-                        'barcodes_count': product.barcodes.count()
-                    })
+                # Utiliser l'EAN généré stocké (toujours disponible maintenant)
+                barcode_ean = product.generated_ean
+                
+                label_data['products'].append({
+                    'id': product.id,
+                    'name': product.name,
+                    'cug': product.cug,
+                    'barcode_ean': barcode_ean,
+                    'selling_price': product.selling_price,
+                    'quantity': product.quantity,
+                    'category': {
+                        'id': product.category.id,
+                        'name': product.category.name
+                    } if product.category else None,
+                    'brand': {
+                        'id': product.brand.id,
+                        'name': product.brand.name
+                    } if product.brand else None
+                })
             
             return Response(label_data)
             
@@ -2076,18 +2107,16 @@ class LabelGeneratorAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Récupérer les produits demandés
+            # Récupérer les produits demandés (avec ou sans codes-barres)
             user_site = request.user.site_configuration
             if request.user.is_superuser:
                 products = Product.objects.filter(
-                    id__in=product_ids,
-                    barcodes__isnull=False
+                    id__in=product_ids
                 ).select_related('category', 'brand').prefetch_related('barcodes')
             else:
                 products = Product.objects.filter(
                     id__in=product_ids,
-                    site_configuration=user_site,
-                    barcodes__isnull=False
+                    site_configuration=user_site
                 ).select_related('category', 'brand').prefetch_related('barcodes')
             
             # Préparer les données des étiquettes
@@ -2097,23 +2126,25 @@ class LabelGeneratorAPIView(APIView):
                 if not primary_barcode:
                     primary_barcode = product.barcodes.first()
                 
-                if primary_barcode:
-                    label = {
-                        'product_id': product.id,
-                        'name': product.name,
-                        'cug': product.cug,
-                        'barcode_ean': primary_barcode.ean,
-                        'category': product.category.name if product.category else None,
-                        'brand': product.brand.name if product.brand else None,
-                    }
-                    
-                    if include_prices:
-                        label['price'] = product.selling_price
-                    
-                    if include_stock:
-                        label['stock'] = product.quantity
-                    
-                    labels.append(label)
+                # Utiliser l'EAN généré stocké (toujours disponible maintenant)
+                barcode_ean = product.generated_ean
+                
+                label = {
+                    'product_id': product.id,
+                    'name': product.name,
+                    'cug': product.cug,
+                    'barcode_ean': barcode_ean,
+                    'category': product.category.name if product.category else None,
+                    'brand': product.brand.name if product.brand else None,
+                }
+                
+                if include_prices:
+                    label['price'] = product.selling_price
+                
+                if include_stock:
+                    label['stock'] = product.quantity
+                
+                labels.append(label)
             
             return Response({
                 'labels': labels,
@@ -2121,6 +2152,278 @@ class LabelGeneratorAPIView(APIView):
                 'include_prices': include_prices,
                 'include_stock': include_stock,
                 'generated_at': timezone.now().isoformat()
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la génération des étiquettes: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CatalogPDFAPIView(APIView):
+    """API pour générer un catalogue PDF A4"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Générer un catalogue PDF A4"""
+        try:
+            from apps.inventory.catalog_models import CatalogTemplate, CatalogGeneration, CatalogItem
+            
+            # Récupérer les paramètres
+            product_ids = request.data.get('product_ids', [])
+            template_id = request.data.get('template_id', None)
+            include_prices = request.data.get('include_prices', True)
+            include_stock = request.data.get('include_stock', True)
+            include_descriptions = request.data.get('include_descriptions', True)
+            include_images = request.data.get('include_images', False)
+            
+            # Récupérer les produits
+            user = request.user
+            user_site = get_user_site_configuration_api(user)
+            
+            if user.is_superuser:
+                products = Product.objects.filter(id__in=product_ids).select_related('category', 'brand')
+            else:
+                if not user_site:
+                    return Response(
+                        {'error': 'Aucun site configuré pour cet utilisateur'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                products = Product.objects.filter(
+                    id__in=product_ids,
+                    site_configuration=user_site
+                ).select_related('category', 'brand')
+            
+            if not products.exists():
+                return Response(
+                    {'error': 'Aucun produit trouvé'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Récupérer ou créer un template par défaut
+            if template_id:
+                template = CatalogTemplate.objects.get(id=template_id)
+            else:
+                template = CatalogTemplate.get_default_for_site(user_site)
+                if not template:
+                    # Créer un template par défaut
+                    template = CatalogTemplate.objects.create(
+                        name="Catalogue par défaut",
+                        format='A4',
+                        products_per_page=12,
+                        show_product_names=True,
+                        show_prices=include_prices,
+                        show_descriptions=include_descriptions,
+                        show_images=include_images,
+                        site_configuration=user_site,
+                        is_default=True
+                    )
+            
+            # Créer une génération de catalogue
+            catalog_generation = CatalogGeneration.objects.create(
+                name=f"Catalogue - {timezone.now().strftime('%Y-%m-%d %H:%M')}",
+                template=template,
+                site_configuration=user_site,
+                user=user,
+                total_products=products.count(),
+                status='processing'
+            )
+            
+            # Ajouter les produits au catalogue
+            for i, product in enumerate(products):
+                CatalogItem.objects.create(
+                    batch=catalog_generation,
+                    product=product,
+                    position=i,
+                    page_number=(i // template.products_per_page) + 1,
+                    cug_value=product.cug,
+                    barcode_data=product.generated_ean or product.cug
+                )
+            
+            # Calculer le nombre de pages
+            total_pages = (products.count() + template.products_per_page - 1) // template.products_per_page
+            
+            # Mettre à jour la génération
+            catalog_generation.total_pages = total_pages
+            catalog_generation.status = 'success'
+            catalog_generation.completed_at = timezone.now()
+            catalog_generation.save()
+            
+            # Préparer les données du catalogue
+            catalog_data = {
+                'id': catalog_generation.id,
+                'name': catalog_generation.name,
+                'template': {
+                    'id': template.id,
+                    'name': template.name,
+                    'format': template.format,
+                    'products_per_page': template.products_per_page
+                },
+                'total_products': products.count(),
+                'total_pages': total_pages,
+                'generated_at': catalog_generation.completed_at.isoformat(),
+                'products': []
+            }
+            
+            for product in products:
+                product_data = {
+                    'id': product.id,
+                    'name': product.name,
+                    'cug': product.cug,
+                    'generated_ean': product.generated_ean,
+                    'category': product.category.name if product.category else None,
+                    'brand': product.brand.name if product.brand else None,
+                }
+                
+                if include_prices:
+                    product_data['selling_price'] = product.selling_price
+                
+                if include_stock:
+                    product_data['quantity'] = product.quantity
+                
+                if include_descriptions and product.description:
+                    product_data['description'] = product.description
+                
+                if include_images and product.image:
+                    product_data['image_url'] = product.image.url
+                
+                catalog_data['products'].append(product_data)
+            
+            return Response({
+                'success': True,
+                'catalog': catalog_data,
+                'message': f'Catalogue généré avec succès - {total_pages} pages'
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la génération du catalogue: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class LabelPrintAPIView(APIView):
+    """API pour générer des étiquettes individuelles à coller"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Générer des étiquettes individuelles"""
+        try:
+            from apps.inventory.models import LabelTemplate, LabelBatch, LabelItem
+            
+            # Récupérer les paramètres
+            product_ids = request.data.get('product_ids', [])
+            template_id = request.data.get('template_id', None)
+            copies = request.data.get('copies', 1)
+            include_cug = request.data.get('include_cug', True)
+            include_ean = request.data.get('include_ean', True)
+            include_barcode = request.data.get('include_barcode', True)
+            
+            # Récupérer les produits
+            user = request.user
+            user_site = get_user_site_configuration_api(user)
+            
+            if user.is_superuser:
+                products = Product.objects.filter(id__in=product_ids).select_related('category', 'brand')
+            else:
+                if not user_site:
+                    return Response(
+                        {'error': 'Aucun site configuré pour cet utilisateur'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                products = Product.objects.filter(
+                    id__in=product_ids,
+                    site_configuration=user_site
+                ).select_related('category', 'brand')
+            
+            if not products.exists():
+                return Response(
+                    {'error': 'Aucun produit trouvé'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Récupérer ou créer un template d'étiquette par défaut
+            if template_id:
+                template = LabelTemplate.objects.get(id=template_id)
+            else:
+                template = LabelTemplate.get_default_for_site(user_site)
+                if not template:
+                    # Créer un template par défaut
+                    template = LabelTemplate.objects.create(
+                        name="Étiquette par défaut",
+                        type='barcode',
+                        width_mm=40,
+                        height_mm=30,
+                        site_configuration=user_site,
+                        is_default=True
+                    )
+            
+            # Créer un lot d'étiquettes
+            label_batch = LabelBatch.objects.create(
+                site_configuration=user_site,
+                user=user,
+                template=template,
+                source='manual',
+                status='processing',
+                copies_total=products.count() * copies
+            )
+            
+            # Ajouter les étiquettes au lot
+            for i, product in enumerate(products):
+                LabelItem.objects.create(
+                    batch=label_batch,
+                    product=product,
+                    copies=copies,
+                    barcode_value=product.generated_ean or product.cug,
+                    position=i
+                )
+            
+            # Mettre à jour le lot
+            label_batch.status = 'success'
+            label_batch.completed_at = timezone.now()
+            label_batch.save()
+            
+            # Préparer les données des étiquettes
+            labels_data = {
+                'id': label_batch.id,
+                'template': {
+                    'id': template.id,
+                    'name': template.name,
+                    'type': template.type,
+                    'width_mm': template.width_mm,
+                    'height_mm': template.height_mm
+                },
+                'total_labels': products.count(),
+                'total_copies': products.count() * copies,
+                'generated_at': label_batch.completed_at.isoformat(),
+                'labels': []
+            }
+            
+            for product in products:
+                label_data = {
+                    'id': product.id,
+                    'name': product.name,
+                    'cug': product.cug if include_cug else None,
+                    'generated_ean': product.generated_ean if include_ean else None,
+                    'category': product.category.name if product.category else None,
+                    'brand': product.brand.name if product.brand else None,
+                    'copies': copies
+                }
+                
+                if include_barcode and product.generated_ean:
+                    label_data['barcode_data'] = {
+                        'ean': product.generated_ean,
+                        'cug': product.cug,
+                        'name': product.name
+                    }
+                
+                labels_data['labels'].append(label_data)
+            
+            return Response({
+                'success': True,
+                'labels': labels_data,
+                'message': f'Étiquettes générées avec succès - {products.count()} étiquettes x {copies} copies'
             })
             
         except Exception as e:
@@ -2188,3 +2491,94 @@ def collect_static_files(request):
             'error': str(e),
             'message': 'Erreur lors de la collecte des fichiers statiques'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GetRayonsView(APIView):
+    """
+    Vue API pour récupérer tous les rayons (niveau 0) pour l'interface mobile
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        try:
+            # Récupérer tous les rayons principaux
+            rayons = Category.objects.filter(
+                is_active=True,
+                is_rayon=True,
+                level=0
+            ).order_by('rayon_type', 'order', 'name')
+            
+            # Sérialiser les rayons
+            rayons_data = []
+            for rayon in rayons:
+                rayons_data.append({
+                    'id': rayon.id,
+                    'name': rayon.name,
+                    'description': rayon.description or '',
+                    'rayon_type': rayon.rayon_type,
+                    'rayon_type_display': dict(Category.RAYON_TYPE_CHOICES).get(rayon.rayon_type, ''),
+                    'order': rayon.order,
+                    'subcategories_count': rayon.children.filter(is_active=True).count()
+                })
+            
+            return Response({
+                'success': True,
+                'rayons': rayons_data,
+                'total': len(rayons_data)
+            })
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+
+class GetSubcategoriesMobileView(APIView):
+    """
+    Vue API pour récupérer les sous-catégories d'un rayon pour l'interface mobile
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        rayon_id = request.GET.get('rayon_id')
+        
+        if not rayon_id:
+            return Response({'error': 'ID du rayon manquant'}, status=400)
+        
+        try:
+            # Récupérer le rayon principal
+            rayon = Category.objects.get(id=rayon_id, level=0, is_rayon=True)
+            
+            # Récupérer les sous-catégories
+            subcategories = Category.objects.filter(
+                parent=rayon,
+                level=1,
+                is_active=True
+            ).order_by('order', 'name')
+            
+            # Sérialiser les sous-catégories
+            subcategories_data = []
+            for subcat in subcategories:
+                subcategories_data.append({
+                    'id': subcat.id,
+                    'name': subcat.name,
+                    'description': subcat.description or '',
+                    'rayon_type': subcat.rayon_type,
+                    'parent_id': subcat.parent.id,
+                    'parent_name': subcat.parent.name,
+                    'order': subcat.order
+                })
+            
+            return Response({
+                'success': True,
+                'rayon': {
+                    'id': rayon.id,
+                    'name': rayon.name,
+                    'rayon_type': rayon.rayon_type
+                },
+                'subcategories': subcategories_data,
+                'total': len(subcategories_data)
+            })
+            
+        except Category.DoesNotExist:
+            return Response({'error': 'Rayon non trouvé'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)

@@ -26,6 +26,7 @@ urlpatterns = [
     path('categories/create/', views.CategoryCreateView.as_view(), name='category_create'),
     path('categories/<int:pk>/edit/', views.CategoryUpdateView.as_view(), name='category_update'),
     path('categories/<int:pk>/delete/', views.CategoryDeleteView.as_view(), name='category_delete'),
+    path('api/subcategories/', views.GetSubcategoriesView.as_view(), name='get_subcategories'),
     
     # URLs pour les marques
     path('brands/', views.BrandListView.as_view(), name='brand_list'),

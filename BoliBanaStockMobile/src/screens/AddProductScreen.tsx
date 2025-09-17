@@ -20,6 +20,9 @@ import { Picker } from '@react-native-picker/picker';
 import { productService, categoryService, brandService } from '../services/api';
 import { useImageManager } from '../hooks';
 import theme from '../utils/theme';
+import BarcodeModal from '../components/BarcodeModal';
+import HierarchicalCategorySelector from '../components/HierarchicalCategorySelector';
+import CategoryCreationModal from '../components/CategoryCreationModal';
 
 interface Category {
   id: number;
@@ -44,7 +47,12 @@ interface ProductForm {
   category_id: string;
   brand_id: string;
   image?: any;
-  scan_field: string;
+  barcodes: Array<{
+    id: number;
+    ean: string;
+    is_primary: boolean;
+    notes?: string;
+  }>;
   is_active: boolean;
 }
 
@@ -59,14 +67,14 @@ export default function AddProductScreen({ navigation, route }: any) {
   const { selectedImage, isProcessing, showImageOptions } = useImageManager();
   
   // États pour les modals de création rapide
-  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [hierarchicalCategoryModalVisible, setHierarchicalCategoryModalVisible] = useState(false);
+  const [newCategoryModalVisible, setNewCategoryModalVisible] = useState(false);
   const [brandModalVisible, setBrandModalVisible] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [barcodeModalVisible, setBarcodeModalVisible] = useState(false);
   const [newBrandName, setNewBrandName] = useState('');
   const [newBrandDescription, setNewBrandDescription] = useState('');
-  const [creatingCategory, setCreatingCategory] = useState(false);
   const [creatingBrand, setCreatingBrand] = useState(false);
+  const [selectedCategoryName, setSelectedCategoryName] = useState('');
   const [form, setForm] = useState<ProductForm>({
     name: '',
     cug: '',
@@ -78,7 +86,7 @@ export default function AddProductScreen({ navigation, route }: any) {
     category_id: '',
     brand_id: '',
     image: undefined,
-    scan_field: '',
+    barcodes: [],
     is_active: true,
   });
 
@@ -91,10 +99,10 @@ export default function AddProductScreen({ navigation, route }: any) {
     // Formulaire surveillé
   }, [form]);
 
-  // Surveiller spécifiquement le champ barcode
+  // Surveiller spécifiquement le champ barcodes
   useEffect(() => {
-    // Champ barcode surveillé
-  }, [form?.scan_field]);
+    // Champ barcodes surveillé
+  }, [form?.barcodes]);
 
   // Synchroniser l'image sélectionnée avec le formulaire
   useEffect(() => {
@@ -120,7 +128,7 @@ export default function AddProductScreen({ navigation, route }: any) {
           category_id: p?.category?.id ? String(p.category.id) : '',
           brand_id: p?.brand?.id ? String(p.brand.id) : '',
           image: p?.image_url ? { uri: p.image_url, type: 'image/jpeg', fileName: 'existing_image.jpg' } : undefined,
-          scan_field: p?.barcode || '',
+          barcodes: p?.barcodes || [],
           is_active: p?.is_active ?? true,
         });
         
@@ -138,7 +146,7 @@ export default function AddProductScreen({ navigation, route }: any) {
           category_id: '',
           brand_id: '',
           image: undefined,
-          scan_field: '',
+          barcodes: [],
           is_active: true,
         }));
       }
@@ -171,33 +179,26 @@ export default function AddProductScreen({ navigation, route }: any) {
     }
   };
 
-  // Fonction pour créer rapidement une catégorie
-  const createCategoryQuick = async () => {
-    if (!newCategoryName.trim()) {
-      Alert.alert('Erreur', 'Le nom de la catégorie est requis');
-      return;
-    }
-
-    try {
-      setCreatingCategory(true);
-      const newCategory = await categoryService.createCategory({
-        name: newCategoryName.trim(),
-        description: newCategoryDescription.trim(),
-      });
-      
-      setCategories(prev => [...prev, newCategory]);
-      setForm(prev => ({ ...prev, category_id: String(newCategory.id) }));
-      setCategoryModalVisible(false);
-      setNewCategoryName('');
-      setNewCategoryDescription('');
-      Alert.alert('Succès', 'Catégorie créée et sélectionnée !');
-    } catch (error) {
-      console.error('❌ Erreur création catégorie:', error);
-      Alert.alert('Erreur', 'Impossible de créer la catégorie');
-    } finally {
-      setCreatingCategory(false);
-    }
+  // Fonction pour gérer la sélection hiérarchisée
+  const handleHierarchicalCategorySelect = (categoryId: string, categoryName: string) => {
+    setForm(prev => ({ ...prev, category_id: categoryId }));
+    setSelectedCategoryName(categoryName);
+    setHierarchicalCategoryModalVisible(false);
   };
+
+  // Fonction pour gérer la création de nouvelle catégorie
+  const handleNewCategoryCreated = (newCategory: any) => {
+    // Ajouter la nouvelle catégorie à la liste
+    setCategories(prev => [...prev, newCategory]);
+    
+    // Sélectionner automatiquement la nouvelle catégorie
+    setForm(prev => ({ ...prev, category_id: String(newCategory.id) }));
+    setSelectedCategoryName(newCategory.name);
+    
+    // Fermer le modal
+    setNewCategoryModalVisible(false);
+  };
+
 
   // Fonction pour créer rapidement une marque
   const createBrandQuick = async () => {
@@ -248,7 +249,7 @@ export default function AddProductScreen({ navigation, route }: any) {
           category_id: '',
           brand_id: '',
           image: undefined,
-          scan_field: '',
+          barcodes: [],
           is_active: true,
         };
       }
@@ -333,8 +334,8 @@ export default function AddProductScreen({ navigation, route }: any) {
         };
       }
 
-      if (form.scan_field?.trim()) {
-        productData.barcode = form.scan_field.trim();
+      if (form.barcodes && form.barcodes.length > 0) {
+        productData.barcodes = form.barcodes;
       }
 
       if (editId) {
@@ -427,8 +428,16 @@ export default function AddProductScreen({ navigation, route }: any) {
       category_id: '',
       brand_id: '',
       image: undefined,
-      scan_field: '',
+      barcodes: [],
       is_active: true,
+    }));
+  };
+
+  // ✅ Fonction pour gérer la mise à jour des codes-barres
+  const handleBarcodesUpdate = (updatedBarcodes: any[]) => {
+    setForm(prev => ({
+      ...prev,
+      barcodes: updatedBarcodes
     }));
   };
 
@@ -640,15 +649,31 @@ export default function AddProductScreen({ navigation, route }: any) {
               multiline
             />
 
-            <PickerField
-              label="Catégorie"
-              value={form.category_id}
-              onValueChange={(value: string) => updateForm('category_id', value)}
-              items={categories}
-              placeholder="Sélectionner une catégorie"
-              showAddButton={true}
-              onAddPress={() => setCategoryModalVisible(true)}
-            />
+            {/* Sélection de catégorie avec options hiérarchisées */}
+            <View style={styles.categorySection}>
+              <Text style={styles.fieldLabel}>Catégorie</Text>
+              <TouchableOpacity
+                style={styles.categorySelector}
+                onPress={() => setHierarchicalCategoryModalVisible(true)}
+              >
+                <Text style={[
+                  styles.categorySelectorText,
+                  !form.category_id && styles.placeholderText
+                ]}>
+                  {selectedCategoryName || 'Sélectionner une catégorie'}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color={theme.colors.primary} />
+              </TouchableOpacity>
+              
+              {/* Bouton de création de catégorie */}
+              <TouchableOpacity
+                style={styles.createCategoryButton}
+                onPress={() => setNewCategoryModalVisible(true)}
+              >
+                <Ionicons name="add-circle" size={16} color={theme.colors.primary} />
+                <Text style={styles.createCategoryButtonText}>Créer une nouvelle catégorie</Text>
+              </TouchableOpacity>
+            </View>
 
             <PickerField
               label="Marque"
@@ -698,13 +723,39 @@ export default function AddProductScreen({ navigation, route }: any) {
               required
             />
 
-            <FormField
-              label="Code-barres EAN (optionnel)"
-              value={form.scan_field}
-              onChangeText={(value: string) => updateForm('scan_field', value)}
-              placeholder="Ex: 3017620422003"
-              keyboardType="numeric"
-            />
+            {/* ✅ Section des codes-barres */}
+            <View style={styles.fieldContainer}>
+              <View style={styles.fieldHeader}>
+                <Text style={styles.fieldLabel}>
+                  Codes-barres EAN
+                </Text>
+                <TouchableOpacity 
+                  style={styles.addButton}
+                  onPress={() => setBarcodeModalVisible(true)}
+                >
+                  <Ionicons name="barcode-outline" size={20} color={theme.colors.primary[500]} />
+                  <Text style={styles.addButtonText}>
+                    {form.barcodes && form.barcodes.length > 0 ? 'Gérer' : 'Ajouter'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
+              {/* Affichage des codes-barres existants */}
+              {form.barcodes && form.barcodes.length > 0 ? (
+                <View style={styles.barcodesDisplay}>
+                  {form.barcodes.map((barcode, index) => (
+                    <View key={index} style={styles.barcodeItem}>
+                      <Text style={styles.barcodeEan}>{barcode.ean}</Text>
+                      {barcode.is_primary && (
+                        <Text style={styles.primaryBadge}>Principal</Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.noBarcodeText}>Aucun code-barres ajouté</Text>
+              )}
+            </View>
 
             <TouchableOpacity
               style={[styles.submitButton, loading && styles.submitButtonDisabled]}
@@ -724,68 +775,6 @@ export default function AddProductScreen({ navigation, route }: any) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={categoryModalVisible}
-        onRequestClose={() => setCategoryModalVisible(false)}
-      >
-        <View style={styles.quickModalOverlay}>
-          <View style={styles.quickModalContent}>
-            <View style={styles.quickModalHeader}>
-              <Text style={styles.quickModalTitle}>Nouvelle Catégorie</Text>
-              <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.quickModalBody}>
-              <View style={styles.quickInputContainer}>
-                <Text style={styles.quickInputLabel}>Nom de la catégorie *</Text>
-                <TextInput
-                  style={styles.quickTextInput}
-                  value={newCategoryName}
-                  onChangeText={setNewCategoryName}
-                  placeholder="Ex: Électronique, Vêtements..."
-                  autoFocus
-                />
-              </View>
-
-              <View style={styles.quickInputContainer}>
-                <Text style={styles.quickInputLabel}>Description (optionnel)</Text>
-                <TextInput
-                  style={[styles.quickTextInput, styles.quickTextArea]}
-                  value={newCategoryDescription}
-                  onChangeText={setNewCategoryDescription}
-                  placeholder="Description de la catégorie..."
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-            </View>
-
-            <View style={styles.quickModalFooter}>
-              <TouchableOpacity 
-                style={styles.quickCancelButton} 
-                onPress={() => setCategoryModalVisible(false)}
-              >
-                <Text style={styles.quickCancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.quickSaveButton} 
-                onPress={createCategoryQuick}
-                disabled={creatingCategory}
-              >
-                {creatingCategory ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.quickSaveButtonText}>Créer</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         animationType="slide"
@@ -849,6 +838,36 @@ export default function AddProductScreen({ navigation, route }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* ✅ Modal de gestion des codes-barres */}
+      <BarcodeModal
+        visible={barcodeModalVisible}
+        onClose={() => setBarcodeModalVisible(false)}
+        productId={editId || 0}
+        barcodes={form.barcodes || []}
+        onBarcodesUpdate={handleBarcodesUpdate}
+      />
+
+      {/* Modal de sélection hiérarchisée des catégories */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={hierarchicalCategoryModalVisible}
+        onRequestClose={() => setHierarchicalCategoryModalVisible(false)}
+      >
+        <HierarchicalCategorySelector
+          selectedCategoryId={form.category_id}
+          onCategorySelect={handleHierarchicalCategorySelect}
+          onClose={() => setHierarchicalCategoryModalVisible(false)}
+        />
+      </Modal>
+
+      {/* Modal de création de nouvelle catégorie */}
+      <CategoryCreationModal
+        visible={newCategoryModalVisible}
+        onClose={() => setNewCategoryModalVisible(false)}
+        onCategoryCreated={handleNewCategoryCreated}
+      />
     </SafeAreaView>
   );
 }
@@ -1134,5 +1153,96 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: theme.colors.text.inverse,
+  },
+  
+  // ✅ Styles pour les codes-barres
+  addButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.primary[500],
+    marginLeft: 4,
+  },
+  barcodesDisplay: {
+    marginTop: 8,
+  },
+  barcodeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.colors.background.secondary,
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  barcodeEan: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+  },
+  primaryBadge: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
+    backgroundColor: theme.colors.primary[100],
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  noBarcodeText: {
+    fontSize: 14,
+    color: theme.colors.text.tertiary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  
+  // Styles pour la sélection hiérarchisée
+  categorySection: {
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 8,
+  },
+  categorySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  categorySelectorText: {
+    fontSize: 16,
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  placeholderText: {
+    color: theme.colors.text.tertiary,
+  },
+  // Styles pour le bouton de création de catégorie
+  createCategoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: theme.colors.primaryLight || '#E3F2FD',
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
+  createCategoryButtonText: {
+    fontSize: 14,
+    color: theme.colors.primary,
+    fontWeight: '600',
+    marginLeft: 6,
   },
 });

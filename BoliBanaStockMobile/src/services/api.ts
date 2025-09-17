@@ -3,6 +3,8 @@ import * as FileSystem from 'expo-file-system';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import errorService from './errorService';
+import { ErrorSeverity } from '../types/errors';
 
 // Interface pour les images
 interface ImageAsset {
@@ -66,73 +68,54 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    console.log('🔍 Intercepteur erreur détaillé:', {
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      message: error.message,
-      code: error.code,
-      config: {
-        url: error.config?.url,
-        method: error.config?.method,
-        baseURL: error.config?.baseURL,
-        timeout: error.config?.timeout,
-      }
-    });
-    
-    // Gestion spécifique des erreurs réseau
-    if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
-      console.error('🌐 Erreur réseau détectée:', {
-        message: error.message,
-        code: error.code,
-        url: error.config?.url,
-      });
-    }
-    
-    if (error.code === 'ECONNABORTED') {
-      console.error('⏰ Timeout détecté:', {
-        timeout: error.config?.timeout,
-        url: error.config?.url,
-      });
-    }
     
     if (error.response?.status === 401) {
-      console.log('🔑 Erreur 401 détectée, tentative de refresh du token...');
+      // Vérifier si c'est une erreur de connexion initiale ou une session expirée
+      const isLoginEndpoint = error.config?.url?.includes('/auth/login/');
+      
+      if (isLoginEndpoint) {
+        // Erreur 401 sur l'endpoint de connexion = identifiants incorrects
+        // Laisser l'erreur passer au service d'authentification
+        return Promise.reject(error);
+      }
+      
+      // Erreur 401 sur d'autres endpoints = session expirée
       
       // Token expiré, essayer de le rafraîchir
       const refreshToken = await AsyncStorage.getItem('refresh_token');
       if (refreshToken) {
         try {
-          console.log('🔄 Tentative de refresh du token...');
           const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
             refresh: refreshToken,
           });
           
-          console.log('✅ Token refreshé avec succès');
           await AsyncStorage.setItem('access_token', response.data.access);
           
           // Retenter la requête originale
           error.config.headers.Authorization = `Bearer ${response.data.access}`;
           return api.request(error.config);
         } catch (refreshError: any) {
-          console.error('❌ Échec du refresh du token:', refreshError.response?.data || refreshError.message);
           // Échec du refresh, déconnexion
           await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
-          console.log('🚪 Déconnexion effectuée');
+          
+          // Déclencher la déconnexion Redux immédiatement
+          if (onSessionExpired) {
+            onSessionExpired();
+          }
         }
       } else {
-        console.log('❌ Aucun refresh token trouvé');
+        
         // Pas de refresh token, déconnexion forcée
         await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
-        console.log('🚪 Déconnexion forcée - aucun refresh token');
+        
+        // Déclencher la déconnexion Redux immédiatement
+        if (onSessionExpired) {
+          onSessionExpired();
+        }
       }
-      
-      // Si on arrive ici, c'est qu'on n'a pas pu résoudre l'erreur 401
-      console.error('🔑 Erreur 401 non résolue - redirection vers login requise');
       
       // Déclencher la déconnexion Redux si le callback est disponible
       if (onSessionExpired) {
-        console.log('🔄 Déclenchement de la déconnexion Redux...');
         onSessionExpired();
       }
       
@@ -150,6 +133,23 @@ export const authService = {
     try {
       const response = await api.post('/auth/login/', { username, password });
       
+      // Vérifier que la réponse contient les données attendues
+      if (!response.data) {
+        throw new Error('Réponse vide du serveur');
+      }
+      
+      if (!response.data.access_token) {
+        throw new Error('Token d\'accès manquant dans la réponse');
+      }
+      
+      if (!response.data.refresh_token) {
+        throw new Error('Token de rafraîchissement manquant dans la réponse');
+      }
+      
+      if (!response.data.user) {
+        throw new Error('Données utilisateur manquantes dans la réponse');
+      }
+      
       // Adapter la réponse de l'API pour le format attendu par le mobile
       return {
         access: response.data.access_token,
@@ -157,14 +157,24 @@ export const authService = {
         user: response.data.user
       };
     } catch (error: any) {
-      console.error('❌ Erreur de connexion:', error.response?.data || error.message);
-      console.error('📊 Status:', error.response?.status);
-      console.error('🔍 Détails de l\'erreur:', {
-        message: error.message,
-        code: error.code,
-        config: error.config,
-      });
-      throw error;
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+      
+      // Enrichir l'erreur avec des informations supplémentaires
+      const enrichedError = {
+        ...error,
+        response: {
+          ...error.response,
+          data: {
+            ...errorData,
+            username,
+            timestamp: new Date().toISOString(),
+            userAgent: 'BoliBanaStockMobile',
+          }
+        }
+      };
+      
+      throw enrichedError;
     }
   },
 
@@ -401,7 +411,13 @@ export const productService = {
           const uploadParams: any = {};
           for (const [key, value] of Object.entries(productData)) {
             if (key !== 'image' && value !== null && value !== undefined) {
-              uploadParams[key] = String(value);
+              // ✅ Traitement spécial pour le barcode
+              if (key === 'barcode' && value) {
+                uploadParams[key] = String(value);
+                console.log('📱 Barcode ajouté aux paramètres (création):', value);
+              } else {
+                uploadParams[key] = String(value);
+              }
             }
           }
           
@@ -526,12 +542,6 @@ export const productService = {
         // Vérifier l'authentification avant l'upload
         console.log('🔍 Vérification de l\'authentification avant upload...');
         
-        const token = await AsyncStorage.getItem('access_token');
-        if (!token) {
-          throw new Error('Aucun token d\'authentification trouvé. Veuillez vous reconnecter.');
-        }
-        console.log('✅ Token d\'authentification trouvé');
-        
         const formData = new FormData();
         
         // Traiter chaque champ du produit (séquentiel pour permettre await)
@@ -570,47 +580,130 @@ export const productService = {
         }
 
         console.log('📤 Mise à jour avec image - FormData:', formData);
+        console.log('🔗 URL API utilisée:', `${API_BASE_URL}/products/${id}/upload_image/`);
         
-        // Test spécifique pour les requêtes d'upload d'image (FormData)
-        console.log('🔍 Test spécifique upload_image (POST) avec FormData...');
-
-        // Fallback natif pour Expo Go: utiliser uploadAsync (multipart) au lieu d'Axios
+        // Vérifier l'authentification avant l'upload
+        const token = await AsyncStorage.getItem('access_token');
+        if (!token) {
+          throw new Error('Aucun token d\'authentification trouvé. Veuillez vous reconnecter.');
+        }
+        console.log('✅ Token d\'authentification trouvé');
+        
+        // Validation de la taille de l'image avant upload
+        if (productData.image?.size && productData.image.size > 10 * 1024 * 1024) { // 10MB max
+          console.warn('⚠️ Image trop volumineuse, compression recommandée');
+        }
+        
+        // Solution hybride : Gestion intelligente des images
+        // Distinguer entre nouvelle image locale et image S3 existante
         try {
-          const inExpoGo = Constants?.appOwnership === 'expo';
-          if (inExpoGo) {
-            const token2 = await AsyncStorage.getItem('access_token');
-            const url2 = `${API_BASE_URL}/products/${id}/upload_image/`;
-            console.log('🔁 Upload natif via FileSystem.uploadAsync →', url2);
-            const imageUriForUpload = (formData as any)?.get?.('image')?.uri || (formData as any)?._parts?.find?.((p: any) => p?.[0] === 'image')?.[1]?.uri || '';
-            const uploadResult = await FileSystem.uploadAsync(url2, imageUriForUpload, {
-              httpMethod: 'POST',
-              headers: token2 ? { Authorization: `Bearer ${token2}`, Accept: 'application/json' } as any : { Accept: 'application/json' } as any,
-              uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-              fieldName: 'image',
-              parameters: {
-                name: String((productData as any)?.name ?? ''),
-                description: String((productData as any)?.description ?? ''),
-                purchase_price: String((productData as any)?.purchase_price ?? ''),
-                selling_price: String((productData as any)?.selling_price ?? ''),
-                quantity: String((productData as any)?.quantity ?? ''),
-                alert_threshold: String((productData as any)?.alert_threshold ?? ''),
-                category: (productData as any)?.category ? String((productData as any)?.category) : '',
-                brand: (productData as any)?.brand ? String((productData as any)?.brand) : '',
-                is_active: String(!!(productData as any)?.is_active),
+          console.log('🔁 Solution hybride : Analyse de l\'image source...');
+          
+          // 1. Extraire l'URI de l'image du FormData
+          const imageUri = (formData as any)?._parts?.find?.((p: any) => p?.[0] === 'image')?.[1]?.uri || '';
+          
+          if (!imageUri) {
+            throw new Error('URI de l\'image non trouvée dans FormData');
+          }
+          
+          console.log('🔍 Image source détectée:', imageUri);
+          
+          // 2. Analyser le type d'image
+          let localImageUri = imageUri;
+          let isNewImage = false;
+          
+          if (imageUri.startsWith('http') || imageUri.startsWith('https')) {
+            // C'est une URL S3 existante - pas de nouvelle image
+            console.log('ℹ️ Image S3 existante détectée, pas de nouvelle image à uploader');
+            
+            // Modifier le produit sans changer l'image
+            const productDataWithoutImage = { ...productData };
+            delete productDataWithoutImage.image;
+            
+            // ✅ S'assurer que le barcode est bien traité
+            if (productDataWithoutImage.barcode) {
+              console.log('📱 Barcode traité pour PUT standard:', productDataWithoutImage.barcode);
+            }
+            
+            console.log('📤 Mise à jour sans image via PUT standard...');
+            console.log('📤 Données envoyées:', productDataWithoutImage);
+            const response = await api.put(`/products/${id}/`, productDataWithoutImage);
+            return response.data;
+          } else {
+            // C'est une nouvelle image locale
+            isNewImage = true;
+            console.log('✅ Nouvelle image locale détectée, upload via FileSystem.uploadAsync...');
+            
+            // 3. Préparer les paramètres pour l'upload
+            const uploadParams: any = {};
+            for (const [key, value] of Object.entries(productData)) {
+              if (key !== 'image' && value !== null && value !== undefined) {
+                // Traitement spécial pour certains champs
+                if (key === 'category' && value) {
+                  uploadParams[key] = String(value);
+                } else if (key === 'brand' && value) {
+                  uploadParams[key] = String(value);
+                } else if (key === 'barcode' && value) {
+                  // ✅ Traitement spécifique pour le barcode
+                  uploadParams[key] = String(value);
+                  console.log('📱 Barcode ajouté aux paramètres:', value);
+                } else {
+                  uploadParams[key] = String(value);
+                }
+              }
+            }
+            
+            console.log('📤 Upload via FileSystem.uploadAsync avec image locale:', localImageUri);
+            console.log('📤 Paramètres:', uploadParams);
+            
+            // 4. Utiliser FileSystem.uploadAsync avec l'image locale
+            const uploadResult = await FileSystem.uploadAsync(
+              `${API_BASE_URL}/products/${id}/upload_image/`,
+              localImageUri,
+              {
+                httpMethod: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Accept': 'application/json',
+                },
+                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                fieldName: 'image',
+                parameters: uploadParams,
+              }
+            );
+            
+            if (uploadResult.status >= 200 && uploadResult.status < 300) {
+              console.log('✅ Upload hybride réussi:', uploadResult.status);
+              const parsed = (() => {
+                try { return JSON.parse(uploadResult.body || '{}'); } catch { return {}; }
+              })();
+              return parsed;
+            } else {
+              throw new Error(`Upload hybride échec: ${uploadResult.status} - ${uploadResult.body}`);
+            }
+          }
+          
+        } catch (uploadError: any) {
+          console.error('❌ Upload hybride échoué:', uploadError?.message || uploadError);
+          
+          // Fallback vers Axios si FileSystem échoue
+          console.log('🔄 Tentative fallback Axios...');
+          try {
+            const response = await api.post(`/products/${id}/upload_image/`, formData, {
+              timeout: 120000,
+              maxContentLength: 100 * 1024 * 1024,
+              maxBodyLength: 100 * 1024 * 1024,
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
               },
             });
-            if (uploadResult.status < 200 || uploadResult.status >= 300) {
-              console.error('❌ uploadAsync échec:', uploadResult.status, uploadResult.body?.slice?.(0, 500));
-              throw new Error(`uploadAsync failed: ${uploadResult.status}`);
-            }
-            const parsed = (() => {
-              try { return JSON.parse(uploadResult.body || '{}'); } catch { return {}; }
-            })();
-            console.log('✅ Upload via uploadAsync réussi');
-            return parsed;
+            console.log('✅ Fallback Axios réussi:', response.status);
+            return response.data;
+          } catch (axiosError: any) {
+            console.error('❌ Fallback Axios aussi échoué:', axiosError?.message || axiosError);
+            throw uploadError; // Lancer l'erreur originale
           }
-        } catch (uploadNativeErr: any) {
-          console.warn('⚠️ uploadAsync non utilisé/échoué, on tente Axios:', uploadNativeErr?.message || uploadNativeErr);
         }
         
         // Configuration optimisée pour les uploads d'images
@@ -844,6 +937,32 @@ export const productService = {
     });
     return response.data;
   },
+
+  // ✅ NOUVELLE MÉTHODE : Récupérer les produits en rupture de stock
+  getOutOfStockProducts: async () => {
+    try {
+      console.log('📡 Requête GET /products/out_of_stock/');
+      const response = await api.get('/products/out_of_stock/');
+      console.log('✅ Réponse produits rupture stock reçue:', response.status);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur getOutOfStockProducts:', error);
+      throw error;
+    }
+  },
+
+  // ✅ NOUVELLE MÉTHODE : Récupérer les produits en backorder (stock négatif)
+  getBackorderProducts: async () => {
+    try {
+      console.log('📡 Requête GET /products/backorders/');
+      const response = await api.get('/products/backorders/');
+      console.log('✅ Réponse produits backorder reçue:', response.status);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur getBackorderProducts:', error);
+      throw error;
+    }
+  },
 };
 
 // Services pour les catégories
@@ -854,6 +973,29 @@ export const categoryService = {
       return response.data;
     } catch (error: any) {
       console.error('❌ Erreur API catégories:', error.response?.data || error.message);
+      console.error('📊 Status:', error.response?.status);
+      throw error;
+    }
+  },
+
+  // Nouvelles API pour la sélection hiérarchisée
+  getRayons: async () => {
+    try {
+      const response = await api.get('/rayons/');
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur API rayons:', error.response?.data || error.message);
+      console.error('📊 Status:', error.response?.status);
+      throw error;
+    }
+  },
+
+  getSubcategories: async (rayonId: number) => {
+    try {
+      const response = await api.get(`/subcategories/?rayon_id=${rayonId}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur API sous-catégories:', error.response?.data || error.message);
       console.error('📊 Status:', error.response?.status);
       throw error;
     }
@@ -869,7 +1011,15 @@ export const categoryService = {
     }
   },
   
-  createCategory: async (categoryData: { name: string; description?: string }) => {
+  createCategory: async (categoryData: { 
+    name: string; 
+    description?: string;
+    parent?: number;
+    rayon_type?: string;
+    is_rayon?: boolean;
+    is_global?: boolean;
+    order?: number;
+  }) => {
     try {
       const response = await api.post('/categories/', categoryData);
       return response.data;
@@ -1220,6 +1370,56 @@ export const productCopyService = {
         action: 'delete_copy',
         copy_id: copyId
       });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ✅ Gestion des codes-barres
+  // Ajouter un code-barres
+  addBarcode: async (productId: number, barcodeData: { ean: string; notes?: string; is_primary: boolean }) => {
+    try {
+      const response = await api.post(`/inventory/barcode/add/`, {
+        product: productId,
+        ean: barcodeData.ean,
+        notes: barcodeData.notes || '',
+        is_primary: barcodeData.is_primary
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Mettre à jour un code-barres
+  updateBarcode: async (barcodeId: number, barcodeData: { ean: string; notes?: string; is_primary: boolean }) => {
+    try {
+      const response = await api.put(`/inventory/barcode/${barcodeId}/edit/`, {
+        ean: barcodeData.ean,
+        notes: barcodeData.notes || '',
+        is_primary: barcodeData.is_primary
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Supprimer un code-barres
+  deleteBarcode: async (barcodeId: number) => {
+    try {
+      const response = await api.delete(`/inventory/barcode/${barcodeId}/delete/`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Définir un code-barres comme principal
+  setPrimaryBarcode: async (barcodeId: number) => {
+    try {
+      const response = await api.post(`/inventory/barcode/${barcodeId}/set_primary/`);
       return response.data;
     } catch (error) {
       throw error;

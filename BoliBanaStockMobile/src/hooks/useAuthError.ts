@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useDispatch } from 'react-redux';
-import { logout } from '../store/slices/authSlice';
+import { showSessionExpiredNotification } from '../store/slices/authSlice';
 import { setSessionExpiredCallback } from '../services/api';
 import { AppDispatch } from '../store';
 
@@ -10,20 +10,11 @@ import { AppDispatch } from '../store';
  */
 export const useAuthError = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const [showNotification, setShowNotification] = useState(false);
 
   useEffect(() => {
-    // Enregistrer le callback de déconnexion automatique
+    // Enregistrer le callback pour l'intercepteur api.ts
     setSessionExpiredCallback(() => {
-      console.log('🔄 Session expirée détectée - déconnexion automatique via hook...');
-      
-      // Afficher la notification avant la déconnexion
-      setShowNotification(true);
-      
-      // Délai pour laisser le temps à la notification de s'afficher
-      setTimeout(() => {
-        dispatch(logout());
-      }, 1500);
+      dispatch(showSessionExpiredNotification(true));
     });
 
     // Cleanup function
@@ -44,5 +35,5 @@ export const useAuthError = () => {
     return false; // Indique que ce n'est pas une erreur d'authentification
   };
 
-  return { handleApiError, showNotification, setShowNotification };
+  return { handleApiError };
 };

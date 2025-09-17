@@ -31,6 +31,18 @@ export interface Category {
   description?: string;
   created_at: string;
   updated_at: string;
+  // Nouveaux champs pour les rayons
+  is_global?: boolean;
+  is_rayon?: boolean;
+  rayon_type?: string;
+  level?: number;
+  order?: number;
+  is_active?: boolean;
+  parent?: number;
+  site_configuration?: number;
+  // Informations du rayon parent pour l'affichage
+  parent_name?: string;
+  parent_rayon_type?: string;
 }
 
 // Types pour les marques
@@ -145,6 +157,7 @@ export type RootStackParamList = {
   Profile: undefined;
   Reports: undefined;
   Inventory: undefined;
+  Delivery: undefined;
   LowStock: undefined;
   OutOfStock: undefined;
   StockValue: undefined;
@@ -167,6 +180,9 @@ export type RootStackParamList = {
     includePrices: boolean;
     includeStock: boolean;
   };
+  PrintModeSelection: undefined;
+  CatalogPDF: undefined;
+  LabelPrint: undefined;
   BarcodeTest: undefined;
   Categories: undefined;
   Brands: undefined;

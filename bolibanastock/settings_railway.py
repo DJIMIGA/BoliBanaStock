@@ -172,15 +172,20 @@ AWS_QUERYSTRING_AUTH = True
 
 # Configuration du stockage conditionnel pour Railway
 if AWS_S3_ENABLED:
-    # Production Railway avec S3: WhiteNoise pour statics, S3 pour médias
+    # Production Railway avec S3: WhiteNoise pour statics, S3 unifié pour médias
     print("🚀 Configuration S3 activée pour Railway")
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-    DEFAULT_FILE_STORAGE = 'bolibanastock.storage_backends.MediaStorage'
-    # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_id}/
-    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/assets/'
+    
+    # ✅ NOUVEAU STOCKAGE S3 UNIFIÉ (SANS DUPLICATION)
+    DEFAULT_FILE_STORAGE = 'bolibanastock.storage_backends.UnifiedS3Storage'
+    
+    # ✅ URL S3 directe sans préfixe assets/media/
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
+    
     print(f"📁 Stockage S3: {AWS_STORAGE_BUCKET_NAME}")
     print(f"🔗 URL médias: {MEDIA_URL}")
-    print("📁 Structure S3: assets/products/site-{site_id}/")
+    print("📁 Structure S3: assets/products/site-{site_id}/ (sans duplication)")
+    print("✅ Utilisation du stockage S3 unifié")
 else:
     # Production Railway sans S3: stockage local persistant avec URL absolue
     print("⚠️ Configuration S3 non trouvée, utilisation du stockage local persistant")

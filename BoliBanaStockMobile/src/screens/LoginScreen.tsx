@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -25,16 +26,91 @@ const LoginScreen: React.FC = () => {
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Obtenir les dimensions de l'écran
+  const screenHeight = Dimensions.get('window').height;
+  const isSmallScreen = screenHeight < 700;
+  const isVerySmallScreen = screenHeight < 600;
 
   const dispatch = useDispatch<AppDispatch>();
-  const { loading, error, isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const { loading, error, errorType, errorDetails, isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const [retryCount, setRetryCount] = useState(0);
+  const [showRetryButton, setShowRetryButton] = useState(false);
 
   useEffect(() => {
     if (error) {
-      Alert.alert('Erreur', error);
-      dispatch(clearError());
+      handleErrorDisplay();
     }
-  }, [error, dispatch]);
+  }, [error, errorType, dispatch]);
+
+  const handleErrorDisplay = () => {
+    if (!error) return;
+
+    let title = 'Erreur de connexion';
+    let message = error;
+    let showRetry = false;
+
+    // Personnaliser le message selon le type d'erreur
+    switch (errorType) {
+      case 'INVALID_CREDENTIALS':
+        title = 'Identifiants incorrects';
+        message = 'Le nom d\'utilisateur ou le mot de passe est incorrect. Vérifiez vos informations et réessayez.';
+        break;
+      case 'ACCOUNT_DISABLED':
+        title = 'Compte désactivé';
+        message = 'Votre compte a été désactivé. Contactez l\'administrateur pour plus d\'informations.';
+        break;
+      case 'TOO_MANY_ATTEMPTS':
+        title = 'Trop de tentatives';
+        message = 'Vous avez effectué trop de tentatives de connexion. Veuillez patienter quelques minutes avant de réessayer.';
+        showRetry = true;
+        break;
+      case 'NETWORK_ERROR':
+        title = 'Problème de connexion';
+        message = 'Vérifiez votre connexion internet et réessayez.';
+        showRetry = true;
+        break;
+      case 'SERVER_ERROR':
+        title = 'Erreur serveur';
+        message = 'Le serveur rencontre des difficultés. Réessayez dans quelques instants.';
+        showRetry = true;
+        break;
+      case 'SERVER_RESPONSE_ERROR':
+        title = 'Réponse serveur incomplète';
+        message = 'Le serveur a retourné une réponse incomplète. Réessayez.';
+        showRetry = true;
+        break;
+      default:
+        title = 'Erreur de connexion';
+        message = error;
+        showRetry = true;
+    }
+
+    setShowRetryButton(showRetry);
+
+    Alert.alert(
+      title,
+      message,
+      [
+        {
+          text: 'OK',
+          onPress: () => dispatch(clearError()),
+        },
+        ...(showRetry ? [{
+          text: 'Réessayer',
+          onPress: () => handleRetry(),
+        }] : []),
+      ]
+    );
+  };
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+    dispatch(clearError());
+    
+    // Réessayer la connexion avec les mêmes identifiants
+    dispatch(login(credentials));
+  };
 
   const handleLogin = () => {
     if (!credentials.username || !credentials.password) {
@@ -42,6 +118,11 @@ const LoginScreen: React.FC = () => {
       return;
     }
 
+    // Réinitialiser le compteur de retry et l'état d'erreur
+    setRetryCount(0);
+    setShowRetryButton(false);
+    dispatch(clearError());
+    
     dispatch(login(credentials));
   };
 
@@ -56,11 +137,34 @@ const LoginScreen: React.FC = () => {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logo}>BoliBana Stock</Text>
-          <Text style={styles.subtitle}>Gestion d'entreprise • Stock • Caisse</Text>
+      <ScrollView 
+        contentContainerStyle={[
+          styles.scrollContainer,
+          isSmallScreen && styles.scrollContainerSmall,
+          isVerySmallScreen && styles.scrollContainerVerySmall
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+        alwaysBounceVertical={false}
+      >
+        <View style={[
+          styles.logoContainer,
+          isSmallScreen && styles.logoContainerSmall,
+          isVerySmallScreen && styles.logoContainerVerySmall
+        ]}>
+          <Text style={[
+            styles.logo,
+            isSmallScreen && styles.logoSmall,
+            isVerySmallScreen && styles.logoVerySmall
+          ]}>BoliBana Stock</Text>
+          <Text style={[
+            styles.subtitle,
+            isSmallScreen && styles.subtitleSmall,
+            isVerySmallScreen && styles.subtitleVerySmall
+          ]}>Gestion d'entreprise • Stock • Caisse</Text>
         </View>
 
         <View style={styles.formContainer}>
@@ -132,7 +236,26 @@ const LoginScreen: React.FC = () => {
 
           {loading && (
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Vérification des identifiants...</Text>
+              <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+              <Text style={styles.loadingText}>
+                {retryCount > 0 ? `Tentative ${retryCount + 1}...` : 'Vérification des identifiants...'}
+              </Text>
+            </View>
+          )}
+
+          {error && errorType === 'INVALID_CREDENTIALS' && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>
+                💡 Vérifiez votre nom d'utilisateur et mot de passe
+              </Text>
+            </View>
+          )}
+
+          {error && errorType === 'NETWORK_ERROR' && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>
+                📡 Vérifiez votre connexion internet
+              </Text>
             </View>
           )}
         </View>
@@ -154,39 +277,60 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
     paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 20,
+  },
+  scrollContainerSmall: {
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  scrollContainerVerySmall: {
+    paddingTop: 10,
+    paddingBottom: 5,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 20,
+    paddingTop: 0,
+  },
+  logoContainerSmall: {
+    marginBottom: 20,
+    paddingTop: 5,
+  },
+  logoContainerVerySmall: {
+    marginBottom: 15,
+    paddingTop: 0,
   },
   logo: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
     color: theme.colors.primary[500],
-    marginBottom: 8,
+    marginBottom: 6,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: theme.colors.text.tertiary,
     textAlign: 'center',
+    lineHeight: 18,
   },
   formContainer: {
     backgroundColor: theme.colors.background.primary,
     borderRadius: 12,
-    padding: 24,
+    padding: 16,
     ...theme.shadows.md,
+    marginBottom: 10,
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
-    marginBottom: 24,
+    marginBottom: 16,
     textAlign: 'center',
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   label: {
     fontSize: 14,
@@ -254,18 +398,52 @@ const styles = StyleSheet.create({
   loadingContainer: {
     alignItems: 'center',
     marginTop: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   loadingText: {
     color: theme.colors.text.tertiary,
     fontSize: 14,
+    marginLeft: 8,
+  },
+  errorContainer: {
+    backgroundColor: theme.colors.error[50],
+    borderColor: theme.colors.error[200],
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 16,
+  },
+  errorText: {
+    color: theme.colors.error[600],
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   footer: {
     alignItems: 'center',
-    marginTop: 40,
+    marginTop: 16,
+    paddingBottom: 10,
   },
   footerText: {
     color: theme.colors.text.tertiary,
     fontSize: 12,
+  },
+  logoSmall: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  logoVerySmall: {
+    fontSize: 20,
+    marginBottom: 2,
+  },
+  subtitleSmall: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  subtitleVerySmall: {
+    fontSize: 10,
+    lineHeight: 14,
   },
 });
 

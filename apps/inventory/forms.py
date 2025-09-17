@@ -15,6 +15,30 @@ class ProductForm(forms.ModelForm):
         help_text="Scannez un code-barres ou saisissez le CUG, EAN ou nom du produit"
     )
 
+    # Nouveaux champs pour la sélection hiérarchisée
+    rayon = forms.ModelChoiceField(
+        queryset=Category.objects.none(),
+        required=False,
+        empty_label="Sélectionnez un rayon",
+        widget=forms.Select(attrs={
+            'class': 'block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
+            'id': 'id_rayon'
+        }),
+        label="Rayon"
+    )
+    
+    subcategory = forms.ModelChoiceField(
+        queryset=Category.objects.none(),
+        required=False,
+        empty_label="Sélectionnez d'abord un rayon",
+        widget=forms.Select(attrs={
+            'class': 'block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
+            'id': 'id_subcategory',
+            'disabled': True
+        }),
+        label="Sous-catégorie"
+    )
+
     class Meta:
         model = Product
         fields = [
@@ -53,17 +77,39 @@ class ProductForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Filtrer les catégories et marques par site de l'utilisateur
         user = kwargs.get('user')
+        
+        # Configurer les rayons (niveau 0, is_rayon=True)
         if user and not user.is_superuser and user.site_configuration:
-            self.fields['category'].queryset = Category.objects.filter(
+            # Utilisateur normal : rayons globaux uniquement
+            self.fields['rayon'].queryset = Category.objects.filter(
                 is_active=True,
-                site_configuration=user.site_configuration
-            )
+                is_global=True,
+                is_rayon=True,
+                level=0
+            ).order_by('rayon_type', 'order', 'name')
+            
+            # Catégories complètes pour le champ category (fallback)
+            from django.db import models
+            self.fields['category'].queryset = Category.objects.filter(
+                is_active=True
+            ).filter(
+                models.Q(site_configuration=user.site_configuration) | 
+                models.Q(is_global=True)
+            ).order_by('is_global', 'is_rayon', 'rayon_type', 'level', 'order', 'name')
+            
             self.fields['brand'].queryset = Brand.objects.filter(
                 is_active=True,
                 site_configuration=user.site_configuration
             )
         else:
-            self.fields['category'].queryset = Category.objects.filter(is_active=True)
+            # Superuser : tous les rayons
+            self.fields['rayon'].queryset = Category.objects.filter(
+                is_active=True,
+                is_rayon=True,
+                level=0
+            ).order_by('rayon_type', 'order', 'name')
+            
+            self.fields['category'].queryset = Category.objects.filter(is_active=True).order_by('is_global', 'is_rayon', 'rayon_type', 'level', 'order', 'name')
             self.fields['brand'].queryset = Brand.objects.filter(is_active=True)
         # Personnaliser les labels
         self.fields['name'].label = 'Nom du produit'
@@ -80,6 +126,17 @@ class ProductForm(forms.ModelForm):
         # Rendre certains champs optionnels
         self.fields['description'].required = False
         self.fields['image'].required = False
+        
+        # Si on édite un produit existant, pré-remplir les champs rayon/subcategory
+        if self.instance and self.instance.pk and self.instance.category:
+            category = self.instance.category
+            if category.parent and category.parent.is_rayon:
+                # C'est une sous-catégorie
+                self.fields['rayon'].initial = category.parent
+                self.fields['subcategory'].initial = category
+            elif category.is_rayon and category.level == 0:
+                # C'est un rayon principal
+                self.fields['rayon'].initial = category
 
     def clean_scan_field(self):
         """Valide le champ de scan et remplit automatiquement les champs appropriés"""
@@ -108,6 +165,20 @@ class ProductForm(forms.ModelForm):
         selling_price = cleaned_data.get('selling_price')
         quantity = cleaned_data.get('quantity')
         barcodes = cleaned_data.get('barcodes')
+        
+        # Synchroniser les champs rayon/subcategory avec category
+        rayon = cleaned_data.get('rayon')
+        subcategory = cleaned_data.get('subcategory')
+        
+        if rayon and subcategory:
+            # Si les deux sont sélectionnés, utiliser la sous-catégorie
+            cleaned_data['category'] = subcategory
+        elif rayon:
+            # Si seul le rayon est sélectionné, l'utiliser
+            cleaned_data['category'] = rayon
+        elif subcategory:
+            # Si seule la sous-catégorie est sélectionnée, l'utiliser
+            cleaned_data['category'] = subcategory
 
         if purchase_price is not None and purchase_price < 0:
             raise forms.ValidationError({
@@ -148,12 +219,121 @@ class ProductForm(forms.ModelForm):
         return instance
 
 class CategoryForm(forms.ModelForm):
+    # Champ pour le type de rayon
+    rayon_type = forms.ChoiceField(
+        choices=[('', 'Sélectionnez un type de rayon')] + Category.RAYON_TYPE_CHOICES,
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+            'id': 'id_rayon_type'
+        }),
+        label="Type de rayon"
+    )
+    
+    # Champ pour indiquer si c'est un rayon principal
+    is_rayon = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={
+            'class': 'form-check-input',
+            'id': 'id_is_rayon'
+        }),
+        label="Est un rayon principal"
+    )
+    
+    # Champ pour indiquer si c'est global
+    is_global = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={
+            'class': 'form-check-input',
+            'id': 'id_is_global'
+        }),
+        label="Catégorie globale (visible par tous les sites)"
+    )
+
     class Meta:
         model = Category
-        fields = ['name', 'description', 'is_active']
+        fields = ['name', 'description', 'parent', 'order', 'is_active', 'image']
         widgets = {
-            'description': forms.Textarea(attrs={'rows': 3}),
+            'description': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'parent': forms.Select(attrs={'class': 'form-control'}),
+            'order': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'image': forms.ClearableFileInput(attrs={'class': 'form-control-file', 'accept': 'image/*'}),
         }
+        labels = {
+            'name': 'Nom de la catégorie',
+            'description': 'Description',
+            'parent': 'Catégorie parente',
+            'order': 'Ordre d\'affichage',
+            'is_active': 'Active',
+            'image': 'Image',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Configurer les choix pour la catégorie parente
+        if self.instance and self.instance.pk:
+            # En mode édition, exclure la catégorie elle-même et ses enfants
+            self.fields['parent'].queryset = Category.objects.exclude(
+                id=self.instance.id
+            ).exclude(
+                parent=self.instance
+            ).order_by('name')
+        else:
+            # En mode création, toutes les catégories sont disponibles
+            self.fields['parent'].queryset = Category.objects.order_by('name')
+        
+        # Pré-remplir les champs si on édite une catégorie existante
+        if self.instance and self.instance.pk:
+            self.fields['rayon_type'].initial = self.instance.rayon_type
+            self.fields['is_rayon'].initial = self.instance.is_rayon
+            self.fields['is_global'].initial = self.instance.is_global
+
+    def clean(self):
+        cleaned_data = super().clean()
+        rayon_type = cleaned_data.get('rayon_type')
+        is_rayon = cleaned_data.get('is_rayon')
+        parent = cleaned_data.get('parent')
+        
+        # Si c'est un rayon principal, le type de rayon est obligatoire
+        if is_rayon and not rayon_type:
+            raise forms.ValidationError({
+                'rayon_type': 'Le type de rayon est obligatoire pour un rayon principal.'
+            })
+        
+        # Si c'est un rayon principal, il ne peut pas avoir de parent
+        if is_rayon and parent:
+            raise forms.ValidationError({
+                'parent': 'Un rayon principal ne peut pas avoir de catégorie parente.'
+            })
+        
+        # Si ce n'est pas un rayon principal, il doit avoir un parent
+        if not is_rayon and not parent:
+            raise forms.ValidationError({
+                'parent': 'Une sous-catégorie doit avoir une catégorie parente.'
+            })
+        
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        
+        # Assigner les champs de rayon
+        instance.rayon_type = self.cleaned_data.get('rayon_type') or None
+        instance.is_rayon = self.cleaned_data.get('is_rayon', False)
+        instance.is_global = self.cleaned_data.get('is_global', False)
+        
+        # Calculer le niveau basé sur le parent
+        if instance.parent:
+            instance.level = instance.parent.level + 1
+        else:
+            instance.level = 0
+        
+        if commit:
+            instance.save()
+        return instance
 
 class BrandForm(forms.ModelForm):
     class Meta:
@@ -253,11 +433,13 @@ class OrderItemForm(forms.ModelForm):
                 'unit_price': "Le prix unitaire doit être supérieur à 0."
             })
 
-        if product and quantity:
-            if product.quantity < quantity:
-                raise forms.ValidationError({
-                    'quantity': f"Stock insuffisant. Quantité disponible : {product.quantity}"
-                })
+        # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+        # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
+        # if product and quantity:
+        #     if product.quantity < quantity:
+        #         raise forms.ValidationError({
+        #             'quantity': f"Stock insuffisant. Quantité disponible : {product.quantity}"
+        #         })
 
         return cleaned_data
 
@@ -352,10 +534,12 @@ class TransactionForm(forms.ModelForm):
                 'unit_price': "Le prix unitaire doit être supérieur à 0."
             })
 
-        if transaction_type == 'out' and product and quantity:
-            if product.quantity < quantity:
-                raise forms.ValidationError({
-                    'quantity': f"Stock insuffisant. Quantité disponible : {product.quantity}"
-                })
+        # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+        # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
+        # if transaction_type == 'out' and product and quantity:
+        #     if product.quantity < quantity:
+        #         raise forms.ValidationError({
+        #             'quantity': f"Stock insuffisant. Quantité disponible : {product.quantity}"
+        #         })
 
         return cleaned_data 

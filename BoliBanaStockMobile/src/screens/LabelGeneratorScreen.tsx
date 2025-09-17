@@ -9,10 +9,13 @@ import {
   ActivityIndicator,
   Switch,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import api from '../services/api';
-import KeyDebugger from '../components/KeyDebugger';
+import { KeyDebugger } from '../components';
+import theme from '../utils/theme';
 
 interface Product {
   id: number;
@@ -23,8 +26,6 @@ interface Product {
   quantity: number;
   category: { id: number; name: string } | null;
   brand: { id: number; name: string } | null;
-  has_barcodes: boolean;
-  barcodes_count: number;
 }
 
 interface Category {
@@ -53,8 +54,6 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
-  const [includePrices, setIncludePrices] = useState(true);
-  const [includeStock, setIncludeStock] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
   const [generatingLabels, setGeneratingLabels] = useState(false);
@@ -106,31 +105,10 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
       return;
     }
 
-    try {
-      setGeneratingLabels(true);
-      const response = await api.post('/labels/generate/', {
-        product_ids: Array.from(selectedProducts),
-        include_prices: includePrices,
-        include_stock: includeStock,
-      }, {
-        headers: { Authorization: `Bearer ${tokens?.access}` },
-      });
-
-      const { labels, total_labels } = response.data;
-      
-      // Naviguer vers l'écran de prévisualisation
-      navigation.navigate('LabelPreview', {
-        labels: labels,
-        includePrices: includePrices,
-        includeStock: includeStock,
-      });
-
-    } catch (error) {
-      console.error('Erreur lors de la génération des étiquettes:', error);
-      Alert.alert('Erreur', 'Impossible de générer les étiquettes');
-    } finally {
-      setGeneratingLabels(false);
-    }
+    // Rediriger vers le choix de la méthode d'impression
+    navigation.navigate('PrintModeSelection', {
+      selectedProducts: Array.from(selectedProducts),
+    });
   };
 
   const showLabelsDetails = (labels: any[]) => {
@@ -150,52 +128,55 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Chargement des données...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary[500]} />
+          <Text style={styles.loadingText}>Chargement des données...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!labelData) {
     return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>Aucune donnée disponible</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchLabelData}>
-          <Text style={styles.retryButtonText}>Réessayer</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Aucune donnée disponible</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchLabelData}>
+            <Text style={styles.retryButtonText}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Composants de débogage */}
-      <KeyDebugger data={labelData?.products || []} name="Products" />
-      <KeyDebugger data={labelData?.categories || []} name="Categories" />
-      <KeyDebugger data={labelData?.brands || []} name="Brands" />
-      <KeyDebugger data={filteredProducts} name="FilteredProducts" />
-      
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>🏷️ Générateur d'Étiquettes CUG</Text>
-        <Text style={styles.subtitle}>
-          {labelData.total_products} produits avec codes-barres disponibles
-        </Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Générateur d'Étiquettes EAN</Text>
+        <View style={styles.headerSpacer} />
       </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Composants de débogage - Temporairement désactivés */}
+        {/* <KeyDebugger data={labelData?.products || []} name="Products" />
+        <KeyDebugger data={labelData?.categories || []} name="Categories" />
+        <KeyDebugger data={labelData?.brands || []} name="Brands" />
+        <KeyDebugger data={filteredProducts} name="FilteredProducts" /> */}
+        
+        <View style={styles.subtitleContainer}>
+          <Text style={styles.subtitle}>
+            {labelData.total_products} produits artisanaux avec EAN générés automatiquement
+          </Text>
+        </View>
 
       {/* Contrôles */}
       <View style={styles.controls}>
-        <Text style={styles.sectionTitle}>⚙️ Options d'impression</Text>
-        
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Inclure les prix</Text>
-          <Switch value={includePrices} onValueChange={setIncludePrices} />
-        </View>
-        
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Inclure le stock</Text>
-          <Switch value={includeStock} onValueChange={setIncludeStock} />
-        </View>
+        <Text style={styles.sectionTitle}>🔍 Filtres et Recherche</Text>
 
         <View style={styles.filterSection}>
           <Text style={styles.filterLabel}>Filtrer par catégorie:</Text>
@@ -275,38 +256,35 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
             style={[styles.productCard, selectedProducts.has(product.id) && styles.productCardSelected]}
             onPress={() => toggleProductSelection(product.id)}
           >
-            <View style={styles.productHeader}>
+            <View style={styles.productInfo}>
               <Text style={styles.productName}>{product.name}</Text>
-              <View style={styles.selectionIndicator}>
-                {selectedProducts.has(product.id) && (
-                  <Text style={styles.checkmark}>✓</Text>
-                )}
-              </View>
+              <Text style={styles.productDetails}>
+                CUG: {product.cug} | EAN: {product.barcode_ean}
+              </Text>
+              <Text style={styles.productDetails}>
+                {product.category?.name || 'N/A'} • {product.brand?.name || 'N/A'}
+              </Text>
+              <Text style={styles.productDetails}>
+                Prix: {product.selling_price.toLocaleString()} FCFA • Stock: {product.quantity}
+              </Text>
             </View>
-            
-            <View style={styles.productDetails}>
-              <Text style={styles.productInfo}>CUG: {product.cug}</Text>
-              <Text style={styles.productInfo}>Code-barres: {product.barcode_ean}</Text>
-              <Text style={styles.productInfo}>Prix: {product.selling_price.toLocaleString()} FCFA</Text>
-              <Text style={styles.productInfo}>Stock: {product.quantity}</Text>
-              {product.category && (
-                <Text style={styles.productInfo}>Catégorie: {product.category.name}</Text>
-              )}
-              {product.brand && (
-                <Text style={styles.productInfo}>Marque: {product.brand.name}</Text>
+            <View style={styles.selectionIndicator}>
+              {selectedProducts.has(product.id) && (
+                <Text style={styles.checkmark}>✓</Text>
               )}
             </View>
           </TouchableOpacity>
         ))}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background.secondary,
   },
   loadingContainer: {
     flex: 1,
@@ -316,7 +294,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#666',
+    color: theme.colors.neutral[600],
   },
   errorContainer: {
     flex: 1,
@@ -326,35 +304,47 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: '#666',
+    color: theme.colors.neutral[600],
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.primary[500],
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
   },
   retryButtonText: {
-    color: 'white',
+    color: theme.colors.text.inverse,
     fontSize: 16,
     fontWeight: '600',
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     backgroundColor: 'white',
-    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
+  headerSpacer: { width: 24 },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    padding: 16,
+  },
+  subtitleContainer: {
+    padding: theme.spacing.md,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: theme.fontSize.md,
+    color: theme.colors.text.secondary,
+    textAlign: 'center',
   },
   controls: {
     backgroundColor: 'white',
@@ -442,50 +432,50 @@ const styles = StyleSheet.create({
   },
   productCard: {
     backgroundColor: 'white',
+    borderRadius: 8,
     padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    minHeight: 60,
   },
   productCardSelected: {
-    borderColor: '#007AFF',
-    borderWidth: 2,
+    borderColor: '#28a745',
+    backgroundColor: '#f8fff9',
   },
   productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   productName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#212529',
+    marginBottom: 4,
     flex: 1,
   },
   selectionIndicator: {
     width: 24,
     height: 24,
-    borderRadius: 12,
-    backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkmark: {
-    color: 'white',
-    fontSize: 16,
+    fontSize: 18,
+    color: '#28a745',
     fontWeight: 'bold',
   },
   productDetails: {
-    gap: 4,
+    fontSize: 12,
+    color: '#6c757d',
+    marginBottom: 2,
   },
   productInfo: {
-    fontSize: 14,
-    color: '#666',
+    flex: 1,
   },
 });
 

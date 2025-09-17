@@ -9,6 +9,9 @@ interface AuthState {
   isAuthenticated: boolean;
   loading: boolean;
   error: string | null;
+  errorType: string | null;
+  errorDetails: any | null;
+  showSessionExpiredNotification: boolean;
 }
 
 const initialState: AuthState = {
@@ -17,6 +20,9 @@ const initialState: AuthState = {
   isAuthenticated: false,
   loading: false,
   error: null,
+  errorType: null,
+  errorDetails: null,
+  showSessionExpiredNotification: false,
 };
 
 // Async thunks
@@ -33,7 +39,52 @@ export const login = createAsyncThunk(
       
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Erreur de connexion');
+      // Gestion spécifique des erreurs d'authentification
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+      
+      let errorMessage = 'Erreur de connexion';
+      let errorType = 'GENERIC_ERROR';
+      
+      if (status === 401) {
+        // Identifiants incorrects
+        errorMessage = 'Nom d\'utilisateur ou mot de passe incorrect';
+        errorType = 'INVALID_CREDENTIALS';
+      } else if (error.message?.includes('Réponse vide du serveur') || 
+                 error.message?.includes('Token d\'accès manquant') ||
+                 error.message?.includes('Données utilisateur manquantes')) {
+        // Problème de réponse serveur
+        errorMessage = 'Le serveur a retourné une réponse incomplète. Réessayez.';
+        errorType = 'SERVER_RESPONSE_ERROR';
+      } else if (status === 403) {
+        // Compte désactivé ou bloqué
+        errorMessage = 'Votre compte est désactivé ou bloqué';
+        errorType = 'ACCOUNT_DISABLED';
+      } else if (status === 429) {
+        // Trop de tentatives
+        errorMessage = 'Trop de tentatives de connexion. Veuillez patienter avant de réessayer';
+        errorType = 'TOO_MANY_ATTEMPTS';
+      } else if (status >= 500) {
+        // Erreur serveur
+        errorMessage = 'Le serveur rencontre des difficultés. Réessayez plus tard';
+        errorType = 'SERVER_ERROR';
+      } else if (error.code === 'NETWORK_ERROR' || !error.response) {
+        // Erreur réseau
+        errorMessage = 'Vérifiez votre connexion internet et réessayez';
+        errorType = 'NETWORK_ERROR';
+      } else if (errorData?.message) {
+        // Message spécifique du serveur
+        errorMessage = errorData.message;
+        errorType = 'API_ERROR';
+      }
+      
+      
+      return rejectWithValue({
+        message: errorMessage,
+        type: errorType,
+        status,
+        originalError: errorData,
+      });
     }
   }
 );
@@ -123,12 +174,17 @@ const authSlice = createSlice({
   reducers: {
     clearError: (state) => {
       state.error = null;
+      state.errorType = null;
+      state.errorDetails = null;
     },
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.loading = action.payload;
     },
     updateUser: (state, action: PayloadAction<User>) => {
       state.user = action.payload;
+    },
+    showSessionExpiredNotification: (state, action: PayloadAction<boolean>) => {
+      state.showSessionExpiredNotification = action.payload;
     },
   },
   extraReducers: (builder) => {
@@ -137,6 +193,8 @@ const authSlice = createSlice({
       .addCase(login.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.errorType = null;
+        state.errorDetails = null;
       })
       .addCase(login.fulfilled, (state, action) => {
         state.loading = false;
@@ -146,16 +204,28 @@ const authSlice = createSlice({
           access: action.payload.access,
           refresh: action.payload.refresh,
         };
+        state.showSessionExpiredNotification = false; // Masquer la notification lors de la connexion
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string;
+        const payload = action.payload as any;
+        if (payload && typeof payload === 'object') {
+          state.error = payload.message;
+          state.errorType = payload.type;
+          state.errorDetails = payload.originalError;
+        } else {
+          state.error = payload as string;
+          state.errorType = 'GENERIC_ERROR';
+          state.errorDetails = null;
+        }
       })
       
       // Signup
       .addCase(signup.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.errorType = null;
+        state.errorDetails = null;
       })
       .addCase(signup.fulfilled, (state, action) => {
         state.loading = false;
@@ -165,10 +235,20 @@ const authSlice = createSlice({
           access: action.payload.access,
           refresh: action.payload.refresh,
         };
+        state.showSessionExpiredNotification = false; // Masquer la notification lors de l'inscription
       })
       .addCase(signup.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string;
+        const payload = action.payload as any;
+        if (payload && typeof payload === 'object') {
+          state.error = payload.message;
+          state.errorType = payload.type;
+          state.errorDetails = payload.originalError;
+        } else {
+          state.error = payload as string;
+          state.errorType = 'GENERIC_ERROR';
+          state.errorDetails = null;
+        }
       })
       
       // Logout
@@ -180,6 +260,7 @@ const authSlice = createSlice({
         state.isAuthenticated = false;
         state.user = null;
         state.tokens = null;
+        state.showSessionExpiredNotification = false; // Masquer la notification lors de la déconnexion
       })
       .addCase(logout.rejected, (state, action) => {
         state.loading = false;
@@ -211,10 +292,12 @@ const authSlice = createSlice({
           state.isAuthenticated = true;
           state.user = action.payload.user;
           state.tokens = action.payload.tokens;
+          state.showSessionExpiredNotification = false; // Masquer la notification si l'utilisateur est connecté
         } else {
           state.isAuthenticated = false;
           state.user = null;
           state.tokens = null;
+          state.showSessionExpiredNotification = false;
         }
       })
       .addCase(checkAuthStatus.rejected, (state, action) => {
@@ -227,5 +310,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, setLoading, updateUser } = authSlice.actions;
+export const { clearError, setLoading, updateUser, showSessionExpiredNotification } = authSlice.actions;
 export default authSlice.reducer; 

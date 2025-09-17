@@ -15,7 +15,6 @@ import { useDispatch } from 'react-redux';
 import { logout } from '../store/slices/authSlice';
 import { AppDispatch } from '../store';
 import { useAuthError } from '../hooks/useAuthError';
-import { SessionExpiredNotification } from '../components/SessionExpiredNotification';
 import theme, { stockColors, actionColors } from '../utils/theme';
 
 interface DashboardStats {
@@ -42,7 +41,7 @@ interface Configuration {
 
 export default function DashboardScreen({ navigation }: any) {
   const dispatch = useDispatch<AppDispatch>();
-  const { handleApiError, showNotification, setShowNotification } = useAuthError();
+  const { handleApiError } = useAuthError();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,11 +141,6 @@ export default function DashboardScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Notification de session expirée */}
-      <SessionExpiredNotification
-        visible={showNotification}
-        onHide={() => setShowNotification(false)}
-      />
       
       <ScrollView
         style={styles.scrollView}
@@ -229,6 +223,12 @@ export default function DashboardScreen({ navigation }: any) {
               icon="list-outline"
               color={actionColors.warning}
               onPress={() => navigation.navigate('Inventory')}
+            />
+            <ActionButton
+              title="Livraison"
+              icon="car-outline"
+              color={actionColors.info}
+              onPress={() => navigation.navigate('Delivery')}
             />
             <ActionButton
               title="Rapports"

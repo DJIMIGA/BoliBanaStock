@@ -12,7 +12,8 @@ from .views import (
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
     RefreshTokenView, ForceLogoutAllView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
-    collect_static_files
+    CatalogPDFAPIView, LabelPrintAPIView,
+    collect_static_files, GetRayonsView, GetSubcategoriesMobileView
 )
 
 # Configuration Swagger
@@ -71,6 +72,14 @@ urlpatterns = [
     
     # Génération d'étiquettes
     path('labels/generate/', LabelGeneratorAPIView.as_view(), name='api_label_generator'),
+    
+    # Modes d'impression
+    path('catalog/pdf/', CatalogPDFAPIView.as_view(), name='api_catalog_pdf'),
+    path('labels/print/', LabelPrintAPIView.as_view(), name='api_label_print'),
+    
+    # Sélection hiérarchisée pour mobile
+    path('rayons/', GetRayonsView.as_view(), name='api_rayons'),
+    path('subcategories/', GetSubcategoriesMobileView.as_view(), name='api_subcategories_mobile'),
     
     # Administration - Collecte des fichiers statiques
     path('admin/collectstatic/', collect_static_files, name='api_collect_static'),

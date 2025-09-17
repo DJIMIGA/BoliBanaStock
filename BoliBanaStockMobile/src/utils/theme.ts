@@ -171,6 +171,8 @@ export const stockColors = {
   default: theme.colors.neutral[400],      // Gris
 };
 
+export default theme;
+
 // Couleurs pour les actions
 export const actionColors = {
   primary: theme.colors.primary[500],      // Bleu BoliBana
@@ -179,6 +181,4 @@ export const actionColors = {
   warning: theme.colors.warning[500],      // Or
   error: theme.colors.error[500],          // Rouge
   info: theme.colors.info[500],            // Bleu BoliBana
-};
-
-export default theme; 
+}; 

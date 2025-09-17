@@ -521,17 +521,17 @@
             <form id="stockMovementForm" class="space-y-4">
                 <div>
                     <label for="product" class="form-label text-sm sm:text-base">Produit</label>
-                    <select id="product" name="product" class="form-input text-sm sm:text-base">
+                    <select id="product" name="product" class="form-input text-sm sm:text-base" required>
                         <option value="">Sélectionner un produit</option>
                         {% for product in products %}
-                        <option value="{{ product.id }}">{{ product.name }}</option>
+                        <option value="{{ product.id }}" data-stock="{{ product.quantity }}">{{ product.name }} (Stock: {{ product.quantity }})</option>
                         {% endfor %}
                     </select>
                 </div>
 
                 <div>
                     <label for="movementType" class="form-label text-sm sm:text-base">Type de mouvement</label>
-                    <select id="movementType" name="movementType" class="form-input text-sm sm:text-base">
+                    <select id="movementType" name="movementType" class="form-input text-sm sm:text-base" required>
                         <option value="in">Entrée</option>
                         <option value="out">Sortie</option>
                     </select>
@@ -539,12 +539,18 @@
 
                 <div>
                     <label for="quantity" class="form-label text-sm sm:text-base">Quantité</label>
-                    <input type="number" id="quantity" name="quantity" min="1" class="form-input text-sm sm:text-base">
+                    <input type="number" id="quantity" name="quantity" min="1" class="form-input text-sm sm:text-base" required>
                 </div>
 
                 <div>
                     <label for="notes" class="form-label text-sm sm:text-base">Notes</label>
                     <textarea id="notes" name="notes" rows="3" class="form-input text-sm sm:text-base"></textarea>
+                </div>
+
+                <!-- ✅ NOUVELLE LOGIQUE: Affichage du statut de stock -->
+                <div id="stockStatus" class="hidden p-3 rounded-lg text-sm">
+                    <div id="stockInfo" class="font-medium"></div>
+                    <div id="stockWarning" class="text-orange-600 mt-1"></div>
                 </div>
 
                 <div class="flex justify-end space-x-3">

@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "@railway/cli": "^4.6.3"
+    "@railway/cli": "^4.6.3",
+    "react-native-worklets-core": "^1.6.2"
   }
 }

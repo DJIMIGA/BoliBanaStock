@@ -50,7 +50,30 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
       console.log('🔍 Diagnostic auth - Refresh Token:', !!refreshToken);
       
       const response = await brandService.getBrands();
-      setBrands(response.results || response);
+      console.log('🔍 Réponse API marques:', response);
+      
+      // Vérifier que la réponse est valide
+      if (!response) {
+        throw new Error('Réponse API vide');
+      }
+      
+      // L'API peut retourner soit {results: [...]} soit directement [...]
+      let brands;
+      if (Array.isArray(response)) {
+        brands = response;
+      } else if (response && Array.isArray(response.results)) {
+        brands = response.results;
+      } else if (response && Array.isArray(response.data)) {
+        brands = response.data;
+      } else {
+        console.error('❌ Format de réponse API inattendu:', typeof response, response);
+        throw new Error('Format de données invalide - structure de réponse API inattendue');
+      }
+      
+      console.log('🔍 Brands:', brands);
+      console.log('🔍 Type brands:', typeof brands, 'Is Array:', Array.isArray(brands));
+      
+      setBrands(brands);
     } catch (error) {
       console.error('Erreur lors du chargement des marques:', error);
       
@@ -63,8 +86,33 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
             { text: 'OK', onPress: () => navigation.navigate('Login') }
           ]
         );
+      } else if ((error as any).message?.includes('Format de données invalide')) {
+        Alert.alert(
+          'Erreur de données', 
+          'Les données reçues du serveur ne sont pas dans le bon format. Veuillez réessayer.',
+          [
+            { text: 'Réessayer', onPress: () => loadBrands() },
+            { text: 'Annuler', style: 'cancel' }
+          ]
+        );
+      } else if ((error as any).message?.includes('Réponse API vide')) {
+        Alert.alert(
+          'Erreur de connexion', 
+          'Le serveur n\'a pas renvoyé de données. Vérifiez votre connexion internet.',
+          [
+            { text: 'Réessayer', onPress: () => loadBrands() },
+            { text: 'Annuler', style: 'cancel' }
+          ]
+        );
       } else {
-        Alert.alert('Erreur', 'Impossible de charger les marques');
+        Alert.alert(
+          'Erreur', 
+          `Impossible de charger les marques: ${(error as any).message || 'Erreur inconnue'}`,
+          [
+            { text: 'Réessayer', onPress: () => loadBrands() },
+            { text: 'Annuler', style: 'cancel' }
+          ]
+        );
       }
     } finally {
       setLoading(false);

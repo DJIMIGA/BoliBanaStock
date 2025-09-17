@@ -63,30 +63,26 @@ export default function NewSaleScreen({ navigation }: any) {
     const existingItem = cart.find(item => item.product.id === product.id);
     
     if (existingItem) {
+      // ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+      // Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
       // Augmenter la quantité si le produit est déjà dans le panier
-      if (existingItem.quantity < product.quantity) {
-        const updatedCart = cart.map(item =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + 1, total_price: (item.quantity + 1) * item.unit_price }
-            : item
-        );
-        setCart(updatedCart);
-      } else {
-        Alert.alert('Stock insuffisant', 'Quantité maximale atteinte pour ce produit');
-      }
+      const updatedCart = cart.map(item =>
+        item.product.id === product.id
+          ? { ...item, quantity: item.quantity + 1, total_price: (item.quantity + 1) * item.unit_price }
+          : item
+      );
+      setCart(updatedCart);
     } else {
-      // Ajouter un nouveau produit au panier
-      if (product.quantity > 0) {
-        const newItem: CartItem = {
-          product,
-          quantity: 1,
-          unit_price: product.selling_price,
-          total_price: product.selling_price,
-        };
-        setCart([...cart, newItem]);
-      } else {
-        Alert.alert('Stock épuisé', 'Ce produit n\'est plus disponible');
-      }
+      // ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+      // Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
+      // Ajouter un nouveau produit au panier (même avec stock 0 ou négatif)
+      const newItem: CartItem = {
+        product,
+        quantity: 1,
+        unit_price: product.selling_price,
+        total_price: product.selling_price,
+      };
+      setCart([...cart, newItem]);
     }
   };
 
@@ -94,10 +90,12 @@ export default function NewSaleScreen({ navigation }: any) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
 
-    if (newQuantity > product.quantity) {
-      Alert.alert('Stock insuffisant', `Quantité maximale disponible: ${product.quantity}`);
-      return;
-    }
+    // ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
+    // Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
+    // if (newQuantity > product.quantity) {
+    //   Alert.alert('Stock insuffisant', `Quantité maximale disponible: ${product.quantity}`);
+    //   return;
+    // }
 
     if (newQuantity <= 0) {
       removeFromCart(productId);

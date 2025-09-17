@@ -107,28 +107,50 @@
                                 <p class="mt-1 text-sm text-red-600">{{ form.description.errors.0 }}</p>
                             {% endif %}
                         </div>
-
+ au 
+                        <!-- Sélection hiérarchisée Rayon > Sous-catégorie -->
                         <div class="form-group">
-                            <label for="{{ form.category.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
-                                {{ form.category.label }}{% if form.category.field.required %} *{% endif %}
+                            <label for="{{ form.rayon.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.rayon.label }}{% if form.rayon.field.required %} *{% endif %}
                             </label>
                             <div class="mt-1">
-                                <select name="{{ form.category.name }}" id="{{ form.category.id_for_label }}" 
-                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
-                                        {% if form.category.field.required %}required{% endif %}>
-                                    <option value="">Sélectionnez une catégorie</option>
-                                    {% for value, label in form.category.field.choices %}
-                                        <option value="{{ value }}" {% if form.category.value == value %}selected{% endif %}>{{ label }}</option>
+                                <select name="{{ form.rayon.name }}" id="{{ form.rayon.id_for_label }}" 
+                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm">
+                                    <option value="">Sélectionnez un rayon</option>
+                                    {% for value, label in form.rayon.field.choices %}
+                                        <option value="{{ value }}" {% if form.rayon.value == value %}selected{% endif %}>{{ label }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            {% if form.category.help_text %}
-                                <p class="mt-1 text-sm text-neutral-500">{{ form.category.help_text }}</p>
+                            {% if form.rayon.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.rayon.help_text }}</p>
                             {% endif %}
-                            {% if form.category.errors %}
-                                <p class="mt-1 text-sm text-red-600">{{ form.category.errors.0 }}</p>
+                            {% if form.rayon.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.rayon.errors.0 }}</p>
                             {% endif %}
                         </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.subcategory.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.subcategory.label }}{% if form.subcategory.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <select name="{{ form.subcategory.name }}" id="{{ form.subcategory.id_for_label }}" 
+                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                        disabled>
+                                    <option value="">Sélectionnez d'abord un rayon</option>
+                                </select>
+                            </div>
+                            {% if form.subcategory.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.subcategory.help_text }}</p>
+                            {% endif %}
+                            {% if form.subcategory.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.subcategory.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Champ category caché pour la compatibilité -->
+                        <input type="hidden" name="{{ form.category.name }}" id="{{ form.category.id_for_label }}" value="{{ form.category.value|default:'' }}">
 
                         <div class="form-group">
                             <label for="{{ form.brand.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
@@ -383,6 +405,82 @@ document.addEventListener('DOMContentLoaded', function() {
                 reader.readAsDataURL(file);
             }
         });
+    }
+});
+
+// Gestion de la sélection hiérarchisée Rayon > Sous-catégorie
+document.addEventListener('DOMContentLoaded', function() {
+    const rayonSelect = document.getElementById('id_rayon');
+    const subcategorySelect = document.getElementById('id_subcategory');
+    const categoryHidden = document.getElementById('id_category');
+    
+    if (rayonSelect && subcategorySelect) {
+        // Fonction pour charger les sous-catégories
+        function loadSubcategories(rayonId) {
+            if (!rayonId) {
+                // Réinitialiser le select des sous-catégories
+                subcategorySelect.innerHTML = '<option value="">Sélectionnez d\'abord un rayon</option>';
+                subcategorySelect.disabled = true;
+                categoryHidden.value = '';
+                return;
+            }
+            
+            // Afficher un indicateur de chargement
+            subcategorySelect.innerHTML = '<option value="">Chargement...</option>';
+            subcategorySelect.disabled = true;
+            
+            // Faire la requête AJAX
+            fetch(`/inventory/api/subcategories/?rayon_id=${rayonId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Vider le select
+                        subcategorySelect.innerHTML = '<option value="">Sélectionnez une sous-catégorie</option>';
+                        
+                        // Ajouter les sous-catégories
+                        data.subcategories.forEach(subcat => {
+                            const option = document.createElement('option');
+                            option.value = subcat.id;
+                            option.textContent = subcat.name;
+                            subcategorySelect.appendChild(option);
+                        });
+                        
+                        // Activer le select
+                        subcategorySelect.disabled = false;
+                    } else {
+                        console.error('Erreur lors du chargement des sous-catégories:', data.error);
+                        subcategorySelect.innerHTML = '<option value="">Erreur de chargement</option>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur AJAX:', error);
+                    subcategorySelect.innerHTML = '<option value="">Erreur de chargement</option>';
+                });
+        }
+        
+        // Événement sur le changement de rayon
+        rayonSelect.addEventListener('change', function() {
+            const rayonId = this.value;
+            loadSubcategories(rayonId);
+            
+            // Mettre à jour le champ category caché
+            if (rayonId) {
+                categoryHidden.value = rayonId;
+            } else {
+                categoryHidden.value = '';
+            }
+        });
+        
+        // Événement sur le changement de sous-catégorie
+        subcategorySelect.addEventListener('change', function() {
+            const subcategoryId = this.value;
+            categoryHidden.value = subcategoryId;
+        });
+        
+        // Charger les sous-catégories si un rayon est déjà sélectionné
+        if (rayonSelect.value) {
+            loadSubcategories(rayonSelect.value);
+        }
     }
 });
 </script>

@@ -71,7 +71,8 @@ class ProductSerializer(serializers.ModelSerializer):
                 if getattr(settings, 'AWS_S3_ENABLED', False):
                     # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_id}/
                     # L'URL est déjà correcte car obj.image.name utilise la nouvelle structure
-                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{obj.image.name}"
+                    region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{obj.image.name}"
                 else:
                     # URL locale (fallback) - pour Railway sans S3
                     request = self.context.get('request')
@@ -106,10 +107,10 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'slug', 'cug', 'description', 'purchase_price', 'selling_price',
+            'id', 'name', 'slug', 'cug', 'generated_ean', 'description', 'purchase_price', 'selling_price',
             'quantity', 'alert_threshold', 'stock_updated_at', 'is_active', 'created_at', 'updated_at',
             'category', 'category_name', 'brand', 'brand_name', 'barcodes', 'image_url', 'image',
-            'category_id', 'brand_id'
+            'category_id', 'brand_id'  # ✅ Retirer 'barcode' direct, garder 'barcodes' relation
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'stock_updated_at']
 
@@ -184,10 +185,15 @@ class ProductListSerializer(serializers.ModelSerializer):
     stock_status = serializers.SerializerMethodField()
     margin_rate = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
+    primary_barcode = serializers.SerializerMethodField()  # ✅ Champ calculé pour le barcode principal
+    has_backorder = serializers.SerializerMethodField()  # ✅ Nouveau: indique si en backorder
+    backorder_quantity = serializers.SerializerMethodField()  # ✅ Nouveau: quantité en backorder
     
     def get_stock_status(self, obj):
         """Calcule le statut du stock basé sur la quantité et le seuil d'alerte"""
-        if obj.quantity <= 0:
+        if obj.quantity < 0:
+            return 'backorder'
+        elif obj.quantity == 0:
             return 'out_of_stock'
         elif obj.quantity <= obj.alert_threshold and obj.alert_threshold > 0:
             return 'low_stock'
@@ -211,7 +217,8 @@ class ProductListSerializer(serializers.ModelSerializer):
                 if getattr(settings, 'AWS_S3_ENABLED', False):
                     # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_ids}/
                     # L'URL est déjà correcte car obj.image.name utilise la nouvelle structure
-                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{obj.image.name}"
+                    region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{obj.image.name}"
                 else:
                     # URL locale (fallback) - pour Railway sans S3
                     request = self.context.get('request')
@@ -243,11 +250,28 @@ class ProductListSerializer(serializers.ModelSerializer):
                     return None
         return None
     
+    def get_primary_barcode(self, obj):
+        """Retourne le code-barres principal du produit"""
+        try:
+            primary = obj.barcodes.filter(is_primary=True).first()
+            return primary.ean if primary else None
+        except:
+            return None
+    
+    def get_has_backorder(self, obj):
+        """Indique si le produit est en backorder (stock négatif)"""
+        return obj.quantity < 0
+    
+    def get_backorder_quantity(self, obj):
+        """Retourne la quantité en backorder (valeur absolue si négatif)"""
+        return abs(obj.quantity) if obj.quantity < 0 else 0
+    
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'cug', 'purchase_price', 'selling_price', 'quantity',
-            'alert_threshold', 'category_name', 'brand_name', 'is_active', 'stock_status', 'margin_rate', 'image_url'
+            'id', 'name', 'cug', 'generated_ean', 'purchase_price', 'selling_price', 'quantity',
+            'alert_threshold', 'category_name', 'brand_name', 'is_active', 'stock_status', 'margin_rate', 'image_url',
+            'primary_barcode', 'has_backorder', 'backorder_quantity'  # ✅ Nouveaux champs de gestion du stock
         ]
 
 
@@ -265,9 +289,47 @@ class StockUpdateSerializer(serializers.Serializer):
 
 class CategorySerializer(serializers.ModelSerializer):
     """Serializer pour les catégories"""
+    # Rendre explicitement le champ parent optionnel (évite l'erreur "Ce champ est obligatoire.")
+    parent = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(), required=False, allow_null=True
+    )
+    parent_name = serializers.CharField(source='parent.name', read_only=True)
+    parent_rayon_type = serializers.CharField(source='parent.rayon_type', read_only=True)
+    
     class Meta:
         model = Category
-        fields = ['id', 'name', 'slug', 'description', 'image', 'level', 'order', 'is_active', 'created_at', 'updated_at']
+        fields = [
+            'id', 'name', 'slug', 'description', 'image', 'level', 'order', 'is_active', 
+            'created_at', 'updated_at', 'is_global', 'is_rayon', 'rayon_type', 
+            'parent', 'site_configuration', 'parent_name', 'parent_rayon_type'
+        ]
+        read_only_fields = ['id', 'slug', 'level', 'created_at', 'updated_at', 'parent_name', 'parent_rayon_type']
+    
+    def validate(self, data):
+        """Validation personnalisée pour les catégories"""
+        is_rayon = data.get('is_rayon', False)
+        rayon_type = data.get('rayon_type')
+        parent = data.get('parent')
+        
+        # Si c'est un rayon principal, le type de rayon est obligatoire
+        if is_rayon and not rayon_type:
+            raise serializers.ValidationError({
+                'rayon_type': 'Le type de rayon est obligatoire pour un rayon principal.'
+            })
+        
+        # Si c'est un rayon principal, il ne peut pas avoir de parent
+        if is_rayon and parent:
+            raise serializers.ValidationError({
+                'parent': 'Un rayon principal ne peut pas avoir de catégorie parente.'
+            })
+        
+        # Si ce n'est pas un rayon principal, il doit avoir un parent
+        if not is_rayon and not parent:
+            raise serializers.ValidationError({
+                'parent': 'Une sous-catégorie doit avoir une catégorie parente.'
+            })
+        
+        return data
 
 
 class BrandSerializer(serializers.ModelSerializer):

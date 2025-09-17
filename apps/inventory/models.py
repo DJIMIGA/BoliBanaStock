@@ -67,12 +67,65 @@ class Category(models.Model):
         verbose_name=_('Configuration du site')
     )
 
+    # ✅ NOUVELLE FONCTIONNALITÉ: Catégories globales
+    is_global = models.BooleanField(
+        default=False,
+        verbose_name=_('Catégorie globale'),
+        help_text=_('Cette catégorie est accessible à tous les sites')
+    )
+    
+    # ✅ NOUVELLE FONCTIONNALITÉ: Rayons de supermarché
+    is_rayon = models.BooleanField(
+        default=False,
+        verbose_name=_('Rayon de supermarché'),
+        help_text=_('Cette catégorie représente un rayon de supermarché standardisé')
+    )
+    
+    # Type de rayon pour les catégories de type rayon
+    RAYON_TYPE_CHOICES = [
+        ('frais_libre_service', 'Frais Libre Service'),
+        ('rayons_traditionnels', 'Rayons Traditionnels'),
+        ('epicerie', 'Épicerie'),
+        ('tout_pour_bebe', 'Tout pour bébé'),
+        ('liquides', 'Liquides, Boissons'),
+        ('non_alimentaire', 'Non Alimentaire'),
+        ('dph', 'DPH (Droguerie, Parfumerie, Hygiène)'),
+        ('textile', 'Textile'),
+        ('bazar', 'Bazar'),
+        ('sante_pharmacie', 'Santé et Pharmacie, Parapharmacie'),
+        ('jardinage', 'Jardinage'),
+        ('high_tech', 'High-tech, Téléphonie'),
+        ('jouets_livres', 'Jouets, Jeux Vidéo, Livres'),
+        ('meubles_linge', 'Meubles, Linge de Maison'),
+        ('animalerie', 'Animalerie'),
+        ('mode_bijoux', 'Mode, Bijoux, Bagagerie'),
+    ]
+    
+    rayon_type = models.CharField(
+        max_length=50,
+        choices=RAYON_TYPE_CHOICES,
+        blank=True,
+        null=True,
+        verbose_name=_('Type de rayon'),
+        help_text=_('Type de rayon de supermarché (uniquement si is_rayon=True)')
+    )
+
     def __str__(self):
         return f"{'--' * self.level} {self.name}" if self.level > 0 else self.name
 
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
+        
+        # Validation : rayon_type obligatoire si is_rayon=True
+        if self.is_rayon and not self.rayon_type:
+            raise ValidationError(
+                "Le champ 'rayon_type' est obligatoire quand 'is_rayon' est True"
+            )
+        
+        # Validation : rayon_type doit être vide si is_rayon=False
+        if not self.is_rayon and self.rayon_type:
+            self.rayon_type = None  # Forcer à NULL si ce n'est pas un rayon
         
         # Calculer le niveau
         if self.parent:
@@ -118,6 +171,57 @@ class Category(models.Model):
         ancestors = self.get_ancestors()
         ancestors.reverse()
         return ' > '.join([cat.name for cat in ancestors] + [self.name])
+    
+    @classmethod
+    def get_global_categories(cls):
+        """Retourne toutes les catégories globales (pas forcément des rayons)"""
+        return cls.objects.filter(is_global=True, is_active=True).order_by('is_rayon', 'rayon_type', 'order', 'name')
+    
+    @classmethod
+    def get_rayons(cls):
+        """Retourne tous les rayons de supermarché (globales + rayons)"""
+        return cls.objects.filter(is_rayon=True, is_active=True).order_by('rayon_type', 'order', 'name')
+    
+    @classmethod
+    def get_rayons_by_type(cls, rayon_type):
+        """Retourne les rayons d'un type spécifique"""
+        return cls.objects.filter(
+            is_rayon=True, 
+            is_active=True, 
+            rayon_type=rayon_type
+        ).order_by('order', 'name')
+    
+    @classmethod
+    def get_global_non_rayons(cls):
+        """Retourne les catégories globales qui ne sont pas des rayons"""
+        return cls.objects.filter(
+            is_global=True, 
+            is_rayon=False, 
+            is_active=True
+        ).order_by('order', 'name')
+    
+    @classmethod
+    def get_site_categories(cls, site_configuration):
+        """Retourne les catégories spécifiques à un site"""
+        return cls.objects.filter(
+            site_configuration=site_configuration,
+            is_global=False,
+            is_active=True
+        ).order_by('level', 'order', 'name')
+    
+    @classmethod
+    def get_all_available_categories(cls, site_configuration):
+        """Retourne toutes les catégories disponibles pour un site (globales + spécifiques)"""
+        global_cats = cls.get_global_categories()
+        site_cats = cls.get_site_categories(site_configuration)
+        return global_cats.union(site_cats).order_by('is_global', 'is_rayon', 'rayon_type', 'level', 'order', 'name')
+    
+    @classmethod
+    def get_rayons_and_site_categories(cls, site_configuration):
+        """Retourne les rayons + catégories spécifiques au site"""
+        rayons = cls.get_rayons()
+        site_cats = cls.get_site_categories(site_configuration)
+        return rayons.union(site_cats).order_by('is_rayon', 'rayon_type', 'level', 'order', 'name')
 
     class Meta:
         verbose_name = "Catégorie"
@@ -162,13 +266,14 @@ class Product(models.Model):
     name = models.CharField(max_length=100, verbose_name="Nom")
     slug = models.SlugField(max_length=100, unique=True, verbose_name="Slug")
     cug = models.CharField(max_length=50, unique=True, verbose_name="CUG")
+    generated_ean = models.CharField(max_length=13, blank=True, null=True, verbose_name="EAN Généré", help_text="EAN-13 généré automatiquement depuis le CUG")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
     # Prix d'achat en FCFA (sans décimales car le FCFA n'utilise pas de centimes)
     purchase_price = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="Prix d'achat (FCFA)")
     # Prix de vente en FCFA (sans décimales car le FCFA n'utilise pas de centimes)
     selling_price = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="Prix de vente (FCFA)")
     # Champs de stock
-    quantity = models.PositiveIntegerField(default=0, verbose_name="Quantité en stock")
+    quantity = models.IntegerField(default=0, verbose_name="Quantité en stock")  # Permet les valeurs négatives
     alert_threshold = models.IntegerField(default=5, verbose_name="Seuil d'alerte")
     stock_updated_at = models.DateTimeField(auto_now=True, verbose_name="Dernière mise à jour du stock")
     
@@ -201,11 +306,23 @@ class Product(models.Model):
     @property
     def stock_status(self):
         """Retourne le statut du stock"""
-        if self.quantity <= 0:
+        if self.quantity < 0:
+            return "Rupture de stock (backorder)"
+        elif self.quantity == 0:
             return "Rupture de stock"
         elif self.quantity <= self.alert_threshold:
             return "Stock faible"
         return "En stock"
+    
+    @property
+    def has_backorder(self):
+        """Indique si le produit est en backorder (stock négatif)"""
+        return self.quantity < 0
+    
+    @property
+    def backorder_quantity(self):
+        """Retourne la quantité en backorder (valeur absolue si négatif)"""
+        return abs(self.quantity) if self.quantity < 0 else 0
 
     def format_fcfa(self, amount):
         """
@@ -288,8 +405,13 @@ class Product(models.Model):
         if not self.cug:
             self.cug = self.generate_cug()
 
+        # ✅ Générer l'EAN automatiquement à la création
         if not self.pk:  # Nouvel objet
             self.created_at = timezone.now()
+            # Générer l'EAN depuis le CUG
+            from .utils import generate_ean13_from_cug
+            self.generated_ean = generate_ean13_from_cug(self.cug)
+        
         self.updated_at = timezone.now()
         
         # ✅ Gestion dynamique du chemin d'upload selon le site avec nouvelle structure S3
@@ -493,11 +615,13 @@ class Transaction(models.Model):
         ('in', 'Achat'),
         ('out', 'Vente'),
         ('loss', 'Casse'),
+        ('backorder', 'Backorder'),  # Nouveau type pour les stocks négatifs
+        ('adjustment', 'Ajustement'),  # Pour les corrections manuelles
     ]
 
     type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='in')
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
-    quantity = models.PositiveIntegerField()
+    quantity = models.IntegerField()  # Permet les valeurs négatives pour les ajustements
     transaction_date = models.DateTimeField(auto_now_add=True)
     notes = models.TextField(blank=True, null=True)
     
@@ -526,13 +650,18 @@ class Transaction(models.Model):
         # Calculer le montant total
         self.total_amount = self.quantity * self.unit_price
         
-        # Mettre à jour le stock
+        # Mettre à jour le stock selon le type de transaction
         if self.type == 'in':
+            # Ajout de stock (achat, réception)
             self.product.quantity += self.quantity
-        elif self.type in ['out', 'loss']:
-            if self.product.quantity < self.quantity:
-                raise ValidationError(f"Stock insuffisant pour le produit {self.product.name}")
+        elif self.type in ['out', 'loss', 'backorder']:
+            # Retrait de stock (vente, casse, backorder)
+            # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
             self.product.quantity -= self.quantity
+            # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
+        elif self.type == 'adjustment':
+            # Ajustement manuel - la quantité est déjà définie dans le produit
+            pass
         
         self.product.save()
         super().save(*args, **kwargs)

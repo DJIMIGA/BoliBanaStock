@@ -26,7 +26,8 @@ class BaseS3Storage(S3Boto3Storage):
         self.access_key = settings.AWS_ACCESS_KEY_ID
         self.secret_key = settings.AWS_SECRET_ACCESS_KEY
         self.auto_create_bucket = True
-        self.auto_create_acl = True
+        # ❌ Désactiver auto_create_acl car le bucket n'autorise pas les ACLs
+        self.auto_create_acl = False
 
 # ===== STOCKAGE MULTISITE POUR PRODUITS =====
 
@@ -127,6 +128,48 @@ class MediaStorage(BaseS3Storage):
     """Stockage général pour les médias (compatibilité)"""
     location = 'assets/media'
     file_overwrite = False
+
+# ===== NOUVEAU STOCKAGE S3 UNIFIÉ (SANS DUPLICATION) =====6333333rryy  
+
+class UnifiedS3Storage(BaseS3Storage):
+    """
+    Stockage S3 unifié qui évite la duplication des chemins
+    Utilise directement les chemins générés par les modèles
+    """
+    location = ''  # Pas de préfixe pour éviter la duplication
+    file_overwrite = False
+    # ❌ Désactiver default_acl car le bucket n'autorise pas les ACLs
+    default_acl = None
+    querystring_auth = False
+    
+    def get_accessed_time(self, name):
+        """Retourne le temps d'accès du fichier"""
+        return None
+    
+    def get_created_time(self, name):
+        """Retourne le temps de création du fichier"""
+        return None
+    
+    def get_modified_time(self, name):
+        """Retourne le temps de modification du fichier"""
+        return None
+
+# ===== STOCKAGE MULTISITE AVEC CHEMIN DIRECT =====
+
+class DirectProductImageStorage(BaseS3Storage):
+    """
+    Stockage direct pour les images de produits sans duplication
+    Structure: assets/products/site-{site_id}/
+    """
+    def __init__(self, site_id=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.site_id = site_id or 'default'
+        # Chemin direct sans préfixe MediaStorage
+        self.location = f'assets/products/site-{self.site_id}'
+        self.file_overwrite = False
+        # ❌ Désactiver default_acl car le bucket n'autorise pas les ACLs
+        self.default_acl = None
+        self.querystring_auth = False
 
 # ===== FACTORY POUR STOCKAGE DYNAMIQUE =====
 
