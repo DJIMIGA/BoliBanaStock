@@ -10,7 +10,8 @@ import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bolibanastock.settings')
 django.setup()
 
-from apps.core.models import User, Category
+from apps.core.models import User
+from apps.inventory.models import Category
 from api.serializers import CategorySerializer
 from django.db import connection
 
