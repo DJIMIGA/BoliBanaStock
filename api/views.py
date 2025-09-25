@@ -962,24 +962,45 @@ class CategoryViewSet(viewsets.ModelViewSet):
     pagination_class = None  # Désactiver la pagination pour les catégories
     
     def get_queryset(self):
-        """Filtrer les catégories par site de l'utilisateur + rayons globaux"""
-        user_site = self.request.user.site_configuration
+        """Filtrer les catégories par site de l'utilisateur + rayons globaux + créateur"""
+        try:
+            user_site = getattr(self.request.user, 'site_configuration', None)
+        except:
+            user_site = None
+        
+        # Gérer les paramètres de filtrage du mobile
+        site_only = self.request.query_params.get('site_only', '').lower() == 'true'
+        global_only = self.request.query_params.get('global_only', '').lower() == 'true'
         
         if self.request.user.is_superuser:
             # Superuser voit tout
-            return Category.objects.select_related('parent').all()
+            queryset = Category.objects.select_related('parent').all()
         else:
-            # Utilisateur normal voit les catégories de son site + les rayons globaux
-            if not user_site:
-                # Si pas de site, voir seulement les rayons globaux
-                return Category.objects.select_related('parent').filter(is_global=True)
-            
-            # Catégories du site + rayons globaux
+            # Utilisateur normal voit les catégories qu'il a créées + les rayons globaux
             from django.db import models
-            return Category.objects.select_related('parent').filter(
-                models.Q(site_configuration=user_site) | 
-                models.Q(is_global=True)
-            )
+            
+            if not user_site:
+                # Si pas de site, voir seulement les rayons globaux + ses propres catégories
+                queryset = Category.objects.select_related('parent').filter(
+                    models.Q(is_global=True) | 
+                    models.Q(created_by=self.request.user)
+                )
+            else:
+                # Catégories créées par l'utilisateur + rayons globaux
+                queryset = Category.objects.select_related('parent').filter(
+                    models.Q(created_by=self.request.user, site_configuration=user_site) | 
+                    models.Q(is_global=True)
+                )
+        
+        # Appliquer les filtres supplémentaires
+        if site_only:
+            # Retourner seulement les rayons (is_rayon=True)
+            queryset = queryset.filter(is_rayon=True)
+        elif global_only:
+            # Retourner seulement les catégories globales
+            queryset = queryset.filter(is_global=True)
+        
+        return queryset
 
 
 class BrandViewSet(viewsets.ModelViewSet):
@@ -1509,6 +1530,7 @@ class UserProfileAPIView(APIView):
                 'poste': getattr(user, 'poste', ''),
                 'adresse': getattr(user, 'adresse', ''),
                 'is_staff': user.is_staff,
+                'is_superuser': user.is_superuser,
                 'is_active': user.is_active,
                 'date_joined': user.date_joined.isoformat(),
                 'last_login': user.last_login.isoformat() if user.last_login else None,
@@ -1605,7 +1627,7 @@ class PublicSignUpAPIView(APIView):
                     
                     # D'abord sauvegarder l'utilisateur sans site_configuration
                     user.est_actif = True
-                    user.is_staff = False
+                    user.is_staff = True  # Donner accès à l'administration
                     user.is_superuser = False
                     user.save()
                     
@@ -1754,7 +1776,7 @@ class SimpleSignUpAPIView(APIView):
                     
                     # Sauvegarder l'utilisateur
                     user.est_actif = True
-                    user.is_staff = False
+                    user.is_staff = True  # Donner accès à l'administration
                     user.is_superuser = False
                     user.save()
                     
