@@ -59,7 +59,6 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
       setCustomCategories(customList);
       setCategories(allCategories);
       
-      console.log(`📊 Chargé: ${rayonsList.length} rayons, ${customList.length} catégories personnalisées`);
     } catch (error) {
       console.error('Erreur lors du chargement des catégories:', error);
       

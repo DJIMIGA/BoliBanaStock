@@ -150,11 +150,18 @@ export const authService = {
         throw new Error('Données utilisateur manquantes dans la réponse');
       }
       
-      // Adapter la réponse de l'API pour le format attendu par le mobile
+      // Adapter et normaliser la réponse de l'API pour le mobile
+      const normalizedUser = {
+        ...response.data.user,
+        // Forcer un booléen pour éviter undefined dans l'app
+        is_staff: !!response.data.user?.is_staff,
+        is_superuser: !!response.data.user?.is_superuser,
+      };
+
       return {
         access: response.data.access_token,
         refresh: response.data.refresh_token,
-        user: response.data.user
+        user: normalizedUser,
       };
     } catch (error: any) {
       const status = error.response?.status;
@@ -967,9 +974,9 @@ export const productService = {
 
 // Services pour les catégories
 export const categoryService = {
-  getCategories: async () => {
+  getCategories: async (params?: { site_only?: boolean }) => {
     try {
-      const response = await api.get('/categories/');
+      const response = await api.get('/categories/', { params });
       return response.data;
     } catch (error: any) {
       console.error('❌ Erreur API catégories:', error.response?.data || error.message);
@@ -1029,7 +1036,12 @@ export const categoryService = {
     }
   },
   
-  updateCategory: async (id: number, categoryData: { name: string; description?: string }) => {
+  updateCategory: async (id: number, categoryData: { 
+    name: string; 
+    description?: string;
+    is_global?: boolean;
+    parent?: number;
+  }) => {
     try {
       const response = await api.put(`/categories/${id}/`, categoryData);
       return response.data;

@@ -87,7 +87,6 @@ const CategoryCreationModal: React.FC<CategoryCreationModalProps> = ({
       
       if (response.success && response.rayons) {
         setParentCategories(response.rayons);
-        console.log('✅ Rayons parents chargés:', response.rayons.length);
       } else {
         console.warn('⚠️ Aucun rayon trouvé dans la réponse');
         setParentCategories([]);

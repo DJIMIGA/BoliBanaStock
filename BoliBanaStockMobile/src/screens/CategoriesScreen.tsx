@@ -14,23 +14,41 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { categoryService } from '../services/api';
 import { Category } from '../types';
+import { RootState } from '../store';
 import theme from '../utils/theme';
 import CategoryCreationModal from '../components/CategoryCreationModal';
+import CategoryEditModal from '../components/CategoryEditModal';
 
 interface CategoriesScreenProps {
   navigation: any;
 }
 
 const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
+  const { user } = useSelector((state: RootState) => state.auth);
+  const [isStaffEffective, setIsStaffEffective] = useState<boolean>(!!user?.is_staff);
+
+  // Toujours se baser sur le user Redux (source de vérité), évite le cache périmé
+  useEffect(() => {
+    setIsStaffEffective(!!user?.is_staff);
+  }, [user?.is_staff, user?.username]);
+
+  // Fonction pour vérifier les permissions de modification
+  const canEditCategories = () => {
+    // Seuls les admins peuvent éditer
+    return !!(user?.is_staff || user?.is_superuser || (user as any)?.is_site_admin);
+  };
   const [categories, setCategories] = useState<Category[]>([]);
   const [rayons, setRayons] = useState<Category[]>([]);
   const [customCategories, setCustomCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newCategoryModalVisible, setNewCategoryModalVisible] = useState(false);
+  const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
+  const [selectedCategoryForEdit, setSelectedCategoryForEdit] = useState<Category | null>(null);
   const [activeTab, setActiveTab] = useState<'rayons' | 'custom'>('rayons');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -50,6 +68,29 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
     setNewCategoryModalVisible(false);
   };
 
+  const handleEditCategory = (category: Category) => {
+    setSelectedCategoryForEdit(category);
+    setEditCategoryModalVisible(true);
+  };
+
+  const handleCategoryUpdated = (updatedCategory: Category) => {
+    // Mettre à jour la catégorie dans la liste appropriée
+    if (updatedCategory.is_rayon) {
+      setRayons(prev => 
+        prev.map(cat => cat.id === updatedCategory.id ? updatedCategory : cat)
+      );
+    } else {
+      setCustomCategories(prev => 
+        prev.map(cat => cat.id === updatedCategory.id ? updatedCategory : cat)
+      );
+    }
+    
+    // Mettre à jour aussi la liste générale
+    setCategories(prev => 
+      prev.map(cat => cat.id === updatedCategory.id ? updatedCategory : cat)
+    );
+  };
+
   const loadCategories = async () => {
     try {
       setLoading(true);
@@ -61,9 +102,9 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
       console.log('🔍 Diagnostic auth - Access Token:', !!accessToken);
       console.log('🔍 Diagnostic auth - Refresh Token:', !!refreshToken);
       
-      // Charger toutes les catégories
-      const response = await categoryService.getCategories();
-      console.log('🔍 Réponse API catégories:', response);
+      // Charger les catégories avec filtrage par site
+      const response = await categoryService.getCategories({ site_only: true });
+      console.log('🔍 Réponse API catégories (filtrées par site):', response);
       
       // Vérifier que la réponse est valide
       if (!response) {
@@ -90,12 +131,41 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
       
       // Séparer les rayons et les catégories personnalisées
       const rayonsList = allCategories.filter((cat: any) => cat.is_rayon);
-      const customList = allCategories.filter((cat: any) => !cat.is_rayon);
+      
+      // Filtrer les catégories personnalisées par site (filtrage côté client)
+      // Les rayons sont globaux, les catégories personnalisées doivent être filtrées par site
+      const customList = allCategories.filter((cat: any) => {
+        if (cat.is_rayon) return false; // Exclure les rayons
+        
+        // Filtrer les catégories personnalisées :
+        // 1. Catégories globales (is_global = true) - visibles par tous
+        // 2. Catégories du site de l'utilisateur connecté
+        // 3. Catégories sans site_configuration (créées avant l'implémentation multisite)
+        if (cat.is_global === true) {
+          return true; // Catégories globales visibles par tous
+        }
+        
+        // Pour les catégories spécifiques à un site, vérifier si elles appartiennent au site de l'utilisateur
+        // Note: Cette logique dépend de la structure de données du backend
+        // Si l'utilisateur a un site_id, filtrer par site_configuration
+        if (user?.id && cat.site_configuration) {
+          // Ici, vous devriez comparer cat.site_configuration avec le site de l'utilisateur
+          // Pour l'instant, on affiche toutes les catégories non-globales
+          return true;
+        }
+        
+        // Catégories sans site_configuration (anciennes catégories)
+        return cat.site_configuration === null || cat.site_configuration === undefined;
+      });
       
       setRayons(rayonsList);
       setCustomCategories(customList);
       
-      console.log(`📊 Chargé: ${rayonsList.length} rayons, ${customList.length} catégories personnalisées`);
+      
+      // Afficher un message informatif si aucune catégorie personnalisée n'est trouvée
+      if (customList.length === 0 && rayonsList.length > 0) {
+        console.log('ℹ️ Aucune catégorie personnalisée trouvée pour ce site. Seuls les rayons globaux sont affichés.');
+      }
     } catch (error) {
       console.error('Erreur lors du chargement des catégories:', error);
       
@@ -108,6 +178,37 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
             { text: 'OK', onPress: () => navigation.navigate('Login') }
           ]
         );
+      } else if ((error as any).response?.status === 500) {
+        // Erreur serveur - probablement l'utilisateur n'a pas de produits
+        console.log('⚠️ Erreur 500 - Chargement des rayons globaux uniquement');
+        
+        // Charger seulement les rayons globaux en cas d'erreur 500
+        try {
+          const globalResponse = await categoryService.getCategories({ global_only: true });
+          let globalCategories = [];
+          
+          if (Array.isArray(globalResponse)) {
+            globalCategories = globalResponse;
+          } else if (globalResponse && Array.isArray(globalResponse.results)) {
+            globalCategories = globalResponse.results;
+          } else if (globalResponse && Array.isArray(globalResponse.data)) {
+            globalCategories = globalResponse.data;
+          }
+          
+          // Filtrer seulement les rayons globaux
+          const rayonsList = globalCategories.filter((cat: any) => cat.is_rayon);
+          
+          setCategories(globalCategories);
+          setRayons(rayonsList);
+          setCustomCategories([]); // Pas de catégories personnalisées en cas d'erreur
+          
+          console.log('✅ Rayons globaux chargés:', rayonsList.length);
+        } catch (globalError) {
+          console.error('❌ Impossible de charger les rayons globaux:', globalError);
+          setCategories([]);
+          setRayons([]);
+          setCustomCategories([]);
+        }
       } else if ((error as any).message?.includes('Format de données invalide')) {
         Alert.alert(
           'Erreur de données', 
@@ -235,14 +336,79 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
   };
 
 
-  const deleteCategory = (category: Category) => {
-    // Vérifier si c'est un rayon (non supprimable)
-    if ((category as any).is_rayon) {
+  const viewRayonProducts = async (category: Category) => {
+    try {
+      // Navigation vers l'écran des produits avec filtre par catégorie
+      navigation.navigate('Products', { 
+        categoryFilter: category.id,
+        categoryName: category.name 
+      });
+    } catch (error) {
+      console.error('Erreur navigation vers produits:', error);
+      Alert.alert('Erreur', 'Impossible d\'afficher les produits de ce rayon');
+    }
+  };
+
+  const viewRayonSubcategories = async (category: Category) => {
+    try {
+      const subcategories = await categoryService.getSubcategories(category.id);
+      if (subcategories.success && subcategories.subcategories.length > 0) {
+        const subcategoryNames = subcategories.subcategories.map((sub: any) => sub.name).join('\n• ');
+        Alert.alert(
+          `Sous-catégories de ${category.name}`,
+          `• ${subcategoryNames}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Sous-catégories',
+          'Aucune sous-catégorie trouvée pour ce rayon.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Erreur chargement sous-catégories:', error);
+      Alert.alert('Erreur', 'Impossible de charger les sous-catégories');
+    }
+  };
+
+  const editCategory = (category: Category) => {
+    // Vérifier les permissions de modification
+    if (!canEditCategories()) {
       Alert.alert(
-        'Information',
-        'Les rayons de supermarché ne peuvent pas être supprimés. Ils sont standardisés et accessibles à tous les sites.',
+        'Permissions insuffisantes',
+        'Seuls les administrateurs de site et les superutilisateurs peuvent modifier les catégories.',
         [{ text: 'OK' }]
       );
+      return;
+    }
+
+    // Vérifier si c'est un rayon (action directe)
+    if ((category as any).is_rayon) {
+      // Action directe : voir les produits du rayon
+      viewRayonProducts(category);
+      return;
+    }
+
+    // Pour les catégories personnalisées, ouvrir le modal de modification
+    handleEditCategory(category);
+  };
+
+  const deleteCategory = (category: Category) => {
+    // Vérifier les permissions de suppression
+    if (!canEditCategories()) {
+      Alert.alert(
+        'Permissions insuffisantes',
+        'Seuls les administrateurs de site et les superutilisateurs peuvent supprimer les catégories.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Vérifier si c'est un rayon (action directe)
+    if ((category as any).is_rayon) {
+      // Action directe : voir les sous-catégories
+      viewRayonSubcategories(category);
       return;
     }
 
@@ -275,7 +441,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
       <View style={styles.categoryInfo}>
         <View style={styles.rayonHeader}>
           <Ionicons 
-            name={getRayonTypeIcon((item as any).rayon_type)} 
+            name={getRayonTypeIcon((item as any).rayon_type) as any} 
             size={20} 
             color="#4CAF50" 
           />
@@ -293,13 +459,43 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           style={[styles.actionButton, styles.infoButton]}
           onPress={() => {
             Alert.alert(
-              'Information',
+              'Détails du rayon',
               `Rayon: ${item.name}\nType: ${getRayonTypeName((item as any).rayon_type)}\n${item.description ? `Description: ${item.description}` : ''}`,
               [{ text: 'OK' }]
             );
           }}
         >
           <Ionicons name="information-circle" size={20} color="#2196F3" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.actionButton, 
+            styles.editButton,
+            !canEditCategories() && styles.disabledButton
+          ]}
+          onPress={() => editCategory(item)}
+          disabled={!canEditCategories()}
+        >
+          <Ionicons 
+            name="cube-outline" 
+            size={20} 
+            color={canEditCategories() ? "#FF9800" : "#ccc"} 
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.actionButton, 
+            styles.deleteButton,
+            !canEditCategories() && styles.disabledButton
+          ]}
+          onPress={() => deleteCategory(item)}
+          disabled={!canEditCategories()}
+        >
+          <Ionicons 
+            name="list-outline" 
+            size={20} 
+            color={canEditCategories() ? "#F44336" : "#ccc"} 
+          />
         </TouchableOpacity>
       </View>
     </View>
@@ -328,22 +524,34 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
       </View>
       <View style={styles.categoryActions}>
         <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => {
-            Alert.alert(
-              'Modification',
-              'La modification des catégories sera bientôt disponible. Utilisez le bouton + pour créer une nouvelle catégorie.',
-              [{ text: 'OK' }]
-            );
-          }}
+          style={[
+            styles.actionButton, 
+            styles.editButton,
+            !canEditCategories() && styles.disabledButton
+          ]}
+          onPress={() => editCategory(item)}
+          disabled={!canEditCategories()}
         >
-          <Ionicons name="pencil" size={20} color="#FF9800" />
+          <Ionicons 
+            name="pencil" 
+            size={20} 
+            color={canEditCategories() ? "#FF9800" : "#ccc"} 
+          />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
+          style={[
+            styles.actionButton, 
+            styles.deleteButton,
+            !canEditCategories() && styles.disabledButton
+          ]}
           onPress={() => deleteCategory(item)}
+          disabled={!canEditCategories()}
         >
-          <Ionicons name="trash" size={20} color="#F44336" />
+          <Ionicons 
+            name="trash" 
+            size={20} 
+            color={canEditCategories() ? "#F44336" : "#ccc"} 
+          />
         </TouchableOpacity>
       </View>
     </View>
@@ -362,7 +570,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         >
           <View style={styles.rayonGroupHeaderLeft}>
         <Ionicons 
-          name={getRayonTypeIcon(rayonType)} 
+          name={getRayonTypeIcon(rayonType) as any} 
           size={24} 
           color="#4CAF50" 
         />
@@ -421,10 +629,28 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
             </TouchableOpacity>
           )}
           <TouchableOpacity 
-            style={styles.headerButton} 
-            onPress={() => setNewCategoryModalVisible(true)}
+            style={[
+              styles.headerButton,
+              !canEditCategories() && styles.disabledButton
+            ]} 
+            onPress={() => {
+              if (canEditCategories()) {
+                setNewCategoryModalVisible(true);
+              } else {
+                Alert.alert(
+                  'Permissions insuffisantes',
+                  'Seuls les administrateurs de site et les superutilisateurs peuvent créer des catégories.',
+                  [{ text: 'OK' }]
+                );
+              }
+            }}
+            disabled={!canEditCategories()}
           >
-            <Ionicons name="add" size={24} color="#4CAF50" />
+            <Ionicons 
+              name="add" 
+              size={24} 
+              color={canEditCategories() ? "#4CAF50" : "#ccc"} 
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -511,6 +737,17 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         visible={newCategoryModalVisible}
         onClose={() => setNewCategoryModalVisible(false)}
         onCategoryCreated={handleNewCategoryCreated}
+      />
+
+      {/* Modal de modification de catégorie */}
+      <CategoryEditModal
+        visible={editCategoryModalVisible}
+        onClose={() => {
+          setEditCategoryModalVisible(false);
+          setSelectedCategoryForEdit(null);
+        }}
+        onCategoryUpdated={handleCategoryUpdated}
+        category={selectedCategoryForEdit}
       />
     </SafeAreaView>
   );
@@ -732,6 +969,10 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontWeight: '500',
     flex: 1,
+  },
+  disabledButton: {
+    opacity: 0.5,
+    backgroundColor: '#f5f5f5',
   },
 });
 

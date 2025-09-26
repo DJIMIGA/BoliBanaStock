@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authService } from '../../services/api';
+import { authService, profileService } from '../../services/api';
 import { User, LoginCredentials, AuthTokens } from '../../types';
 
 interface AuthState {
@@ -155,9 +155,43 @@ export const checkAuthStatus = createAsyncThunk(
       ]);
 
       if (accessToken && refreshToken && userData) {
+        const parsedUser = JSON.parse(userData);
+
+        // Tenter un rafraîchissement du profil auprès de l'API pour éviter le décalage BDD/cache
+        let latestUser: User | null = null;
+        try {
+          const profileResp = await profileService.getProfile();
+          const apiUser = profileResp?.user || profileResp?.data?.user || null;
+          if (apiUser) {
+            latestUser = {
+              ...parsedUser,
+              ...apiUser,
+              is_staff: !!apiUser?.is_staff,
+              is_superuser: !!apiUser?.is_superuser,
+            } as User;
+            await AsyncStorage.setItem('user', JSON.stringify(latestUser));
+          }
+        } catch (_) {
+          // Si l'appel profil échoue, retomber sur le cache local
+        }
+
+        const normalizedUser = (latestUser || {
+          ...parsedUser,
+          is_staff: !!parsedUser?.is_staff,
+          is_superuser: !!parsedUser?.is_superuser,
+        }) as User;
+
+        // Si la normalisation change la valeur, mettre à jour le cache
+        if (
+          normalizedUser.is_staff !== parsedUser?.is_staff ||
+          normalizedUser.is_superuser !== parsedUser?.is_superuser
+        ) {
+          await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
+        }
+
         return {
           tokens: { access: accessToken, refresh: refreshToken },
-          user: JSON.parse(userData),
+          user: normalizedUser,
         };
       }
       
@@ -182,6 +216,11 @@ const authSlice = createSlice({
     },
     updateUser: (state, action: PayloadAction<User>) => {
       state.user = action.payload;
+    },
+    clearUserCache: (state) => {
+      state.user = null;
+      state.isAuthenticated = false;
+      state.tokens = null;
     },
     showSessionExpiredNotification: (state, action: PayloadAction<boolean>) => {
       state.showSessionExpiredNotification = action.payload;
@@ -310,5 +349,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, setLoading, updateUser, showSessionExpiredNotification } = authSlice.actions;
+export const { clearError, setLoading, updateUser, clearUserCache, showSessionExpiredNotification } = authSlice.actions;
 export default authSlice.reducer; 

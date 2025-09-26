@@ -962,33 +962,32 @@ class CategoryViewSet(viewsets.ModelViewSet):
     pagination_class = None  # Désactiver la pagination pour les catégories
     
     def get_queryset(self):
-        """Filtrer les catégories par site de l'utilisateur + rayons globaux + créateur"""
+        """Filtrer les catégories par site de l'utilisateur + rayons globaux"""
         try:
             user_site = getattr(self.request.user, 'site_configuration', None)
         except:
             user_site = None
         
         # Gérer les paramètres de filtrage du mobile
-        site_only = self.request.query_params.get('site_only', '').lower() == 'true'
-        global_only = self.request.query_params.get('global_only', '').lower() == 'true'
+        site_only = self.request.GET.get('site_only', '').lower() == 'true'
+        global_only = self.request.GET.get('global_only', '').lower() == 'true'
         
         if self.request.user.is_superuser:
             # Superuser voit tout
             queryset = Category.objects.select_related('parent').all()
         else:
-            # Utilisateur normal voit les catégories qu'il a créées + les rayons globaux
+            # Utilisateur normal voit les catégories de son site + les rayons globaux
             from django.db import models
             
             if not user_site:
-                # Si pas de site, voir seulement les rayons globaux + ses propres catégories
+                # Si pas de site, voir seulement les rayons globaux
                 queryset = Category.objects.select_related('parent').filter(
-                    models.Q(is_global=True) | 
-                    models.Q(created_by=self.request.user)
+                    models.Q(is_global=True)
                 )
             else:
-                # Catégories créées par l'utilisateur + rayons globaux
+                # Catégories du site de l'utilisateur + rayons globaux
                 queryset = Category.objects.select_related('parent').filter(
-                    models.Q(created_by=self.request.user, site_configuration=user_site) | 
+                    models.Q(site_configuration=user_site) | 
                     models.Q(is_global=True)
                 )
         

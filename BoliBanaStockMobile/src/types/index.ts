@@ -8,7 +8,8 @@ export interface User {
   telephone?: string;
   poste?: string;
   adresse?: string;
-  is_staff: boolean;
+  is_staff?: boolean;
+  is_superuser?: boolean;
   is_active: boolean;
   date_joined: string;
   last_login: string;
