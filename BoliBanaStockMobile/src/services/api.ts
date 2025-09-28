@@ -618,18 +618,46 @@ export const productService = {
           console.log('🌐 URL complète:', `${API_BASE_URL}/products/${id}/upload_image/`);
           console.log('📦 FormData parts:', (formData as any)?._parts?.length || 'Non disponible');
           
-          const response = await api.post(`/products/${id}/upload_image/`, formData, {
-            timeout: 120000,
-            maxContentLength: 100 * 1024 * 1024,
-            maxBodyLength: 100 * 1024 * 1024,
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Accept': 'application/json',
-            },
-          });
+          // Solution de contournement : utiliser fetch natif au lieu d'Axios
+          console.log('🔄 Tentative avec fetch natif (contournement Network Error)...');
           
-          console.log('✅ Upload via Axios réussi:', response.status);
-          return response.data;
+          try {
+            const response = await fetch(`${API_BASE_URL}/products/${id}/upload_image/`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+              },
+              body: formData as any,
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('❌ Fetch échec:', response.status, errorText);
+              throw new Error(`Fetch failed: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            console.log('✅ Upload via fetch natif réussi:', response.status);
+            return data;
+            
+          } catch (fetchError: any) {
+            console.warn('⚠️ Fetch natif échoué, tentative Axios...', fetchError?.message || fetchError);
+            
+            // Fallback vers Axios si fetch échoue
+            const response = await api.post(`/products/${id}/upload_image/`, formData, {
+              timeout: 120000,
+              maxContentLength: 100 * 1024 * 1024,
+              maxBodyLength: 100 * 1024 * 1024,
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+              },
+            });
+            
+            console.log('✅ Upload via Axios fallback réussi:', response.status);
+            return response.data;
+          }
         }
       } else {
         // Pas d'image, modification standard
