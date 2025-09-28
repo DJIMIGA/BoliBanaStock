@@ -28,10 +28,7 @@ module.exports = function (api) {
             '@': './src'
           }
         }
-      ],
-      
-      // Plugin pour react-native-reanimated (DOIT être en dernier)
-      'react-native-reanimated/plugin'
+      ]
     ]
   };
 };

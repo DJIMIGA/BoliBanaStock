@@ -50,6 +50,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
   const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
   const [selectedCategoryForEdit, setSelectedCategoryForEdit] = useState<Category | null>(null);
   const [activeTab, setActiveTab] = useState<'rayons' | 'custom'>('rayons');
+  const [showComingSoon, setShowComingSoon] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -95,16 +96,8 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
     try {
       setLoading(true);
       
-      // Diagnostic de l'authentification
-      const accessToken = await AsyncStorage.getItem('access_token');
-      const refreshToken = await AsyncStorage.getItem('refresh_token');
-      
-      console.log('🔍 Diagnostic auth - Access Token:', !!accessToken);
-      console.log('🔍 Diagnostic auth - Refresh Token:', !!refreshToken);
-      
       // Charger les catégories avec filtrage par site
       const response = await categoryService.getCategories({ site_only: true });
-      console.log('🔍 Réponse API catégories (filtrées par site):', response);
       
       // Vérifier que la réponse est valide
       if (!response) {
@@ -124,8 +117,6 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         throw new Error('Format de données invalide - structure de réponse API inattendue');
       }
       
-      console.log('🔍 AllCategories:', allCategories);
-      console.log('🔍 Type allCategories:', typeof allCategories, 'Is Array:', Array.isArray(allCategories));
       
       setCategories(allCategories);
       
@@ -162,10 +153,6 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
       setCustomCategories(customList);
       
       
-      // Afficher un message informatif si aucune catégorie personnalisée n'est trouvée
-      if (customList.length === 0 && rayonsList.length > 0) {
-        console.log('ℹ️ Aucune catégorie personnalisée trouvée pour ce site. Seuls les rayons globaux sont affichés.');
-      }
     } catch (error) {
       console.error('Erreur lors du chargement des catégories:', error);
       
@@ -180,11 +167,10 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         );
       } else if ((error as any).response?.status === 500) {
         // Erreur serveur - probablement l'utilisateur n'a pas de produits
-        console.log('⚠️ Erreur 500 - Chargement des rayons globaux uniquement');
         
         // Charger seulement les rayons globaux en cas d'erreur 500
         try {
-          const globalResponse = await categoryService.getCategories({ global_only: true });
+          const globalResponse = await categoryService.getCategories();
           let globalCategories = [];
           
           if (Array.isArray(globalResponse)) {
@@ -201,8 +187,6 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           setCategories(globalCategories);
           setRayons(rayonsList);
           setCustomCategories([]); // Pas de catégories personnalisées en cas d'erreur
-          
-          console.log('✅ Rayons globaux chargés:', rayonsList.length);
         } catch (globalError) {
           console.error('❌ Impossible de charger les rayons globaux:', globalError);
           setCategories([]);
@@ -628,30 +612,6 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
               />
             </TouchableOpacity>
           )}
-          <TouchableOpacity 
-            style={[
-              styles.headerButton,
-              !canEditCategories() && styles.disabledButton
-            ]} 
-            onPress={() => {
-              if (canEditCategories()) {
-                setNewCategoryModalVisible(true);
-              } else {
-                Alert.alert(
-                  'Permissions insuffisantes',
-                  'Seuls les administrateurs de site et les superutilisateurs peuvent créer des catégories.',
-                  [{ text: 'OK' }]
-                );
-              }
-            }}
-            disabled={!canEditCategories()}
-          >
-            <Ionicons 
-              name="add" 
-              size={24} 
-              color={canEditCategories() ? "#4CAF50" : "#ccc"} 
-            />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -671,16 +631,16 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'custom' && styles.activeTab]}
-          onPress={() => setActiveTab('custom')}
+          style={[styles.tab, activeTab === 'custom' && styles.activeTab, styles.disabledTab]}
+          onPress={() => setShowComingSoon(true)}
         >
           <Ionicons 
             name="folder-outline" 
             size={20} 
-            color={activeTab === 'custom' ? '#4CAF50' : '#666'} 
+            color="#999" 
           />
-          <Text style={[styles.tabText, activeTab === 'custom' && styles.activeTabText]}>
-            Mes Catégories ({customCategories.length})
+          <Text style={[styles.tabText, styles.disabledTabText]}>
+            Mes Catégories (Bientôt)
           </Text>
         </TouchableOpacity>
       </View>
@@ -692,43 +652,21 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {activeTab === 'rayons' ? (
-          // Affichage des rayons groupés par type
-          <View style={styles.rayonsContainer}>
-            {Object.entries(groupRayonsByType()).map(([rayonType, rayons]) =>
-              renderRayonGroup(rayonType, rayons)
-            )}
-            {rayons.length === 0 && (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="storefront-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyText}>Aucun rayon trouvé</Text>
-                <Text style={styles.emptySubtext}>
-                  Les rayons de supermarché seront chargés automatiquement
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : (
-          // Affichage des catégories personnalisées
-          <View style={styles.customContainer}>
-            <FlatList
-              data={customCategories}
-              renderItem={renderCustomCategoryItem}
-              keyExtractor={(item) => item.id.toString()}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="folder-outline" size={64} color="#ccc" />
-                  <Text style={styles.emptyText}>Aucune catégorie personnalisée</Text>
-                  <Text style={styles.emptySubtext}>
-                    Appuyez sur le bouton + pour créer votre première catégorie
-                  </Text>
-                </View>
-              }
-            />
-          </View>
-        )}
+        {/* Affichage des rayons groupés par type uniquement */}
+        <View style={styles.rayonsContainer}>
+          {Object.entries(groupRayonsByType()).map(([rayonType, rayons]) =>
+            renderRayonGroup(rayonType, rayons)
+          )}
+          {rayons.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="storefront-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyText}>Aucun rayon trouvé</Text>
+              <Text style={styles.emptySubtext}>
+                Les rayons de supermarché seront chargés automatiquement
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
 
 
@@ -749,6 +687,35 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         onCategoryUpdated={handleCategoryUpdated}
         category={selectedCategoryForEdit}
       />
+
+      {/* Modal Bientôt disponible */}
+      <Modal
+        visible={showComingSoon}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowComingSoon(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.comingSoonModal}>
+            <View style={styles.comingSoonIconContainer}>
+              <Ionicons name="time-outline" size={64} color="#4CAF50" />
+            </View>
+            <Text style={styles.comingSoonTitle}>Bientôt disponible !</Text>
+            <Text style={styles.comingSoonMessage}>
+              La fonctionnalité "Mes Catégories" sera disponible dans une prochaine mise à jour.
+            </Text>
+            <Text style={styles.comingSoonSubtext}>
+              Pour l'instant, vous pouvez utiliser les rayons de supermarché disponibles.
+            </Text>
+            <TouchableOpacity
+              style={styles.comingSoonButton}
+              onPress={() => setShowComingSoon(false)}
+            >
+              <Text style={styles.comingSoonButtonText}>Compris</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -973,6 +940,74 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.5,
     backgroundColor: '#f5f5f5',
+  },
+  // Styles pour l'onglet désactivé
+  disabledTab: {
+    opacity: 0.6,
+  },
+  disabledTabText: {
+    color: '#999',
+  },
+  // Styles pour le modal "Bientôt disponible"
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  comingSoonModal: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    maxWidth: 350,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  comingSoonIconContainer: {
+    marginBottom: 20,
+  },
+  comingSoonTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  comingSoonMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 22,
+  },
+  comingSoonSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  comingSoonButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 25,
+    minWidth: 120,
+  },
+  comingSoonButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
 

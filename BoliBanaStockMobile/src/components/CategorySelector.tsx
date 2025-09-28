@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,6 +39,7 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'rayons' | 'custom'>('rayons');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [showComingSoon, setShowComingSoon] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -370,16 +372,16 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'custom' && styles.activeTab]}
-          onPress={() => setActiveTab('custom')}
+          style={[styles.tab, activeTab === 'custom' && styles.activeTab, styles.disabledTab]}
+          onPress={() => setShowComingSoon(true)}
         >
           <Ionicons 
             name="folder-outline" 
             size={20} 
-            color={activeTab === 'custom' ? '#4CAF50' : '#666'} 
+            color="#999" 
           />
-          <Text style={[styles.tabText, activeTab === 'custom' && styles.activeTabText]}>
-            Mes Catégories ({customCategories.length})
+          <Text style={[styles.tabText, styles.disabledTabText]}>
+            Mes Catégories (Bientôt)
           </Text>
         </TouchableOpacity>
       </View>
@@ -391,44 +393,52 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {activeTab === 'rayons' ? (
-          <View style={styles.rayonsContainer}>
-            {renderAllCategoriesOption()}
-            {Object.entries(groupRayonsByType()).map(([rayonType, rayons]) =>
-              renderRayonGroup(rayonType, rayons)
-            )}
-            {rayons.length === 0 && (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="storefront-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyText}>Aucun rayon trouvé</Text>
-                <Text style={styles.emptySubtext}>
-                  Les rayons de supermarché seront chargés automatiquement
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={styles.customContainer}>
-            {renderAllCategoriesOption()}
-            <FlatList
-              data={customCategories}
-              renderItem={renderCustomCategoryItem}
-              keyExtractor={(item) => item.id.toString()}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="folder-outline" size={64} color="#ccc" />
-                  <Text style={styles.emptyText}>Aucune catégorie personnalisée</Text>
-                  <Text style={styles.emptySubtext}>
-                    Créez votre première catégorie personnalisée
-                  </Text>
-                </View>
-              }
-            />
-          </View>
-        )}
+        {/* Affichage des rayons uniquement */}
+        <View style={styles.rayonsContainer}>
+          {renderAllCategoriesOption()}
+          {Object.entries(groupRayonsByType()).map(([rayonType, rayons]) =>
+            renderRayonGroup(rayonType, rayons)
+          )}
+          {rayons.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="storefront-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyText}>Aucun rayon trouvé</Text>
+              <Text style={styles.emptySubtext}>
+                Les rayons de supermarché seront chargés automatiquement
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
+
+      {/* Modal Bientôt disponible */}
+      <Modal
+        visible={showComingSoon}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowComingSoon(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.comingSoonModal}>
+            <View style={styles.comingSoonIconContainer}>
+              <Ionicons name="time-outline" size={64} color="#4CAF50" />
+            </View>
+            <Text style={styles.comingSoonTitle}>Bientôt disponible !</Text>
+            <Text style={styles.comingSoonMessage}>
+              La fonctionnalité "Mes Catégories" sera disponible dans une prochaine mise à jour.
+            </Text>
+            <Text style={styles.comingSoonSubtext}>
+              Pour l'instant, vous pouvez utiliser les rayons de supermarché disponibles.
+            </Text>
+            <TouchableOpacity
+              style={styles.comingSoonButton}
+              onPress={() => setShowComingSoon(false)}
+            >
+              <Text style={styles.comingSoonButtonText}>Compris</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -623,6 +633,74 @@ const styles = StyleSheet.create({
   selectedParentText: {
     color: '#4CAF50',
     fontWeight: '600',
+  },
+  // Styles pour l'onglet désactivé
+  disabledTab: {
+    opacity: 0.6,
+  },
+  disabledTabText: {
+    color: '#999',
+  },
+  // Styles pour le modal "Bientôt disponible"
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  comingSoonModal: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    maxWidth: 350,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  comingSoonIconContainer: {
+    marginBottom: 20,
+  },
+  comingSoonTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  comingSoonMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 22,
+  },
+  comingSoonSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  comingSoonButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 25,
+    minWidth: 120,
+  },
+  comingSoonButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
 

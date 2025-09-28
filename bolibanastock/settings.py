@@ -333,17 +333,17 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
-    'cache-control',
-    'pragma',
-    'x-http-method-override',  # Pour les méthodes HTTP personnalisées
+    'content-disposition',  # Ajouté pour les uploads
+    'cache-control',       # Ajouté pour les uploads
 ]
 
-# Configuration spécifique pour les uploads d'images
 CORS_EXPOSE_HEADERS = [
     'content-disposition',
     'content-length',
     'content-type',
 ]
+
+# Configuration spécifique pour les uploads d'images
 
 # Configuration des limites d'upload pour les images
 DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB

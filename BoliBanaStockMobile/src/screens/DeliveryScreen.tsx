@@ -156,7 +156,7 @@ function DeliveryScreen({ navigation }: any) {
         <View style={styles.content}>
           {/* Info card */}
           <View style={styles.infoCard}>
-            <Ionicons name="truck-outline" size={32} color={theme.colors.info[500]} />
+            <Ionicons name="car-outline" size={32} color={theme.colors.info[500]} />
             <Text style={styles.infoTitle}>Réception de Livraison</Text>
             <Text style={styles.infoText}>
               Enregistrez les produits livrés et mettez à jour les stocks

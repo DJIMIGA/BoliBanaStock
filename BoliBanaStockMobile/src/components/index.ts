@@ -5,12 +5,12 @@ export { ErrorNotification } from './ErrorNotification';
 export { ErrorBoundary } from './ErrorBoundary';
 export { GlobalErrorHandler } from './GlobalErrorHandler';
 export { ExampleErrorUsage } from './ExampleErrorUsage';
-export { ContinuousBarcodeScanner } from './ContinuousBarcodeScanner';
-export { BarcodeScanner } from './BarcodeScanner';
-export { BarcodeManager } from './BarcodeManager';
-export { BarcodeModal } from './BarcodeModal';
-export { ProductImage } from './ProductImage';
-export { ImageSelector } from './ImageSelector';
+export { default as ContinuousBarcodeScanner } from './ContinuousBarcodeScanner';
+export { default as BarcodeScanner } from './BarcodeScanner';
+export { default as BarcodeManager } from './BarcodeManager';
+export { default as BarcodeModal } from './BarcodeModal';
+export { default as ProductImage } from './ProductImage';
+export { default as ImageSelector } from './ImageSelector';
 export { default as NativeBarcode } from './NativeBarcode';
 export { default as KeyDebugger } from './KeyDebugger';
 

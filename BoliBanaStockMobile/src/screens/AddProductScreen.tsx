@@ -22,7 +22,6 @@ import { useImageManager } from '../hooks';
 import theme from '../utils/theme';
 import BarcodeModal from '../components/BarcodeModal';
 import HierarchicalCategorySelector from '../components/HierarchicalCategorySelector';
-import CategoryCreationModal from '../components/CategoryCreationModal';
 
 interface Category {
   id: number;
@@ -68,7 +67,6 @@ export default function AddProductScreen({ navigation, route }: any) {
   
   // États pour les modals de création rapide
   const [hierarchicalCategoryModalVisible, setHierarchicalCategoryModalVisible] = useState(false);
-  const [newCategoryModalVisible, setNewCategoryModalVisible] = useState(false);
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [barcodeModalVisible, setBarcodeModalVisible] = useState(false);
   const [newBrandName, setNewBrandName] = useState('');
@@ -186,18 +184,6 @@ export default function AddProductScreen({ navigation, route }: any) {
     setHierarchicalCategoryModalVisible(false);
   };
 
-  // Fonction pour gérer la création de nouvelle catégorie
-  const handleNewCategoryCreated = (newCategory: any) => {
-    // Ajouter la nouvelle catégorie à la liste
-    setCategories(prev => [...prev, newCategory]);
-    
-    // Sélectionner automatiquement la nouvelle catégorie
-    setForm(prev => ({ ...prev, category_id: String(newCategory.id) }));
-    setSelectedCategoryName(newCategory.name);
-    
-    // Fermer le modal
-    setNewCategoryModalVisible(false);
-  };
 
 
   // Fonction pour créer rapidement une marque
@@ -356,20 +342,39 @@ export default function AddProductScreen({ navigation, route }: any) {
         );
       } else {
         const newProduct = await productService.createProduct(productData);
-        Alert.alert(
-          'Succès',
-          'Produit ajouté avec succès',
-          [
-            {
-              text: 'Voir le produit',
-              onPress: () => navigation.navigate('ProductDetail', { productId: newProduct.id })
-            },
-            {
-              text: 'Ajouter un autre',
-              onPress: () => resetForm()
-            }
-          ]
-        );
+        
+        // Vérifier si l'image a été uploadée avec succès
+        if (newProduct.image_uploaded === false && newProduct.image_error) {
+          Alert.alert(
+            'Produit créé avec succès',
+            newProduct.image_error,
+            [
+              {
+                text: 'Voir le produit',
+                onPress: () => navigation.navigate('ProductDetail', { productId: newProduct.id })
+              },
+              {
+                text: 'Ajouter un autre',
+                onPress: () => resetForm()
+              }
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Succès',
+            'Produit ajouté avec succès',
+            [
+              {
+                text: 'Voir le produit',
+                onPress: () => navigation.navigate('ProductDetail', { productId: newProduct.id })
+              },
+              {
+                text: 'Ajouter un autre',
+                onPress: () => resetForm()
+              }
+            ]
+          );
+        }
       }
     } catch (error: any) {
       console.error('❌ Erreur produit:', error);
@@ -665,14 +670,6 @@ export default function AddProductScreen({ navigation, route }: any) {
                 <Ionicons name="chevron-down" size={20} color={theme.colors.primary} />
               </TouchableOpacity>
               
-              {/* Bouton de création de catégorie */}
-              <TouchableOpacity
-                style={styles.createCategoryButton}
-                onPress={() => setNewCategoryModalVisible(true)}
-              >
-                <Ionicons name="add-circle" size={16} color={theme.colors.primary} />
-                <Text style={styles.createCategoryButtonText}>Créer une nouvelle catégorie</Text>
-              </TouchableOpacity>
             </View>
 
             <PickerField
@@ -862,12 +859,6 @@ export default function AddProductScreen({ navigation, route }: any) {
         />
       </Modal>
 
-      {/* Modal de création de nouvelle catégorie */}
-      <CategoryCreationModal
-        visible={newCategoryModalVisible}
-        onClose={() => setNewCategoryModalVisible(false)}
-        onCategoryCreated={handleNewCategoryCreated}
-      />
     </SafeAreaView>
   );
 }
@@ -1225,24 +1216,5 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     color: theme.colors.text.tertiary,
-  },
-  // Styles pour le bouton de création de catégorie
-  createCategoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: theme.colors.primaryLight || '#E3F2FD',
-    borderRadius: 8,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-  },
-  createCategoryButtonText: {
-    fontSize: 14,
-    color: theme.colors.primary,
-    fontWeight: '600',
-    marginLeft: 6,
   },
 });

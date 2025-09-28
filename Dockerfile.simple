@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Installer uniquement les dépendances système essentielles
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copier les fichiers de configuration d'abord pour optimiser le cache
+COPY requirements-docker.txt .
+COPY constraints-docker.txt .
+
+# Installer les dépendances Python
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements-docker.txt
+
+# Copier le reste du projet
+COPY . .
+
+# Configurer le PYTHONPATH
+ENV PYTHONPATH="${PYTHONPATH}:/app:/app/app"
+
+# Rendre le script de démarrage exécutable
+RUN chmod +x start.sh
+
+# Exposer le port
+EXPOSE 8000
+
+# Commande de démarrage
+CMD ["./start.sh"]

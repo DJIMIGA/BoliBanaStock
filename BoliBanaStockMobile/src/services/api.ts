@@ -403,62 +403,59 @@ export const productService = {
           console.warn('⚠️ Image trop volumineuse, compression recommandée');
         }
         
-        // Solution alternative : Utiliser FileSystem.uploadAsync pour éviter les problèmes FormData
+        // Stratégie de fallback : Créer le produit sans image, puis uploader l'image séparément
+        console.log('🔁 Stratégie de fallback : Création produit + upload image séparé...');
+        
         try {
-          console.log('🔁 Tentative upload via FileSystem.uploadAsync...');
+          // 1. Créer le produit sans image d'abord
+          const productDataWithoutImage = { ...productData };
+          delete productDataWithoutImage.image;
           
-          // Extraire l'URI de l'image du FormData
-          const imageUri = (formData as any)?._parts?.find?.((p: any) => p?.[0] === 'image')?.[1]?.uri || '';
+          console.log('📝 Création du produit sans image...');
+          const productResponse = await api.post('/products/', productDataWithoutImage);
+          const createdProduct = productResponse.data;
           
-          if (!imageUri) {
-            throw new Error('URI de l\'image non trouvée dans FormData');
-          }
+          console.log('✅ Produit créé avec succès, ID:', createdProduct.id);
           
-          // Préparer les paramètres pour l'upload
-          const uploadParams: any = {};
-          for (const [key, value] of Object.entries(productData)) {
-            if (key !== 'image' && value !== null && value !== undefined) {
-              // ✅ Traitement spécial pour le barcode
-              if (key === 'barcode' && value) {
-                uploadParams[key] = String(value);
-                console.log('📱 Barcode ajouté aux paramètres (création):', value);
-              } else {
-                uploadParams[key] = String(value);
-              }
+          // 2. Uploader l'image séparément (avec gestion d'erreur gracieuse)
+          if (productData.image) {
+            console.log('📤 Tentative d\'upload de l\'image séparément...');
+            try {
+              const imageFormData = new FormData();
+              imageFormData.append('image', {
+                uri: productData.image.uri,
+                name: productData.image.fileName || 'product.jpg',
+                type: productData.image.type || 'image/jpeg',
+              } as any);
+              
+              const imageResponse = await api.post(`/products/${createdProduct.id}/upload_image/`, imageFormData, {
+                timeout: 60000, // Réduire le timeout
+                maxContentLength: 50 * 1024 * 1024, // Réduire la taille max
+                maxBodyLength: 50 * 1024 * 1024,
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Accept': 'application/json',
+                },
+              });
+              
+              console.log('✅ Image uploadée avec succès');
+              return { ...createdProduct, image_uploaded: true };
+            } catch (imageError: any) {
+              console.warn('⚠️ Upload d\'image échoué, mais produit créé avec succès:', imageError?.message || imageError);
+              // Retourner le produit créé même si l'image a échoué
+              return { 
+                ...createdProduct, 
+                image_uploaded: false,
+                image_error: 'L\'image n\'a pas pu être uploadée, mais le produit a été créé avec succès. Vous pourrez ajouter l\'image plus tard.'
+              };
             }
           }
           
-          console.log('📤 Upload via FileSystem.uploadAsync avec params:', uploadParams);
+          return createdProduct;
+        } catch (fallbackError: any) {
+          console.warn('⚠️ Fallback échoué, tentative upload direct...', fallbackError?.message || fallbackError);
           
-          const uploadResult = await FileSystem.uploadAsync(
-            `${API_BASE_URL}/products/`,
-            imageUri,
-            {
-              httpMethod: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json',
-              },
-              uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-              fieldName: 'image',
-              parameters: uploadParams,
-            }
-          );
-          
-          if (uploadResult.status >= 200 && uploadResult.status < 300) {
-            console.log('✅ Upload via FileSystem.uploadAsync réussi:', uploadResult.status);
-            const parsed = (() => {
-              try { return JSON.parse(uploadResult.body || '{}'); } catch { return {}; }
-            })();
-            return parsed;
-          } else {
-            throw new Error(`Upload échec: ${uploadResult.status} - ${uploadResult.body}`);
-          }
-          
-        } catch (uploadError: any) {
-          console.warn('⚠️ FileSystem.uploadAsync échoué, fallback vers Axios:', uploadError?.message || uploadError);
-          
-          // Fallback vers Axios avec configuration optimisée
+          // Dernière tentative : upload direct avec FormData
           const response = await api.post('/products/', formData, {
             timeout: 120000,
             maxContentLength: 100 * 1024 * 1024,
@@ -467,18 +464,9 @@ export const productService = {
               'Authorization': `Bearer ${token}`,
               'Accept': 'application/json',
             },
-            validateStatus: (status) => {
-              return status >= 200 && status < 300;
-            },
-            onUploadProgress: (progressEvent) => {
-              if (progressEvent.total) {
-                const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-                console.log(`📤 Upload progress: ${percentCompleted}%`);
-              }
-            },
           });
           
-          console.log('✅ Upload via Axios fallback réussi:', response.status);
+          console.log('✅ Upload direct réussi:', response.status);
           return response.data;
         }
       } else {
@@ -663,39 +651,9 @@ export const productService = {
             console.log('📤 Upload via FileSystem.uploadAsync avec image locale:', localImageUri);
             console.log('📤 Paramètres:', uploadParams);
             
-            // 4. Utiliser FileSystem.uploadAsync avec l'image locale
-            const uploadResult = await FileSystem.uploadAsync(
-              `${API_BASE_URL}/products/${id}/upload_image/`,
-              localImageUri,
-              {
-                httpMethod: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Accept': 'application/json',
-                },
-                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-                fieldName: 'image',
-                parameters: uploadParams,
-              }
-            );
+            // Utiliser directement Axios avec FormData (plus fiable que FileSystem.uploadAsync déprécié)
+            console.log('🔁 Upload direct via Axios avec FormData...');
             
-            if (uploadResult.status >= 200 && uploadResult.status < 300) {
-              console.log('✅ Upload hybride réussi:', uploadResult.status);
-              const parsed = (() => {
-                try { return JSON.parse(uploadResult.body || '{}'); } catch { return {}; }
-              })();
-              return parsed;
-            } else {
-              throw new Error(`Upload hybride échec: ${uploadResult.status} - ${uploadResult.body}`);
-            }
-          }
-          
-        } catch (uploadError: any) {
-          console.error('❌ Upload hybride échoué:', uploadError?.message || uploadError);
-          
-          // Fallback vers Axios si FileSystem échoue
-          console.log('🔄 Tentative fallback Axios...');
-          try {
             const response = await api.post(`/products/${id}/upload_image/`, formData, {
               timeout: 120000,
               maxContentLength: 100 * 1024 * 1024,
@@ -705,12 +663,14 @@ export const productService = {
                 'Accept': 'application/json',
               },
             });
-            console.log('✅ Fallback Axios réussi:', response.status);
+            
+            console.log('✅ Upload via Axios réussi:', response.status);
             return response.data;
-          } catch (axiosError: any) {
-            console.error('❌ Fallback Axios aussi échoué:', axiosError?.message || axiosError);
-            throw uploadError; // Lancer l'erreur originale
           }
+          
+        } catch (uploadError: any) {
+          console.error('❌ Upload échoué:', uploadError?.message || uploadError);
+          throw uploadError;
         }
         
         // Configuration optimisée pour les uploads d'images
@@ -1392,8 +1352,7 @@ export const productCopyService = {
   // Ajouter un code-barres
   addBarcode: async (productId: number, barcodeData: { ean: string; notes?: string; is_primary: boolean }) => {
     try {
-      const response = await api.post(`/inventory/barcode/add/`, {
-        product: productId,
+      const response = await api.post(`/products/${productId}/add_barcode/`, {
         ean: barcodeData.ean,
         notes: barcodeData.notes || '',
         is_primary: barcodeData.is_primary
@@ -1404,35 +1363,34 @@ export const productCopyService = {
     }
   },
 
-  // Mettre à jour un code-barres
-  updateBarcode: async (barcodeId: number, barcodeData: { ean: string; notes?: string; is_primary: boolean }) => {
+  // Mettre à jour un code-barres (non implémenté dans l'API Django)
+  updateBarcode: async (productId: number, barcodeId: number, barcodeData: { ean: string; notes?: string; is_primary: boolean }) => {
     try {
-      const response = await api.put(`/inventory/barcode/${barcodeId}/edit/`, {
-        ean: barcodeData.ean,
-        notes: barcodeData.notes || '',
-        is_primary: barcodeData.is_primary
-      });
-      return response.data;
+      // Pour l'instant, on ne peut que créer de nouveaux codes-barres
+      // La mise à jour n'est pas implémentée dans l'API Django
+      throw new Error('La mise à jour des codes-barres n\'est pas encore implémentée dans l\'API');
     } catch (error) {
       throw error;
     }
   },
 
-  // Supprimer un code-barres
-  deleteBarcode: async (barcodeId: number) => {
+  // Supprimer un code-barres (non implémenté dans l'API Django)
+  deleteBarcode: async (productId: number, barcodeId: number) => {
     try {
-      const response = await api.delete(`/inventory/barcode/${barcodeId}/delete/`);
-      return response.data;
+      // Pour l'instant, on ne peut pas supprimer des codes-barres
+      // La suppression n'est pas implémentée dans l'API Django
+      throw new Error('La suppression des codes-barres n\'est pas encore implémentée dans l\'API');
     } catch (error) {
       throw error;
     }
   },
 
-  // Définir un code-barres comme principal
-  setPrimaryBarcode: async (barcodeId: number) => {
+  // Définir un code-barres comme principal (non implémenté dans l'API Django)
+  setPrimaryBarcode: async (productId: number, barcodeId: number) => {
     try {
-      const response = await api.post(`/inventory/barcode/${barcodeId}/set_primary/`);
-      return response.data;
+      // Pour l'instant, on ne peut pas changer le code-barres principal
+      // Cette fonctionnalité n'est pas implémentée dans l'API Django
+      throw new Error('Le changement de code-barres principal n\'est pas encore implémenté dans l\'API');
     } catch (error) {
       throw error;
     }

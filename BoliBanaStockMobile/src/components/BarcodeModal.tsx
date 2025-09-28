@@ -224,7 +224,7 @@ const BarcodeModal: React.FC<BarcodeModalProps> = ({
           onPress: async () => {
             try {
               if (id > 0 && id < 1000000) {
-                await productService.removeBarcode(productId, id);
+                await productService.deleteBarcode(productId, id);
               }
               setLocalBarcodes(prev => prev.filter(b => b.id !== id));
             } catch (error) {
@@ -278,7 +278,11 @@ const BarcodeModal: React.FC<BarcodeModalProps> = ({
       for (const barcode of barcodesToProcess) {
         if (barcode.id > 0 && barcode.id < 1000000) {
           try {
-            const updatedBarcode = await productService.updateBarcode(productId, barcode.id, barcode.ean, barcode.notes);
+            const updatedBarcode = await productService.updateBarcode(productId, barcode.id, {
+              ean: barcode.ean,
+              notes: barcode.notes,
+              is_primary: barcode.is_primary
+            });
             processedBarcodes.push(updatedBarcode);
           } catch (error) {
             console.error('❌ Erreur mise à jour code-barres:', error);
@@ -287,7 +291,11 @@ const BarcodeModal: React.FC<BarcodeModalProps> = ({
           }
         } else {
           try {
-            const newBarcode = await productService.addBarcode(productId, barcode.ean, barcode.notes);
+            const newBarcode = await productService.addBarcode(productId, {
+              ean: barcode.ean,
+              notes: barcode.notes,
+              is_primary: barcode.is_primary
+            });
             processedBarcodes.push(newBarcode);
           } catch (error) {
             console.error('❌ Erreur création code-barres:', error);

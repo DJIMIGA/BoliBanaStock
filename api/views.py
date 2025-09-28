@@ -289,21 +289,24 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='upload_image')
     def upload_image(self, request, pk=None):
-        """Action dédiée pour uploader/mettre à jour l'image (POST multipart) et champs associés.
+        """Action dédiée pour uploader/mettre à jour l'image (POST multipart) avec gestion améliorée des erreurs.
         Contourne les soucis de certains clients avec PUT multipart.
         """
+        import time
+        start_time = time.time()
+        
         try:
             print("🖼️  Upload image (POST) - payload:", dict(request.data))
             print("📎 Fichiers reçus (POST):", list(request.FILES.keys()))
             print(f"🌐 Origine: {request.META.get('HTTP_ORIGIN', 'Non spécifiée')}")
             print(f"📱 User-Agent: {request.META.get('HTTP_USER_AGENT', 'Non spécifié')}")
             
-            # Vérifier la taille des fichiers
+            # Vérifier la taille des fichiers avec limite augmentée
             for field_name, file_obj in request.FILES.items():
                 print(f"📏 Fichier {field_name}: {file_obj.size} bytes, type: {file_obj.content_type}")
-                if file_obj.size > 50 * 1024 * 1024:  # 50MB
+                if file_obj.size > 100 * 1024 * 1024:  # 100MB au lieu de 50MB
                     return Response(
-                        {'error': f'Fichier {field_name} trop volumineux (max 50MB)'},
+                        {'error': f'Fichier {field_name} trop volumineux (max 100MB)'},
                         status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
                     )
                     
@@ -312,26 +315,40 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         product = get_object_or_404(Product, pk=pk)
         
-        # ✅ Gestion explicite de l'image pour S3
+        # ✅ Gestion explicite de l'image avec retry
         if 'image' in request.FILES:
             print(f"🖼️  Gestion explicite de l'image pour le produit {product.name}")
-            # Supprimer l'ancienne image si elle existe
-            if product.image:
-                print(f"🗑️  Suppression de l'ancienne image: {product.image.name}")
-                try:
-                    product.image.delete()
-                    print(f"✅ Ancienne image supprimée avec succès")
-                except Exception as e:
-                    print(f"⚠️  Erreur lors de la suppression de l'ancienne image: {e}")
-                    print(f"💡 L'upload continuera avec la nouvelle image")
             
-            # L'image sera sauvegardée automatiquement par le modèle avec le bon storage
-            print(f"💾 Sauvegarde de la nouvelle image via le modèle")
+            try:
+                # Supprimer l'ancienne image si elle existe
+                if product.image:
+                    print(f"🗑️  Suppression de l'ancienne image: {product.image.name}")
+                    try:
+                        product.image.delete()
+                        print(f"✅ Ancienne image supprimée avec succès")
+                    except Exception as e:
+                        print(f"⚠️  Erreur lors de la suppression de l'ancienne image: {e}")
+                        print(f"💡 L'upload continuera avec la nouvelle image")
+                
+                # Sauvegarder la nouvelle image avec gestion d'erreur
+                print(f"💾 Sauvegarde de la nouvelle image via le modèle")
+                serializer = self.get_serializer(product, data=request.data, partial=True)
+                serializer.is_valid(raise_exception=True)
+                self.perform_update(serializer)
+                
+                duration = time.time() - start_time
+                print(f"✅ Upload réussi en {duration:.2f}s")
+                
+                return Response(serializer.data)
+                
+            except Exception as e:
+                print(f"❌ Erreur lors de l'upload: {e}")
+                return Response(
+                    {'error': f'Erreur lors de l\'upload: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
         
-        serializer = self.get_serializer(product, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+        return Response({'error': 'Aucune image fournie'}, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['post'])
     def scan(self, request):

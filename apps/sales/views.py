@@ -8,7 +8,6 @@ from .forms import SaleForm, PaymentForm
 from django.db.models import Sum, Q
 from django.http import HttpResponse, JsonResponse
 from django.template.loader import render_to_string
-from xhtml2pdf import pisa
 from io import BytesIO
 from apps.inventory.mixins import SiteFilterMixin, SiteRequiredMixin
 from apps.inventory.models import Product, Barcode
@@ -215,6 +214,13 @@ def generate_receipt(request, pk):
         'date': timezone.now().strftime("%d/%m/%Y %H:%M"),
     }
     
+    # Importer xhtml2pdf uniquement ici pour éviter l'erreur d'import au chargement du module
+    try:
+        from xhtml2pdf import pisa
+    except Exception as import_error:
+        messages.error(request, "Le module xhtml2pdf n'est pas disponible sur le serveur")
+        return HttpResponse("xhtml2pdf manquant. Veuillez installer la dépendance.", status=500)
+
     # Générer le HTML
     html_string = render_to_string('sales/receipt.html', context)
     

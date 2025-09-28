@@ -13,8 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { ContinuousBarcodeScanner } from '../components';
 import { useContinuousScanner } from '../hooks';
-import { productService } from '../services/api';
-import { saleService } from '../services/api';
+import { productService, saleService } from '../services/api';
 
 const { width } = Dimensions.get('window');
 

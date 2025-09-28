@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Installer les dépendances système
+# Installer les dépendances système de base
 RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y \
 # Copier tout le projet (les exclusions sont gérées par .dockerignore)
 COPY . .
 
-# Installer les dépendances Python
-RUN pip install --no-cache-dir -r requirements.txt
+# Installer les dépendances Python avec version Docker optimisée
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements-docker.txt
 
 # Configurer le PYTHONPATH pour inclure le dossier app/
 ENV PYTHONPATH="${PYTHONPATH}:/app:/app/app"
