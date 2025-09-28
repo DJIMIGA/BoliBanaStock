@@ -612,12 +612,18 @@ export const productService = {
             formData.append(key, String(value));
           }
           
+          // Logs détaillés pour diagnostic
+          const token = await AsyncStorage.getItem('access_token');
+          console.log('🔑 Token utilisé:', token ? 'Présent' : 'Absent');
+          console.log('🌐 URL complète:', `${API_BASE_URL}/products/${id}/upload_image/`);
+          console.log('📦 FormData parts:', (formData as any)?._parts?.length || 'Non disponible');
+          
           const response = await api.post(`/products/${id}/upload_image/`, formData, {
             timeout: 120000,
             maxContentLength: 100 * 1024 * 1024,
             maxBodyLength: 100 * 1024 * 1024,
             headers: {
-              'Authorization': `Bearer ${await AsyncStorage.getItem('access_token')}`,
+              'Authorization': `Bearer ${token}`,
               'Accept': 'application/json',
             },
           });
