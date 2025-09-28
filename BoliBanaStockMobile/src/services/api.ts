@@ -539,278 +539,97 @@ export const productService = {
 
   updateProduct: async (id: number, productData: any) => {
     try {
+      // ✅ SOLUTION INTELLIGENTE : Détection automatique du type d'image
       const hasImage = !!productData.image && typeof productData.image !== 'string';
+      
       if (hasImage) {
-        // Vérifier l'authentification avant l'upload
-        console.log('🔍 Vérification de l\'authentification avant upload...');
+        const imageAsset = productData.image as ImageAsset;
+        const imageUri = imageAsset.uri;
         
-        const formData = new FormData();
+        console.log('🔍 Image source détectée:', imageUri);
         
-        // Traiter chaque champ du produit (séquentiel pour permettre await)
-        for (const [key, value] of Object.entries(productData)) {
-          if (value === null || value === undefined) continue;
+        // ✅ ANALYSE INTELLIGENTE : Détection du type d'image
+        if (imageUri.startsWith('http') || imageUri.startsWith('https')) {
+          // Scénario A : Image S3 existante - pas de nouvelle image
+          console.log('ℹ️ Image S3 existante détectée, pas de nouvelle image à uploader');
           
-          if (key === 'image' && value) {
-            // Gestion spéciale pour l'image
-            const imageAsset = value as ImageAsset;
-            // Normaliser l'URI pour Android (content:// -> file:// en cache)
-            let normalizedUri = imageAsset.uri;
-            try {
-              if (Platform.OS === 'android' && normalizedUri?.startsWith('content://')) {
-                const fileName = imageAsset.fileName || `upload_${Date.now()}.jpg`;
-                const dest = `${FileSystem.cacheDirectory}${fileName}`;
-                console.log('🗂️ Copie image content:// vers cache (update):', dest);
-                await FileSystem.copyAsync({ from: normalizedUri, to: dest });
-                normalizedUri = dest;
-              }
-            } catch (e) {
-              console.warn('⚠️ Normalisation URI échouée (update):', (e as any)?.message || e);
+          // Modifier le produit sans changer l'image
+          const productDataWithoutImage = { ...productData };
+          delete productDataWithoutImage.image;
+          
+          console.log('📝 Modification du produit sans changer l\'image...');
+          const response = await api.put(`/products/${id}/`, productDataWithoutImage);
+          return response.data;
+          
+        } else {
+          // Scénario B : Nouvelle image locale sélectionnée
+          console.log('✅ Nouvelle image locale détectée, upload via Axios FormData...');
+          
+          // Normaliser l'URI pour Android (content:// -> file:// en cache)
+          let localImageUri = imageUri;
+          try {
+            if (Platform.OS === 'android' && localImageUri?.startsWith('content://')) {
+              const fileName = imageAsset.fileName || `upload_${Date.now()}.jpg`;
+              const dest = `${FileSystem.cacheDirectory}${fileName}`;
+              console.log('🗂️ Copie image content:// vers cache (update):', dest);
+              await FileSystem.copyAsync({ from: localImageUri, to: dest });
+              localImageUri = dest;
             }
-            const imageFile = {
-              uri: normalizedUri,
-              type: imageAsset.type || 'image/jpeg',
-              name: imageAsset.fileName || `product_${Date.now()}.jpg`,
-            };
-            formData.append('image', imageFile as any);
-          } else if (key === 'category' && value) {
-            formData.append('category', String(value));
-          } else if (key === 'brand' && value) {
-            formData.append('brand', String(value));
-          } else {
+          } catch (e) {
+            console.warn('⚠️ Normalisation URI échouée (update):', (e as any)?.message || e);
+          }
+          
+          // Préparer les paramètres pour l'upload
+          const uploadParams: any = {};
+          for (const [key, value] of Object.entries(productData)) {
+            if (key !== 'image' && value !== null && value !== undefined) {
+              // Traitement spécial pour certains champs
+              if (key === 'category' && value) {
+                uploadParams[key] = String(value);
+              } else if (key === 'brand' && value) {
+                uploadParams[key] = String(value);
+              } else {
+                uploadParams[key] = String(value);
+              }
+            }
+          }
+          
+          console.log('📤 Upload via Axios FormData avec image locale:', localImageUri);
+          console.log('📤 Paramètres:', uploadParams);
+          
+          // Utiliser Axios FormData (plus fiable que FileSystem.uploadAsync déprécié)
+          console.log('🔁 Upload direct via Axios avec FormData...');
+          
+          const formData = new FormData();
+          formData.append('image', {
+            uri: localImageUri,
+            type: imageAsset.type || 'image/jpeg',
+            name: imageAsset.fileName || `product_${Date.now()}.jpg`,
+          } as any);
+          
+          // Ajouter les autres paramètres
+          for (const [key, value] of Object.entries(uploadParams)) {
             formData.append(key, String(value));
           }
-        }
-
-        console.log('📤 Mise à jour avec image - FormData:', formData);
-        console.log('🔗 URL API utilisée:', `${API_BASE_URL}/products/${id}/upload_image/`);
-        
-        // Vérifier l'authentification avant l'upload
-        const token = await AsyncStorage.getItem('access_token');
-        if (!token) {
-          throw new Error('Aucun token d\'authentification trouvé. Veuillez vous reconnecter.');
-        }
-        console.log('✅ Token d\'authentification trouvé');
-        
-        // Validation de la taille de l'image avant upload
-        if (productData.image?.size && productData.image.size > 10 * 1024 * 1024) { // 10MB max
-          console.warn('⚠️ Image trop volumineuse, compression recommandée');
-        }
-        
-        // Solution hybride : Gestion intelligente des images
-        // Distinguer entre nouvelle image locale et image S3 existante
-        try {
-          console.log('🔁 Solution hybride : Analyse de l\'image source...');
           
-          // 1. Extraire l'URI de l'image du FormData
-          const imageUri = (formData as any)?._parts?.find?.((p: any) => p?.[0] === 'image')?.[1]?.uri || '';
-          
-          if (!imageUri) {
-            throw new Error('URI de l\'image non trouvée dans FormData');
-          }
-          
-          console.log('🔍 Image source détectée:', imageUri);
-          
-          // 2. Analyser le type d'image
-          let localImageUri = imageUri;
-          let isNewImage = false;
-          
-          if (imageUri.startsWith('http') || imageUri.startsWith('https')) {
-            // C'est une URL S3 existante - pas de nouvelle image
-            console.log('ℹ️ Image S3 existante détectée, pas de nouvelle image à uploader');
-            
-            // Modifier le produit sans changer l'image
-            const productDataWithoutImage = { ...productData };
-            delete productDataWithoutImage.image;
-            
-            // ✅ S'assurer que le barcode est bien traité
-            if (productDataWithoutImage.barcode) {
-              console.log('📱 Barcode traité pour PUT standard:', productDataWithoutImage.barcode);
-            }
-            
-            console.log('📤 Mise à jour sans image via PUT standard...');
-            console.log('📤 Données envoyées:', productDataWithoutImage);
-            const response = await api.put(`/products/${id}/`, productDataWithoutImage);
-            return response.data;
-          } else {
-            // C'est une nouvelle image locale
-            isNewImage = true;
-            console.log('✅ Nouvelle image locale détectée, upload via FileSystem.uploadAsync...');
-            
-            // 3. Préparer les paramètres pour l'upload
-            const uploadParams: any = {};
-            for (const [key, value] of Object.entries(productData)) {
-              if (key !== 'image' && value !== null && value !== undefined) {
-                // Traitement spécial pour certains champs
-                if (key === 'category' && value) {
-                  uploadParams[key] = String(value);
-                } else if (key === 'brand' && value) {
-                  uploadParams[key] = String(value);
-                } else if (key === 'barcode' && value) {
-                  // ✅ Traitement spécifique pour le barcode
-                  uploadParams[key] = String(value);
-                  console.log('📱 Barcode ajouté aux paramètres:', value);
-                } else {
-                  uploadParams[key] = String(value);
-                }
-              }
-            }
-            
-            console.log('📤 Upload via FileSystem.uploadAsync avec image locale:', localImageUri);
-            console.log('📤 Paramètres:', uploadParams);
-            
-            // Utiliser FileSystem.uploadAsync (méthode qui fonctionnait avant)
-            console.log('🔁 Upload via FileSystem.uploadAsync...');
-            
-            const uploadResult = await FileSystem.uploadAsync(
-              `${API_BASE_URL}/products/${id}/upload_image/`,
-              localImageUri,
-              {
-                httpMethod: 'POST',
-                uploadType: 'MULTIPART',
-                fieldName: 'image',
-                parameters: uploadParams,
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Accept': 'application/json',
-                },
-              }
-            );
-            
-            console.log('✅ Upload via FileSystem.uploadAsync réussi:', uploadResult.status);
-            return JSON.parse(uploadResult.body);
-          }
-          
-        } catch (uploadError: any) {
-          console.error('❌ Upload échoué:', uploadError?.message || uploadError);
-          throw uploadError;
-        }
-        
-        // Configuration optimisée pour les uploads d'images
-        try {
-          // Route dédiée pour l'upload d'image (POST multipart) pour contourner PUT multipart
           const response = await api.post(`/products/${id}/upload_image/`, formData, {
-            // Ne pas définir manuellement Content-Type pour laisser Axios ajouter le boundary
-            timeout: 120000, // 2 minutes pour les uploads d'images
-            maxContentLength: 50 * 1024 * 1024, // 50MB max
-            maxBodyLength: 50 * 1024 * 1024, // 50MB max
-            validateStatus: (status) => {
-              return status >= 200 && status < 300; // Accepter seulement les succès
+            timeout: 120000,
+            maxContentLength: 100 * 1024 * 1024,
+            maxBodyLength: 100 * 1024 * 1024,
+            headers: {
+              'Authorization': `Bearer ${await AsyncStorage.getItem('access_token')}`,
+              'Accept': 'application/json',
             },
           });
-          console.log('✅ Upload réussi:', response.status);
+          
+          console.log('✅ Upload via Axios réussi:', response.status);
           return response.data;
-        } catch (primaryError: any) {
-          console.warn('⚠️ POST upload_image échoué, tentative fallback PUT multipart...', primaryError?.message || primaryError);
-          // Fallback 1: tenter PUT multipart standard
-          try {
-            const response = await api.put(`/products/${id}/`, formData, {
-              timeout: 120000,
-              maxContentLength: 50 * 1024 * 1024,
-              maxBodyLength: 50 * 1024 * 1024,
-            });
-            console.log('✅ Fallback PUT multipart réussi:', response.status);
-            return response.data;
-          } catch (patchError: any) {
-            console.warn('⚠️ PUT multipart échoué, tentative fallback PATCH multipart...', patchError?.message || patchError);
-            // Fallback 2: PATCH multipart
-            try {
-              const response = await api.patch(`/products/${id}/`, formData, {
-                timeout: 120000,
-                maxContentLength: 50 * 1024 * 1024,
-                maxBodyLength: 50 * 1024 * 1024,
-              });
-              console.log('✅ Fallback PATCH réussi:', response.status);
-              return response.data;
-            } catch (patchError2: any) {
-              console.warn('⚠️ PATCH multipart échoué, tentative fallback POST + override...', patchError2?.message || patchError2);
-            // Fallback 2: POST avec override méthode
-            const overrideFormData = formData;
-            try {
-              overrideFormData.append('_method', 'PUT');
-            } catch (_) {}
-            try {
-              const response = await api.post(`/products/${id}/`, overrideFormData, {
-                headers: {
-                  'X-HTTP-Method-Override': 'PUT',
-                },
-                timeout: 120000,
-                maxContentLength: 50 * 1024 * 1024,
-                maxBodyLength: 50 * 1024 * 1024,
-              });
-              console.log('✅ Fallback POST override réussi:', response.status);
-              return response.data;
-            } catch (postOverrideError: any) {
-              console.warn('⚠️ POST override échoué, tentative finale via fetch natif...', postOverrideError?.message || postOverrideError);
-              // Fallback 3: fetch natif (bypass axios) vers l'action upload_image (POST)
-              try {
-                const token = await AsyncStorage.getItem('access_token');
-                const url = `${API_BASE_URL}/products/${id}/upload_image/`;
-                console.log('🔁 Tentative fetch POST multipart vers:', url);
-                const fetchResponse = await fetch(url, {
-                  method: 'POST',
-                  headers: {
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                    Accept: 'application/json',
-                  } as any,
-                  body: formData as any,
-                } as any);
-                if (!fetchResponse.ok) {
-                  const text = await fetchResponse.text();
-                  console.error('❌ Fetch POST échec:', fetchResponse.status, text);
-                  throw new Error(`Fetch POST failed: ${fetchResponse.status}`);
-                }
-                const data = await fetchResponse.json();
-                console.log('✅ Upload via fetch réussi');
-                return data;
-              } catch (fetchErr: any) {
-                console.error('❌ Fallback fetch échoué:', fetchErr?.message || fetchErr);
-                throw fetchErr;
-              }
-            }
-            }
-          }
         }
       } else {
-        // Pas d'image -> utiliser PATCH (mise à jour partielle) pour éviter d'exiger tous les champs (ex: cug)
-        // Normaliser: convertir ''/undefined -> null pour les FK, supprimer les undefined
-        const sanitized: any = {};
-        Object.entries(productData || {}).forEach(([k, v]) => {
-          if (v === undefined) return;
-          if ((k === 'category' || k === 'brand' || k === 'category_id' || k === 'brand_id') && (v === '' || v === undefined)) {
-            sanitized[k] = null;
-          } else {
-            sanitized[k] = v;
-          }
-        });
-
-        try {
-          console.log('🛠️ Mise à jour sans image (PATCH) - ID:', id);
-          console.log('🔗 URL:', `/products/${id}/`);
-          console.log('📦 Payload PATCH (avant normalisation):', {
-            name: productData?.name,
-            cug: productData?.cug,
-            quantity: productData?.quantity,
-            purchase_price: productData?.purchase_price,
-            selling_price: productData?.selling_price,
-            category: productData?.category,
-            brand: productData?.brand,
-            is_active: productData?.is_active,
-          });
-          console.log('📦 Payload PATCH (normalisé):', sanitized);
-          const response = await api.patch(`/products/${id}/`, sanitized);
-          console.log('✅ PATCH produit OK:', response.status);
-          return response.data;
-        } catch (patchError: any) {
-          console.error('❌ PATCH produit erreur:', {
-            status: patchError?.response?.status,
-            data: patchError?.response?.data,
-            message: patchError?.message,
-            url: patchError?.config?.url,
-            method: patchError?.config?.method,
-            baseURL: patchError?.config?.baseURL,
-          });
-          throw patchError;
-        }
+        // Pas d'image, modification standard
+        console.log('📝 Modification du produit sans image...');
+        const response = await api.put(`/products/${id}/`, productData);
+        return response.data;
       }
     } catch (error: any) {
       console.error('❌ Erreur mise à jour produit avec image:', error);
