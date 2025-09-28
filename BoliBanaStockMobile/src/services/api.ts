@@ -436,7 +436,7 @@ export const productService = {
                 imageUri,
                 {
                   httpMethod: 'POST',
-                  uploadType: FileSystem.FileSystemUploadType.MULTIPART || 'MULTIPART',
+                  uploadType: 'MULTIPART',
                   fieldName: 'image',
                   headers: {
                     'Authorization': `Bearer ${token}`,
@@ -666,7 +666,7 @@ export const productService = {
               localImageUri,
               {
                 httpMethod: 'POST',
-                uploadType: FileSystem.FileSystemUploadType.MULTIPART || 'MULTIPART',
+                uploadType: 'MULTIPART',
                 fieldName: 'image',
                 parameters: uploadParams,
                 headers: {
