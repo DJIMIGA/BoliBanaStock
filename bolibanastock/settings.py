@@ -313,6 +313,20 @@ elif os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True':
     CORS_ALLOW_ALL_ORIGINS = True
     CORS_ALLOW_CREDENTIALS = True
 
+# Configuration CORS spécifique pour les uploads multipart
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24 heures
+CORS_ALLOW_CREDENTIALS = True
+
+# Headers supplémentaires pour les uploads
+CORS_ALLOW_HEADERS.extend([
+    'x-requested-with',
+    'x-file-name',
+    'x-file-size',
+    'x-file-type',
+    'x-upload-content-type',
+    'x-upload-content-length',
+])
+
 # Configuration CORS pour les appareils mobiles
 CORS_ALLOW_METHODS = [
     'DELETE',
@@ -335,6 +349,10 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'content-disposition',  # Ajouté pour les uploads
     'cache-control',       # Ajouté pour les uploads
+    'content-length',      # Ajouté pour les uploads
+    'x-file-name',         # Ajouté pour les uploads
+    'x-file-size',         # Ajouté pour les uploads
+    'x-file-type',         # Ajouté pour les uploads
 ]
 
 CORS_EXPOSE_HEADERS = [
@@ -346,9 +364,13 @@ CORS_EXPOSE_HEADERS = [
 # Configuration spécifique pour les uploads d'images
 
 # Configuration des limites d'upload pour les images
-DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000  # Nombre de champs max
+
+# Configuration spécifique pour les uploads multipart
+FILE_UPLOAD_PERMISSIONS = 0o644
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755
 
 # Configuration pour Railway - Gestion des erreurs
 if not DEBUG:
