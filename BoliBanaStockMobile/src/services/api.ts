@@ -417,28 +417,35 @@ export const productService = {
           
           console.log('✅ Produit créé avec succès, ID:', createdProduct.id);
           
-          // 2. Uploader l'image séparément (avec gestion d'erreur gracieuse)
+          // 2. Uploader l'image séparément avec FileSystem.uploadAsync (méthode qui fonctionnait avant)
           if (productData.image) {
-            console.log('📤 Tentative d\'upload de l\'image séparément...');
+            console.log('📤 Upload de l\'image via FileSystem.uploadAsync...');
             try {
-              const imageFormData = new FormData();
-              imageFormData.append('image', {
-                uri: productData.image.uri,
-                name: productData.image.fileName || 'product.jpg',
-                type: productData.image.type || 'image/jpeg',
-              } as any);
+              // Normaliser l'URI pour FileSystem.uploadAsync
+              let imageUri = productData.image.uri;
+              if (Platform.OS === 'android' && imageUri?.startsWith('content://')) {
+                const fileName = productData.image.fileName || `upload_${Date.now()}.jpg`;
+                const dest = `${FileSystem.cacheDirectory}${fileName}`;
+                console.log('🗂️ Copie image content:// vers cache (create):', dest);
+                await FileSystem.copyAsync({ from: imageUri, to: dest });
+                imageUri = dest;
+              }
               
-              const imageResponse = await api.post(`/products/${createdProduct.id}/upload_image/`, imageFormData, {
-                timeout: 60000, // Réduire le timeout
-                maxContentLength: 50 * 1024 * 1024, // Réduire la taille max
-                maxBodyLength: 50 * 1024 * 1024,
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Accept': 'application/json',
-                },
-              });
+              const uploadResult = await FileSystem.uploadAsync(
+                `${API_BASE_URL}/products/${createdProduct.id}/upload_image/`,
+                imageUri,
+                {
+                  httpMethod: 'POST',
+                  uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                  fieldName: 'image',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json',
+                  },
+                }
+              );
               
-              console.log('✅ Image uploadée avec succès');
+              console.log('✅ Image uploadée avec succès via FileSystem.uploadAsync');
               return { ...createdProduct, image_uploaded: true };
             } catch (imageError: any) {
               console.warn('⚠️ Upload d\'image échoué, mais produit créé avec succès:', imageError?.message || imageError);
@@ -651,21 +658,26 @@ export const productService = {
             console.log('📤 Upload via FileSystem.uploadAsync avec image locale:', localImageUri);
             console.log('📤 Paramètres:', uploadParams);
             
-            // Utiliser directement Axios avec FormData (plus fiable que FileSystem.uploadAsync déprécié)
-            console.log('🔁 Upload direct via Axios avec FormData...');
+            // Utiliser FileSystem.uploadAsync (méthode qui fonctionnait avant)
+            console.log('🔁 Upload via FileSystem.uploadAsync...');
             
-            const response = await api.post(`/products/${id}/upload_image/`, formData, {
-              timeout: 120000,
-              maxContentLength: 100 * 1024 * 1024,
-              maxBodyLength: 100 * 1024 * 1024,
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json',
-              },
-            });
+            const uploadResult = await FileSystem.uploadAsync(
+              `${API_BASE_URL}/products/${id}/upload_image/`,
+              localImageUri,
+              {
+                httpMethod: 'POST',
+                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                fieldName: 'image',
+                parameters: uploadParams,
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Accept': 'application/json',
+                },
+              }
+            );
             
-            console.log('✅ Upload via Axios réussi:', response.status);
-            return response.data;
+            console.log('✅ Upload via FileSystem.uploadAsync réussi:', uploadResult.status);
+            return JSON.parse(uploadResult.body);
           }
           
         } catch (uploadError: any) {
