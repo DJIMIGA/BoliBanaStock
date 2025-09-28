@@ -1,19 +1,22 @@
-# 🧠 GUIDE - Solution Intelligente pour Modification d'Images
+# 🧠 GUIDE - Solution Intelligente pour Upload d'Images (FONCTIONNELLE)
 
-## 📋 **PROBLÈME IDENTIFIÉ ET RÉSOLU**
+## 📋 **PROBLÈME RÉSOLU DÉFINITIVEMENT**
 
-### **1. Cause Racine Découverte**
+### **1. Problèmes Identifiés et Résolus**
 ```
-❌ Upload hybride échoué: Image source doit être locale, pas une URL S3
+❌ Network Error (ERR_NETWORK) avec Axios
+❌ FileSystem.uploadAsync deprecated
+❌ MULTIPART undefined error
+✅ SOLUTION: fetch natif + détection intelligente
 ```
 
-**Explication** : L'image dans `productData.image` était une **URL S3 existante** au lieu d'une nouvelle image locale sélectionnée.
+**Explication** : L'upload d'image échouait à cause de problèmes de connectivité d'Axios avec FormData multipart dans React Native/Expo.
 
 ### **2. Scénarios de Modification Identifiés**
 - **Scénario A** : Modification **sans changer l'image** (image S3 existante)
 - **Scénario B** : Modification **avec nouvelle image** (image locale sélectionnée)
 
-## 🎯 **SOLUTION INTELLIGENTE APPLIQUÉE**
+## 🎯 **SOLUTION INTELLIGENTE FONCTIONNELLE**
 
 ### **1. Détection Automatique du Type d'Image**
 ```typescript
@@ -30,10 +33,17 @@ if (imageUri.startsWith('http') || imageUri.startsWith('https')) {
   return response.data;
 } else {
   // Scénario B : Nouvelle image locale sélectionnée
-  console.log('✅ Nouvelle image locale détectée, upload via FileSystem.uploadAsync...');
+  console.log('✅ Nouvelle image locale détectée, upload via fetch natif...');
   
-  // Upload de la nouvelle image
-  const uploadResult = await FileSystem.uploadAsync(/* ... */);
+  // SOLUTION FONCTIONNELLE : fetch natif au lieu d'Axios
+  const response = await fetch(`${API_BASE_URL}/products/${id}/upload_image/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+    },
+    body: formData,
+  });
 }
 ```
 
@@ -50,11 +60,12 @@ if (imageUri.startsWith('http') || imageUri.startsWith('https')) {
 
 #### **Cas B : Modification avec Nouvelle Image**
 ```typescript
-// ✅ LOGIQUE :
+// ✅ LOGIQUE FONCTIONNELLE :
 // 1. Détecter la nouvelle image locale
-// 2. Préparer les paramètres d'upload
-// 3. FileSystem.uploadAsync vers l'API
-// 4. Nouvelle image remplace l'ancienne
+// 2. Préparer FormData avec tous les paramètres
+// 3. fetch natif vers l'API (contourne Network Error)
+// 4. Fallback Axios si fetch échoue
+// 5. Nouvelle image remplace l'ancienne
 ```
 
 ## 🔍 **ANALYSE TECHNIQUE DÉTAILLÉE**
@@ -73,21 +84,34 @@ if (imageUri.startsWith('http') || imageUri.startsWith('https')) {
 }
 ```
 
-### **2. Gestion des Données**
+### **2. Gestion des Données avec fetch natif**
 ```typescript
 // ✅ CAS A : Sans nouvelle image
 const productDataWithoutImage = { ...productData };
 delete productDataWithoutImage.image;
 // → Modifie le produit, garde l'image existante
 
-// ✅ CAS B : Avec nouvelle image
-const uploadParams = {};
-for (const [key, value] of Object.entries(productData)) {
-  if (key !== 'image' && value !== null) {
-    uploadParams[key] = String(value);
-  }
+// ✅ CAS B : Avec nouvelle image (SOLUTION FONCTIONNELLE)
+const formData = new FormData();
+formData.append('image', {
+  uri: localImageUri,
+  type: imageAsset.type || 'image/jpeg',
+  name: imageAsset.fileName || `product_${Date.now()}.jpg`,
+} as any);
+
+for (const [key, value] of Object.entries(uploadParams)) {
+  formData.append(key, String(value));
 }
-// → Upload de la nouvelle image avec tous les paramètres
+
+// SOLUTION : fetch natif + fallback Axios
+const response = await fetch(`${API_BASE_URL}/products/${id}/upload_image/`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Accept': 'application/json',
+  },
+  body: formData,
+});
 ```
 
 ## 📱 **FLUX DE TRAVAIL COMPLET**
@@ -106,47 +130,60 @@ for (const [key, value] of Object.entries(productData)) {
 1. Utilisateur modifie un produit existant
 2. Nouvelle image sélectionnée depuis la galerie
 3. Détection : image locale (file://, content://)
-4. Action : FileSystem.uploadAsync
-5. Résultat : Produit modifié avec nouvelle image ✅
+4. Action : fetch natif (contourne Network Error)
+5. Fallback : Axios si fetch échoue
+6. Résultat : Produit modifié avec nouvelle image ✅
 ```
 
 ## 🎯 **AVANTAGES DE LA SOLUTION INTELLIGENTE**
 
-| Aspect | Avant | Après (Intelligent) |
+| Aspect | Avant | Après (Fonctionnel) |
 |--------|-------|---------------------|
+| **Upload** | ❌ Network Error (Axios) | ✅ fetch natif + fallback Axios |
 | **Détection** | ❌ Erreur si image S3 | ✅ Détection automatique du type |
 | **Gestion** | ❌ Une seule méthode | ✅ Deux méthodes selon le contexte |
 | **Robustesse** | ❌ Échec sur image S3 | ✅ Gestion des deux cas |
 | **UX** | ❌ Erreur confuse | ✅ Modification réussie dans tous les cas |
 | **Performance** | ❌ Tentative d'upload inutile | ✅ Upload seulement si nécessaire |
+| **Connectivité** | ❌ ERR_NETWORK | ✅ fetch natif contourne le problème |
 
 ## 🚀 **RÉSULTAT ATTENDU**
 
 ### **1. Avant la Correction**
 ```
-❌ Modification de produit :
-- Erreur "Image source doit être locale, pas une URL S3"
-- Fallback Axios échoue aussi
-- Modification impossible
+❌ Upload d'image :
+- Network Error (ERR_NETWORK) avec Axios
+- FileSystem.uploadAsync deprecated
+- MULTIPART undefined error
+- Upload impossible
 ```
 
-### **2. Après la Correction Intelligente**
+### **2. Après la Correction Fonctionnelle**
 ```
-✅ Modification de produit :
+✅ Upload d'image :
 - Cas A (sans nouvelle image) : PUT standard réussi
-- Cas B (avec nouvelle image) : Upload FileSystem réussi
+- Cas B (avec nouvelle image) : fetch natif réussi (200 OK)
+- Fallback Axios si fetch échoue
 - Gestion automatique selon le contexte
-- Modification toujours possible
+- Upload toujours possible
 ```
 
-## 🎉 **CONCLUSION**
+## 🎉 **CONCLUSION - SOLUTION FONCTIONNELLE**
 
-La solution intelligente résout **tous les scénarios** de modification :
+La solution intelligente résout **tous les scénarios** d'upload :
 - ✅ **Modification sans image** : PUT standard simple
-- ✅ **Modification avec image** : Upload FileSystem robuste
+- ✅ **Modification avec image** : fetch natif + fallback Axios
 - ✅ **Détection automatique** : Plus d'erreurs de type d'image
 - ✅ **Gestion contextuelle** : La bonne méthode pour le bon cas
+- ✅ **Contournement Network Error** : fetch natif résout ERR_NETWORK
+- ✅ **Robustesse** : Double stratégie (fetch + Axios fallback)
 
-**Maintenant testez** - la modification devrait fonctionner dans tous les cas ! 🚀
+**✅ TESTÉ ET FONCTIONNEL** - L'upload d'image fonctionne parfaitement ! 🚀
 
-La solution est **intelligente** car elle s'adapte automatiquement au contexte de l'utilisateur ! 🧠✨
+**Logs de succès confirmés :**
+```
+🔄 Tentative avec fetch natif (contournement Network Error)...
+✅ Upload via fetch natif réussi: 200
+```
+
+La solution est **intelligente ET fonctionnelle** car elle s'adapte automatiquement au contexte et contourne les problèmes de connectivité ! 🧠✨
