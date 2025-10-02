@@ -13,7 +13,8 @@ from .views import (
     RefreshTokenView, ForceLogoutAllView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
     CatalogPDFAPIView, LabelPrintAPIView,
-    collect_static_files, GetRayonsView, GetSubcategoriesMobileView
+    collect_static_files, GetRayonsView, GetSubcategoriesMobileView,
+    ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView
 )
 
 # Configuration Swagger
@@ -80,6 +81,13 @@ urlpatterns = [
     # Sélection hiérarchisée pour mobile
     path('rayons/', GetRayonsView.as_view(), name='api_rayons'),
     path('subcategories/', GetSubcategoriesMobileView.as_view(), name='api_subcategories_mobile'),
+    
+    # Copie de produits entre sites
+    path('inventory/copy/', ProductCopyAPIView.as_view(), name='api_product_copy'),
+    path('inventory/copy/management/', ProductCopyManagementAPIView.as_view(), name='api_product_copy_management'),
+    
+    # Marques par rayon
+    path('brands/by-rayon/', BrandsByRayonAPIView.as_view(), name='api_brands_by_rayon'),
     
     # Administration - Collecte des fichiers statiques
     path('admin/collectstatic/', collect_static_files, name='api_collect_static'),

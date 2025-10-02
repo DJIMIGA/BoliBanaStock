@@ -445,11 +445,20 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
             Alert.alert(
               'Détails du rayon',
               `Rayon: ${item.name}\nType: ${getRayonTypeName((item as any).rayon_type)}\n${item.description ? `Description: ${item.description}` : ''}`,
-              [{ text: 'OK' }]
+              [
+                { text: 'Voir les marques', onPress: () => navigation.navigate('BrandsByRayon', { rayon: item }) },
+                { text: 'OK' }
+              ]
             );
           }}
         >
           <Ionicons name="information-circle" size={20} color="#2196F3" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.brandsButton]}
+          onPress={() => navigation.navigate('BrandsByRayon', { rayon: item })}
+        >
+          <Ionicons name="business" size={20} color="#4CAF50" />
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -922,6 +931,9 @@ const styles = StyleSheet.create({
   },
   infoButton: {
     backgroundColor: '#e3f2fd',
+  },
+  brandsButton: {
+    backgroundColor: '#e8f5e8',
   },
   // Styles pour l'affichage du rayon parent
   parentInfo: {

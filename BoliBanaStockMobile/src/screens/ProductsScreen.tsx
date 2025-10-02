@@ -59,7 +59,6 @@ export default function ProductsScreen({ navigation }: any) {
       data = await productService.getProducts(params);
       setProducts(data.results || data);
     } catch (error: any) {
-      console.error('❌ Erreur chargement produits:', error);
       Alert.alert('Erreur', 'Impossible de charger les produits');
     } finally {
       setLoading(false);

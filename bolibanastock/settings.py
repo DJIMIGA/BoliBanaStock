@@ -317,15 +317,23 @@ elif os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True':
 CORS_PREFLIGHT_MAX_AGE = 86400  # 24 heures
 CORS_ALLOW_CREDENTIALS = True
 
-# Headers supplémentaires pour les uploads
-CORS_ALLOW_HEADERS.extend([
+# Headers CORS de base
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
     'x-requested-with',
     'x-file-name',
     'x-file-size',
     'x-file-type',
     'x-upload-content-type',
     'x-upload-content-length',
-])
+]
 
 # Configuration CORS pour les appareils mobiles
 CORS_ALLOW_METHODS = [
@@ -337,23 +345,6 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-    'content-disposition',  # Ajouté pour les uploads
-    'cache-control',       # Ajouté pour les uploads
-    'content-length',      # Ajouté pour les uploads
-    'x-file-name',         # Ajouté pour les uploads
-    'x-file-size',         # Ajouté pour les uploads
-    'x-file-type',         # Ajouté pour les uploads
-]
 
 CORS_EXPOSE_HEADERS = [
     'content-disposition',

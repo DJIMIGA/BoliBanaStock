@@ -13,7 +13,7 @@ from django.core.wsgi import get_wsgi_application
 
 # Utiliser les paramètres Railway en production
 railway_env = os.getenv('RAILWAY_ENVIRONMENT')
-print(f"🚂 WSGI: RAILWAY_ENVIRONMENT = {railway_env}")
+print(f"WSGI: RAILWAY_ENVIRONMENT = {railway_env}")
 
 # Vérifier si on est sur Railway (plusieurs indicateurs)
 is_railway = (
@@ -24,10 +24,10 @@ is_railway = (
 )
 
 if is_railway:
-    print("🚀 WSGI: Détection Railway - Utilisation de settings_railway.py")
+    print("WSGI: Détection Railway - Utilisation de settings_railway.py")
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bolibanastock.settings_railway')
 else:
-    print(f"🏠 WSGI: Environnement local - Utilisation de settings.py")
+    print(f"WSGI: Environnement local - Utilisation de settings.py")
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bolibanastock.settings')
 
 application = get_wsgi_application()

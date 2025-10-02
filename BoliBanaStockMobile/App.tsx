@@ -10,10 +10,7 @@ import { useSelector } from 'react-redux';
 import { store } from './src/store';
 import { checkAuthStatus, logout } from './src/store/slices/authSlice';
 import { RootState } from './src/store';
-import { AuthWrapper } from './src/components/AuthWrapper';
-// import { GlobalErrorHandler } from './src/components/GlobalErrorHandler'; // Supprimé - doublon avec ErrorBoundary
-import { ErrorBoundary } from './src/components/ErrorBoundary';
-import { GlobalSessionNotification } from './src/components/GlobalSessionNotification';
+import { AuthWrapper, ErrorBoundary, GlobalSessionNotification } from './src/components';
 // import { SessionProvider } from './src/contexts/SessionContext'; // Supprimé - approche Redux simplifiée
 import {
   LoginScreen,
@@ -45,6 +42,7 @@ import {
   BarcodeTestScreen,
   CategoriesScreen,
   BrandsScreen,
+  BrandsByRayonScreen,
   ProductCopyScreen,
   ProductCopyManagementScreen,
 } from './src/screens';
@@ -183,6 +181,7 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="BarcodeTest" component={BarcodeTestScreen} />
           <Stack.Screen name="Categories" component={CategoriesScreen} />
           <Stack.Screen name="Brands" component={BrandsScreen} />
+          <Stack.Screen name="BrandsByRayon" component={BrandsByRayonScreen} />
           <Stack.Screen name="ProductCopy" component={ProductCopyScreen} />
           <Stack.Screen name="ProductCopyManagement" component={ProductCopyManagementScreen} />
         </>

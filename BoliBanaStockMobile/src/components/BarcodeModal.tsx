@@ -5,18 +5,12 @@ import {
   Modal,
   TouchableOpacity,
   TextInput,
-  Switch,
-  ScrollView,
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Dimensions,
-  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { productService } from '../services/api';
-
-const { width, height } = Dimensions.get('window');
 
 interface Barcode {
   id: number;
@@ -40,498 +34,143 @@ const BarcodeModal: React.FC<BarcodeModalProps> = ({
   barcodes,
   onBarcodesUpdate,
 }) => {
-  const [localBarcodes, setLocalBarcodes] = useState<Barcode[]>([]);
   const [loading, setLoading] = useState(false);
-  const [newBarcode, setNewBarcode] = useState({ ean: '', notes: '', is_primary: false });
-  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
-  const [fadeAnim] = useState(new Animated.Value(0));
+  const [newBarcode, setNewBarcode] = useState({ ean: '' });
+  const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
     if (visible) {
-      console.log('🔍 Modal ouvert - barcodes reçus:', barcodes);
-      console.log('🔍 Nombre de barcodes:', barcodes.length);
-      setLocalBarcodes([...barcodes]);
-      setNewBarcode({ ean: '', notes: '', is_primary: false });
-      setValidationErrors({});
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
+      setNewBarcode({ ean: '' });
+      setValidationError('');
     }
-  }, [visible, barcodes, fadeAnim]);
+  }, [visible]);
 
-  // ✅ Validation EAN-13 complète
-  const validateEAN = (ean: string): { isValid: boolean; error?: string } => {
-    // Protection contre les valeurs undefined/null
-    if (!ean || typeof ean !== 'string') {
-      return { isValid: false, error: 'Le code EAN est obligatoire' };
-    }
-    
+  // ✅ Validation EAN-13 simplifiée
+  const validateEAN = (ean: string): boolean => {
     const cleanEan = ean.replace(/\s/g, '');
-    
-    // Vérifier la longueur
-    if (cleanEan.length === 0) {
-      return { isValid: false, error: 'Le code EAN est obligatoire' };
-    }
-    
-    if (cleanEan.length !== 13) {
-      return { isValid: false, error: 'Le code EAN doit contenir exactement 13 chiffres' };
-    }
-    
-    // Vérifier que ce sont bien des chiffres
-    if (!/^\d{13}$/.test(cleanEan)) {
-      return { isValid: false, error: 'Le code EAN ne doit contenir que des chiffres' };
-    }
-    
-    // Algorithme de validation EAN-13
-    let sum = 0;
-    for (let i = 0; i < 12; i++) {
-      const digit = parseInt(cleanEan[i]);
-      sum += digit * (i % 2 === 0 ? 1 : 3);
-    }
-    
-    const checkDigit = (10 - (sum % 10)) % 10;
-    const isValidCheckDigit = checkDigit === parseInt(cleanEan[12]);
-    
-    if (!isValidCheckDigit) {
-      return { isValid: false, error: 'Code EAN invalide (chiffre de contrôle incorrect)' };
-    }
-    
-    return { isValid: true };
+    return /^\d{13}$/.test(cleanEan);
   };
 
-  const validateNewBarcode = () => {
-    // Réinitialiser les erreurs précédentes
-    setValidationErrors({});
-    
-    // Protection contre les valeurs undefined/null
-    if (!newBarcode.ean || typeof newBarcode.ean !== 'string') {
-      return false;
-    }
-    
-    // Si le champ EAN est vide, ne pas valider
+  const addNewBarcode = async () => {
     if (!newBarcode.ean.trim()) {
-      return false;
+      setValidationError('Veuillez saisir un code EAN');
+      return;
     }
     
-    const validation = validateEAN(newBarcode.ean);
-    if (!validation.isValid) {
-      setValidationErrors({ ean: validation.error! });
-      return false;
+    if (!validateEAN(newBarcode.ean)) {
+      setValidationError('Le code EAN doit contenir exactement 13 chiffres');
+      return;
     }
-    
+
     // Vérifier que le code-barres n'existe pas déjà
-    if (localBarcodes.some(b => b.ean === newBarcode.ean.trim())) {
-      setValidationErrors({ ean: 'Ce code EAN existe déjà' });
-      return false;
-    }
-    
-    return true;
-  };
-
-  const addNewBarcode = () => {
-    // Si le champ EAN est vide, afficher un message d'erreur simple
-    if (!newBarcode.ean.trim()) {
-      Alert.alert('⚠️ Attention', 'Veuillez saisir un code EAN');
+    if (barcodes.some(b => b.ean === newBarcode.ean.trim())) {
+      setValidationError('Ce code EAN existe déjà');
       return;
-    }
-    
-    // Valider le code-barres
-    if (!validateNewBarcode()) {
-      return;
-    }
-
-    const newBarcodeItem: Barcode = {
-      id: Date.now(),
-      ean: newBarcode.ean.trim(),
-      is_primary: newBarcode.is_primary,
-      notes: newBarcode.notes.trim() || undefined,
-    };
-
-    // Si c'est le premier code-barres ou si l'utilisateur veut le définir comme principal
-    if (newBarcode.is_primary || localBarcodes.length === 0) {
-      // Retirer le statut principal de tous les codes-barres existants
-      const updatedBarcodes = localBarcodes.map(b => ({ ...b, is_primary: false }));
-      // Ajouter le nouveau code-barres comme principal
-      setLocalBarcodes([...updatedBarcodes, { ...newBarcodeItem, is_primary: true }]);
-    } else {
-      // Ajouter le code-barres comme secondaire
-      setLocalBarcodes([...localBarcodes, newBarcodeItem]);
-    }
-
-    // Réinitialiser le formulaire
-    setNewBarcode({ ean: '', notes: '', is_primary: false });
-    setValidationErrors({});
-    
-    // Feedback visuel
-    const message = localBarcodes.length === 0 
-      ? 'Premier code-barres ajouté avec succès !' 
-      : 'Code-barres ajouté avec succès';
-    Alert.alert('✅ Succès', message);
-  };
-
-  const updateBarcode = (id: number, field: keyof Barcode, value: any) => {
-    setLocalBarcodes(prev => 
-      prev.map(barcode => {
-        if (barcode.id === id) {
-          return { ...barcode, [field]: value };
-        }
-        return barcode;
-      })
-    );
-  };
-
-  const setPrimaryBarcode = async (id: number) => {
-    try {
-      if (id > 0 && id < 1000000) {
-        await productService.setPrimaryBarcode(productId, id);
-      }
-      
-      setLocalBarcodes(prev => 
-        prev.map(barcode => ({
-          ...barcode,
-          is_primary: barcode.id === id
-        }))
-      );
-    } catch (error) {
-      console.error('❌ Erreur définition code principal:', error);
-      Alert.alert('❌ Erreur', 'Impossible de définir ce code-barres comme principal');
-    }
-  };
-
-  const deleteBarcode = async (id: number) => {
-    const barcodeToDelete = localBarcodes.find(b => b.id === id);
-    if (barcodeToDelete?.is_primary) {
-      Alert.alert('⚠️ Attention', 'Impossible de supprimer le code-barres principal. Définissez d\'abord un autre code comme principal.');
-      return;
-    }
-
-    Alert.alert(
-      '🗑️ Confirmer la suppression',
-      `Êtes-vous sûr de vouloir supprimer le code-barres "${barcodeToDelete?.ean}" ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              if (id > 0 && id < 1000000) {
-                await productService.deleteBarcode(productId, id);
-              }
-              setLocalBarcodes(prev => prev.filter(b => b.id !== id));
-            } catch (error) {
-              console.error('❌ Erreur suppression code-barres:', error);
-              Alert.alert('❌ Erreur', 'Impossible de supprimer le code-barres');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const saveBarcodes = async () => {
-    console.log('🔍 Tentative de sauvegarde - localBarcodes:', localBarcodes);
-    console.log('🔍 Nombre de codes-barres:', localBarcodes.length);
-    
-    // Permettre de sauvegarder même s'il n'y a pas encore de codes-barres
-    // (l'utilisateur peut ajouter le premier code-barres)
-    if (localBarcodes.length === 0) {
-      console.log('❌ Aucun code-barres à sauvegarder');
-      Alert.alert('⚠️ Attention', 'Veuillez ajouter au moins un code-barres avant de sauvegarder');
-      return;
-    }
-
-    const primaryCount = localBarcodes.filter(b => b.is_primary).length;
-    if (primaryCount !== 1) {
-      Alert.alert('❌ Erreur', 'Il doit y avoir exactement un code-barres principal');
-      return;
-    }
-
-    // Valider tous les codes-barres avant sauvegarde
-    for (const barcode of localBarcodes) {
-      // Protection contre les codes-barres sans EAN
-      if (!barcode.ean) {
-        Alert.alert('❌ Erreur de validation', `Code-barres sans EAN: ${JSON.stringify(barcode)}`);
-        return;
-      }
-      
-      const validation = validateEAN(barcode.ean);
-      if (!validation.isValid) {
-        Alert.alert('❌ Erreur de validation', `Code-barres "${barcode.ean}": ${validation.error}`);
-        return;
-      }
     }
 
     setLoading(true);
     try {
-      const barcodesToProcess = [...localBarcodes];
-      const processedBarcodes = [];
+      const newBarcodeItem = await productService.addBarcode(productId, {
+        ean: newBarcode.ean.trim(),
+        is_primary: barcodes.length === 0, // Premier code = principal
+        notes: ''
+      });
 
-      for (const barcode of barcodesToProcess) {
-        if (barcode.id > 0 && barcode.id < 1000000) {
-          try {
-            const updatedBarcode = await productService.updateBarcode(productId, barcode.id, {
-              ean: barcode.ean,
-              notes: barcode.notes,
-              is_primary: barcode.is_primary
-            });
-            processedBarcodes.push(updatedBarcode);
-          } catch (error) {
-            console.error('❌ Erreur mise à jour code-barres:', error);
-            Alert.alert('❌ Erreur', `Impossible de mettre à jour le code-barres ${barcode.ean}`);
-            return;
-          }
-        } else {
-          try {
-            const newBarcode = await productService.addBarcode(productId, {
-              ean: barcode.ean,
-              notes: barcode.notes,
-              is_primary: barcode.is_primary
-            });
-            processedBarcodes.push(newBarcode);
-          } catch (error) {
-            console.error('❌ Erreur création code-barres:', error);
-            Alert.alert('❌ Erreur', `Impossible de créer le code-barres ${barcode.ean}`);
-            return;
-          }
-        }
-      }
-
-      onBarcodesUpdate(processedBarcodes);
+      onBarcodesUpdate([...barcodes, newBarcodeItem]);
+      setNewBarcode({ ean: '' });
+      setValidationError('');
       onClose();
-      Alert.alert('✅ Succès', 'Codes-barres sauvegardés avec succès');
+      Alert.alert('✅ Succès', 'Code-barres ajouté avec succès');
     } catch (error) {
-      console.error('❌ Erreur générale sauvegarde:', error);
-      Alert.alert('❌ Erreur', 'Erreur lors de la sauvegarde des codes-barres');
+      console.error('❌ Erreur ajout code-barres:', error);
+      Alert.alert('❌ Erreur', 'Impossible d\'ajouter le code-barres');
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setLocalBarcodes([...barcodes]);
-    setNewBarcode({ ean: '', notes: '', is_primary: false });
-    setValidationErrors({});
-  };
 
   if (!visible) return null;
 
   return (
     <Modal
       visible={visible}
-      animationType="none"
+      animationType="slide"
       transparent={true}
       onRequestClose={onClose}
     >
-      <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
+      <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          {/* Header moderne */}
+          {/* Header simple */}
           <View style={styles.modalHeader}>
-            <View style={styles.headerContent}>
-              <Ionicons name="barcode-outline" size={24} color="#007AFF" />
-              <Text style={styles.modalTitle}>Gestion des codes-barres</Text>
-            </View>
+            <Ionicons name="barcode-outline" size={24} color="#007AFF" />
+            <Text style={styles.modalTitle}>Ajouter un code-barres</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close-circle" size={28} color="#666" />
+              <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
 
-          {/* Contenu principal */}
-          <ScrollView 
-            style={styles.modalBody} 
-            showsVerticalScrollIndicator={true}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {/* Codes-barres existants */}
-            {localBarcodes.length > 0 && (
-              <View style={styles.section}>
-                                       <View style={styles.sectionHeader}>
-                         <Ionicons name="list-outline" size={20} color="#007AFF" />
-                         <Text style={styles.sectionTitle}>Codes-barres existants</Text>
-                         <View style={styles.badge}>
-                           <Text style={styles.badgeText}>{localBarcodes.length}</Text>
-                         </View>
-                         {localBarcodes.length > 0 && (
-                           <Text style={styles.sectionSubtitle}>
-                             {localBarcodes.length === 1 ? '1 code-barres' : `${localBarcodes.length} codes-barres`}
-                           </Text>
-                         )}
-                       </View>
-                
-                {localBarcodes.map((barcode) => (
-                  <View key={barcode.id} style={[
-                    styles.barcodeCard,
-                    barcode.is_primary && styles.primaryBarcodeCard
-                  ]}>
+          {/* Contenu simplifié */}
+          <View style={styles.modalBody}>
+            {/* Affichage des codes existants */}
+            {barcodes.length > 0 && (
+              <View style={styles.existingBarcodes}>
+                <Text style={styles.sectionTitle}>Codes-barres existants</Text>
+                {barcodes.map((barcode, index) => (
+                  <View key={barcode.id || index} style={styles.barcodeItem}>
+                    <Text style={styles.barcodeEan}>{barcode.ean}</Text>
                     {barcode.is_primary && (
-                      <View style={styles.primaryBadge}>
-                        <Ionicons name="star" size={12} color="#FFD700" />
-                        <Text style={styles.primaryBadgeText}>Principal</Text>
-                      </View>
+                      <Text style={styles.primaryBadge}>Principal</Text>
                     )}
-                    
-                    <View style={styles.inputContainer}>
-                      <Text style={styles.inputLabel}>Code EAN</Text>
-                      <TextInput
-                        style={[styles.textInput, barcode.is_primary && styles.primaryInput]}
-                        value={barcode.ean}
-                        placeholder="Code EAN"
-                        onChangeText={(text) => updateBarcode(barcode.id, 'ean', text)}
-                        keyboardType="numeric"
-                        maxLength={13}
-                      />
-                    </View>
-                    
-                    <View style={styles.inputContainer}>
-                      <Text style={styles.inputLabel}>Notes</Text>
-                      <TextInput
-                        style={styles.textArea}
-                        value={barcode.notes || ''}
-                        placeholder="Notes (optionnel)"
-                        onChangeText={(text) => updateBarcode(barcode.id, 'notes', text)}
-                        multiline
-                        numberOfLines={2}
-                      />
-                    </View>
-                    
-                    <View style={styles.cardActions}>
-                      <View style={styles.primarySwitch}>
-                        <Text style={styles.switchLabel}>Code principal</Text>
-                        <Switch
-                          value={barcode.is_primary}
-                          onValueChange={() => setPrimaryBarcode(barcode.id)}
-                          trackColor={{ false: '#E0E0E0', true: '#007AFF' }}
-                          thumbColor={barcode.is_primary ? '#FFFFFF' : '#FFFFFF'}
-                        />
-                      </View>
-                      
-                      <TouchableOpacity 
-                        onPress={() => deleteBarcode(barcode.id)}
-                        style={styles.deleteButton}
-                        disabled={barcode.is_primary}
-                      >
-                        <Ionicons 
-                          name="trash-outline" 
-                          size={18} 
-                          color={barcode.is_primary ? '#CCC' : '#FF4444'} 
-                        />
-                      </TouchableOpacity>
-                    </View>
                   </View>
                 ))}
               </View>
             )}
 
-            {/* Formulaire d'ajout moderne */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="add-circle-outline" size={20} color="#28A745" />
-                <Text style={styles.sectionTitle}>
-                  {localBarcodes.length > 0 ? 'Ajouter un code-barres' : 'Premier code-barres'}
-                </Text>
-              </View>
-              
-              <View style={styles.addForm}>
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Code EAN *</Text>
-                  <TextInput
-                    style={[
-                      styles.textInput,
-                      validationErrors.ean && styles.inputError
-                    ]}
-                    value={newBarcode.ean}
-                    placeholder="Ex: 3017620422003"
-                    onChangeText={(text) => {
-                      setNewBarcode(prev => ({ ...prev, ean: text }));
-                      // Effacer l'erreur dès que l'utilisateur commence à taper
-                      if (validationErrors.ean) {
-                        setValidationErrors(prev => ({ ...prev, ean: '' }));
-                      }
-                    }}
-                    onFocus={() => {
-                      // Effacer les erreurs quand le champ reçoit le focus
-                      if (validationErrors.ean) {
-                        setValidationErrors(prev => ({ ...prev, ean: '' }));
-                      }
-                    }}
-                    keyboardType="numeric"
-                    maxLength={13}
-                    autoFocus={localBarcodes.length === 0}
-                  />
-                  {validationErrors.ean && (
-                    <Text style={styles.errorText}>{validationErrors.ean}</Text>
-                  )}
-                </View>
-                
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Notes (optionnel)</Text>
-                  <TextInput
-                    style={styles.textArea}
-                    value={newBarcode.notes}
-                    placeholder="Notes sur ce code-barres..."
-                    onChangeText={(text) => setNewBarcode(prev => ({ ...prev, notes: text }))}
-                    multiline
-                    numberOfLines={2}
-                  />
-                </View>
-                
-                <View style={styles.primarySwitch}>
-                  <Text style={styles.switchLabel}>Code principal</Text>
-                  <Switch
-                    value={newBarcode.is_primary}
-                    onValueChange={(value) => setNewBarcode(prev => ({ ...prev, is_primary: value }))}
-                    trackColor={{ false: '#E0E0E0', true: '#007AFF' }}
-                    thumbColor={newBarcode.is_primary ? '#FFFFFF' : '#FFFFFF'}
-                  />
-                </View>
-                
-                <TouchableOpacity 
-                  onPress={addNewBarcode}
-                  style={[
-                    styles.addButton, 
-                    (!newBarcode.ean.trim() || Object.keys(validationErrors).length > 0) && styles.addButtonDisabled
-                  ]}
-                  disabled={!newBarcode.ean.trim() || Object.keys(validationErrors).length > 0}
-                >
-                  <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
-                  <Text style={styles.addButtonText}>Ajouter le code-barres</Text>
-                </TouchableOpacity>
-              </View>
+            {/* Formulaire d'ajout simple */}
+            <View style={styles.addForm}>
+              <Text style={styles.inputLabel}>Code EAN (13 chiffres)</Text>
+              <TextInput
+                style={[styles.textInput, validationError && styles.inputError]}
+                value={newBarcode.ean}
+                placeholder="Ex: 3017620422003"
+                onChangeText={(text) => {
+                  setNewBarcode({ ean: text });
+                  if (validationError) setValidationError('');
+                }}
+                keyboardType="numeric"
+                maxLength={13}
+                autoFocus
+              />
+              {validationError && (
+                <Text style={styles.errorText}>{validationError}</Text>
+              )}
             </View>
-          </ScrollView>
+          </View>
 
-          {/* Footer avec boutons d'action */}
+          {/* Footer simple */}
           <View style={styles.modalFooter}>
-            <TouchableOpacity onPress={resetForm} style={styles.cancelButton}>
-              <Ionicons name="refresh-outline" size={18} color="#666" />
-              <Text style={styles.resetButtonText}>Réinitialiser</Text>
+            <TouchableOpacity onPress={onClose} style={styles.cancelButton}>
+              <Text style={styles.cancelButtonText}>Annuler</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
-              onPress={saveBarcodes}
-              style={[styles.saveButton, loading && styles.saveButtonDisabled]}
-              disabled={loading}
+              onPress={addNewBarcode}
+              style={[styles.addButton, loading && styles.addButtonDisabled]}
+              disabled={loading || !newBarcode.ean.trim()}
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <>
-                  <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.saveButtonText}>Enregistrer</Text>
+                  <Ionicons name="add" size={20} color="#FFFFFF" />
+                  <Text style={styles.addButtonText}>Ajouter</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
         </View>
-      </Animated.View>
+      </View>
     </Modal>
   );
 };

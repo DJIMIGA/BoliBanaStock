@@ -22,6 +22,8 @@ import { useImageManager } from '../hooks';
 import theme from '../utils/theme';
 import BarcodeModal from '../components/BarcodeModal';
 import HierarchicalCategorySelector from '../components/HierarchicalCategorySelector';
+import AddBrandModal from '../components/AddBrandModal';
+import BrandFilterField from '../components/BrandFilterField';
 
 interface Category {
   id: number;
@@ -67,11 +69,8 @@ export default function AddProductScreen({ navigation, route }: any) {
   
   // États pour les modals de création rapide
   const [hierarchicalCategoryModalVisible, setHierarchicalCategoryModalVisible] = useState(false);
-  const [brandModalVisible, setBrandModalVisible] = useState(false);
+  const [addBrandModalVisible, setAddBrandModalVisible] = useState(false);
   const [barcodeModalVisible, setBarcodeModalVisible] = useState(false);
-  const [newBrandName, setNewBrandName] = useState('');
-  const [newBrandDescription, setNewBrandDescription] = useState('');
-  const [creatingBrand, setCreatingBrand] = useState(false);
   const [selectedCategoryName, setSelectedCategoryName] = useState('');
   const [form, setForm] = useState<ProductForm>({
     name: '',
@@ -186,32 +185,12 @@ export default function AddProductScreen({ navigation, route }: any) {
 
 
 
-  // Fonction pour créer rapidement une marque
-  const createBrandQuick = async () => {
-    if (!newBrandName.trim()) {
-      Alert.alert('Erreur', 'Le nom de la marque est requis');
-      return;
-    }
-
-    try {
-      setCreatingBrand(true);
-      const newBrand = await brandService.createBrand({
-        name: newBrandName.trim(),
-        description: newBrandDescription.trim(),
-      });
-      
-      setBrands(prev => [...prev, newBrand]);
-      setForm(prev => ({ ...prev, brand_id: String(newBrand.id) }));
-      setBrandModalVisible(false);
-      setNewBrandName('');
-      setNewBrandDescription('');
-      Alert.alert('Succès', 'Marque créée et sélectionnée !');
-    } catch (error) {
-      console.error('❌ Erreur création marque:', error);
-      Alert.alert('Erreur', 'Impossible de créer la marque');
-    } finally {
-      setCreatingBrand(false);
-    }
+  // Fonction pour gérer l'ajout d'une nouvelle marque
+  const handleBrandAdded = (newBrand: Brand) => {
+    setBrands(prev => [...prev, newBrand]);
+    setForm(prev => ({ ...prev, brand_id: String(newBrand.id) }));
+    setAddBrandModalVisible(false);
+    Alert.alert('Succès', 'Marque créée et sélectionnée !');
   };
 
     // Fonction pour générer un CUG aléatoire à 5 chiffres
@@ -480,48 +459,6 @@ export default function AddProductScreen({ navigation, route }: any) {
     </View>
   ), []);
 
-  const PickerField = ({ 
-    label, 
-    value, 
-    onValueChange, 
-    items, 
-    placeholder,
-    required = false,
-    showAddButton = false,
-    onAddPress = () => {}
-  }: any) => (
-    <View style={styles.fieldContainer}>
-      <View style={styles.fieldHeader}>
-        <Text style={styles.fieldLabel}>
-          {label} {required && <Text style={styles.required}>*</Text>}
-        </Text>
-        {showAddButton && (
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={onAddPress}
-          >
-            <Ionicons name="add-circle" size={20} color={theme.colors.primary[500]} />
-          </TouchableOpacity>
-        )}
-      </View>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={value}
-          onValueChange={onValueChange}
-          style={styles.picker}
-        >
-          <Picker.Item label={placeholder} value="" />
-          {items && Array.isArray(items) ? items.map((item: any) => (
-            <Picker.Item 
-              key={item.id} 
-              label={item.name} 
-              value={item.id.toString()} 
-            />
-          )) : null}
-        </Picker>
-      </View>
-    </View>
-  );
 
   if (loadingData) {
     return (
@@ -667,19 +604,18 @@ export default function AddProductScreen({ navigation, route }: any) {
                 ]}>
                   {selectedCategoryName || 'Sélectionner une catégorie'}
                 </Text>
-                <Ionicons name="chevron-down" size={20} color={theme.colors.primary} />
+                <Ionicons name="chevron-down" size={20} color={theme.colors.primary[500]} />
               </TouchableOpacity>
               
             </View>
 
-            <PickerField
+            <BrandFilterField
               label="Marque"
               value={form.brand_id}
               onValueChange={(value: string) => updateForm('brand_id', value)}
-              items={brands}
               placeholder="Sélectionner une marque"
               showAddButton={true}
-              onAddPress={() => setBrandModalVisible(true)}
+              onAddPress={() => setAddBrandModalVisible(true)}
             />
 
             <Text style={styles.sectionTitle}>Prix et stock</Text>
@@ -773,68 +709,12 @@ export default function AddProductScreen({ navigation, route }: any) {
       </KeyboardAvoidingView>
 
 
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={brandModalVisible}
-        onRequestClose={() => setBrandModalVisible(false)}
-      >
-        <View style={styles.quickModalOverlay}>
-          <View style={styles.quickModalContent}>
-            <View style={styles.quickModalHeader}>
-              <Text style={styles.quickModalTitle}>Nouvelle Marque</Text>
-              <TouchableOpacity onPress={() => setBrandModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.quickModalBody}>
-              <View style={styles.quickInputContainer}>
-                <Text style={styles.quickInputLabel}>Nom de la marque *</Text>
-                <TextInput
-                  style={styles.quickTextInput}
-                  value={newBrandName}
-                  onChangeText={setNewBrandName}
-                  placeholder="Ex: Apple, Samsung, Nike..."
-                  autoFocus
-                />
-              </View>
-
-              <View style={styles.quickInputContainer}>
-                <Text style={styles.quickInputLabel}>Description (optionnel)</Text>
-                <TextInput
-                  style={[styles.quickTextInput, styles.quickTextArea]}
-                  value={newBrandDescription}
-                  onChangeText={setNewBrandDescription}
-                  placeholder="Description de la marque..."
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-            </View>
-
-            <View style={styles.quickModalFooter}>
-              <TouchableOpacity 
-                style={styles.quickCancelButton} 
-                onPress={() => setBrandModalVisible(false)}
-              >
-                <Text style={styles.quickCancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.quickSaveButton} 
-                onPress={createBrandQuick}
-                disabled={creatingBrand}
-              >
-                {creatingBrand ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.quickSaveButtonText}>Créer</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Modal de création de marque avec rayons */}
+      <AddBrandModal
+        visible={addBrandModalVisible}
+        onClose={() => setAddBrandModalVisible(false)}
+        onBrandAdded={handleBrandAdded}
+      />
 
       {/* ✅ Modal de gestion des codes-barres */}
       <BarcodeModal
@@ -1062,90 +942,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   
-  quickModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  quickModalContent: {
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: 16,
-    width: '90%',
-    maxWidth: 400,
-    maxHeight: '80%',
-  },
-  quickModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.neutral[200],
-  },
-  quickModalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
-  },
-  quickModalBody: {
-    padding: 20,
-  },
-  quickInputContainer: {
-    marginBottom: 20,
-  },
-  quickInputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: theme.colors.text.primary,
-    marginBottom: 8,
-  },
-  quickTextInput: {
-    borderWidth: 1,
-    borderColor: theme.colors.neutral[200],
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: theme.colors.background.secondary,
-    color: theme.colors.text.primary,
-  },
-  quickTextArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  quickModalFooter: {
-    flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.neutral[200],
-  },
-  quickCancelButton: {
-    flex: 1,
-    padding: 12,
-    marginRight: 8,
-    borderRadius: 8,
-    backgroundColor: theme.colors.neutral[200],
-    alignItems: 'center',
-  },
-  quickCancelButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: theme.colors.text.primary,
-  },
-  quickSaveButton: {
-    flex: 1,
-    padding: 12,
-    marginLeft: 8,
-    borderRadius: 8,
-    backgroundColor: theme.colors.primary[500],
-    alignItems: 'center',
-  },
-  quickSaveButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: theme.colors.text.inverse,
-  },
-  
   // ✅ Styles pour les codes-barres
   addButtonText: {
     fontSize: 14,
@@ -1190,12 +986,6 @@ const styles = StyleSheet.create({
   // Styles pour la sélection hiérarchisée
   categorySection: {
     marginBottom: 20,
-  },
-  fieldLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
-    marginBottom: 8,
   },
   categorySelector: {
     flexDirection: 'row',

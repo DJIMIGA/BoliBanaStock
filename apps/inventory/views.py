@@ -418,6 +418,52 @@ class BrandDeleteView(SiteFilterMixin, DeleteView):
             storage.delete(brand.logo.name)
         return super().delete(request, *args, **kwargs)
 
+class BrandRayonsView(SiteFilterMixin, UpdateView):
+    """Vue spécialisée pour gérer les rayons associés à une marque"""
+    model = Brand
+    form_class = BrandForm
+    template_name = 'inventory/brand_rayons.html'
+    success_url = reverse_lazy('inventory:brand_list')
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        brand = self.get_object()
+        
+        # Récupérer les rayons associés
+        context['associated_rayons'] = brand.rayons.all()
+        
+        # Récupérer les rayons disponibles (non associés)
+        if self.request.user.is_superuser:
+            available_rayons = Category.objects.filter(
+                is_active=True,
+                is_rayon=True,
+                level=0
+            ).exclude(id__in=brand.rayons.values_list('id', flat=True))
+        else:
+            available_rayons = Category.objects.filter(
+                is_active=True,
+                is_global=True,
+                is_rayon=True,
+                level=0
+            ).exclude(id__in=brand.rayons.values_list('id', flat=True))
+        
+        context['available_rayons'] = available_rayons.order_by('rayon_type', 'order', 'name')
+        
+        return context
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        messages.success(
+            self.request, 
+            f'Les rayons de la marque "{self.object.name}" ont été mis à jour avec succès.'
+        )
+        return response
+
 @login_required
 @require_POST
 def generate_cug(request):
@@ -1251,6 +1297,14 @@ class ProductCopyView(LoginRequiredMixin, View):
                 Q(description__icontains=search_query)
             )
         
+        # Filtrage par catégorie
+        category_id = request.GET.get('category')
+        if category_id:
+            try:
+                available_products = available_products.filter(category_id=category_id)
+            except ValueError:
+                pass  # Ignorer les IDs de catégorie invalides
+        
         # Pagination
         paginator = Paginator(available_products, 20)
         page_number = request.GET.get('page')
@@ -1359,6 +1413,17 @@ class ProductCopyManagementView(LoginRequiredMixin, View):
                 Q(copied_product__name__icontains=search_query) |
                 Q(original_product__cug__icontains=search_query)
             )
+        
+        # Filtrage par catégorie
+        category_id = request.GET.get('category')
+        if category_id:
+            try:
+                product_copies = product_copies.filter(
+                    Q(original_product__category_id=category_id) |
+                    Q(copied_product__category_id=category_id)
+                )
+            except ValueError:
+                pass  # Ignorer les IDs de catégorie invalides
         
         # Pagination
         paginator = Paginator(product_copies, 20)

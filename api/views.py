@@ -1033,12 +1033,43 @@ class BrandViewSet(viewsets.ModelViewSet):
         
         if self.request.user.is_superuser:
             # Superuser voit tout
-            return Brand.objects.all()
+            return Brand.objects.prefetch_related('rayons')
         else:
             # Utilisateur normal voit seulement son site
             if not user_site:
                 return Brand.objects.none()
-            return Brand.objects.filter(site_configuration=user_site)
+            return Brand.objects.filter(site_configuration=user_site).prefetch_related('rayons')
+    
+    @action(detail=False, methods=['get'])
+    def by_rayon(self, request):
+        """Récupère les marques d'un rayon spécifique"""
+        rayon_id = request.query_params.get('rayon_id')
+        if not rayon_id:
+            return Response(
+                {'error': 'rayon_id est requis'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            rayon = Category.objects.get(id=rayon_id, is_rayon=True)
+            brands = self.get_queryset().filter(rayons=rayon)
+            
+            serializer = self.get_serializer(brands, many=True)
+            return Response({
+                'rayon': {
+                    'id': rayon.id,
+                    'name': rayon.name,
+                    'rayon_type': rayon.get_rayon_type_display()
+                },
+                'brands': serializer.data,
+                'count': brands.count()
+            })
+            
+        except Category.DoesNotExist:
+            return Response(
+                {'error': 'Rayon introuvable'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
@@ -2618,5 +2649,401 @@ class GetSubcategoriesMobileView(APIView):
             
         except Category.DoesNotExist:
             return Response({'error': 'Rayon non trouvé'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+
+class BrandsByRayonAPIView(APIView):
+    """
+    Vue API pour récupérer les marques d'un rayon spécifique
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        rayon_id = request.query_params.get('rayon_id')
+        if not rayon_id:
+            return Response(
+                {'error': 'rayon_id est requis'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            rayon = Category.objects.get(id=rayon_id, is_rayon=True)
+            
+            # Récupérer les marques du rayon
+            user_site = request.user.site_configuration
+            if request.user.is_superuser:
+                brands = Brand.objects.filter(rayons=rayon).prefetch_related('rayons')
+            else:
+                if not user_site:
+                    return Response(
+                        {'error': 'Aucun site configuré pour cet utilisateur'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                brands = Brand.objects.filter(
+                    site_configuration=user_site,
+                    rayons=rayon
+                ).prefetch_related('rayons')
+            
+            serializer = BrandSerializer(brands, many=True)
+            return Response({
+                'rayon': {
+                    'id': rayon.id,
+                    'name': rayon.name,
+                    'rayon_type': rayon.get_rayon_type_display()
+                },
+                'brands': serializer.data,
+                'count': brands.count()
+            })
+            
+        except Category.DoesNotExist:
+            return Response(
+                {'error': 'Rayon introuvable'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ProductCopyAPIView(APIView):
+    """
+    Vue API pour la copie de produits du site principal vers le site actuel
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Récupère les produits disponibles pour la copie"""
+        try:
+            # Récupérer la configuration du site actuel
+            current_site = request.user.site_configuration
+            
+            if not current_site:
+                return Response({'error': 'Aucune configuration de site trouvée'}, status=400)
+            
+            # Récupérer les produits du site principal (première configuration)
+            main_site = Configuration.objects.first()
+            
+            if not main_site or main_site == current_site:
+                return Response({'error': 'Aucun site principal disponible pour la copie'}, status=400)
+            
+            # Récupérer les produits du site principal
+            main_products = Product.objects.filter(
+                site_configuration=main_site,
+                is_active=True
+            ).select_related('category', 'brand')
+            
+            # Filtrer les produits déjà copiés
+            from apps.inventory.models import ProductCopy
+            copied_products = ProductCopy.objects.filter(
+                destination_site=current_site
+            ).values_list('original_product_id', flat=True)
+            
+            available_products = main_products.exclude(id__in=copied_products)
+            
+            # Recherche
+            search_query = request.GET.get('search', '').strip()
+            if search_query:
+                available_products = available_products.filter(
+                    Q(name__icontains=search_query) |
+                    Q(cug__icontains=search_query) |
+                    Q(description__icontains=search_query)
+                )
+            
+            # Filtrage par catégorie
+            category_id = request.GET.get('category')
+            if category_id:
+                try:
+                    available_products = available_products.filter(category_id=category_id)
+                except ValueError:
+                    pass  # Ignorer les IDs de catégorie invalides
+            
+            # Pagination
+            from django.core.paginator import Paginator
+            paginator = Paginator(available_products, 20)
+            page_number = request.GET.get('page', 1)
+            page_obj = paginator.get_page(page_number)
+            
+            # Sérialiser les produits
+            products_data = []
+            for product in page_obj:
+                products_data.append({
+                    'id': product.id,
+                    'name': product.name,
+                    'cug': product.cug,
+                    'description': product.description or '',
+                    'selling_price': float(product.selling_price),
+                    'purchase_price': float(product.purchase_price),
+                    'quantity': product.quantity,
+                    'alert_threshold': product.alert_threshold,
+                    'category': {
+                        'id': product.category.id,
+                        'name': product.category.name
+                    } if product.category else None,
+                    'brand': {
+                        'id': product.brand.id,
+                        'name': product.brand.name
+                    } if product.brand else None,
+                    'image_url': product.image_url,
+                    'is_active': product.is_active,
+                    'created_at': product.created_at.isoformat(),
+                    'updated_at': product.updated_at.isoformat()
+                })
+            
+            return Response({
+                'success': True,
+                'results': products_data,
+                'count': paginator.count,
+                'next': page_obj.next_page_number() if page_obj.has_next() else None,
+                'previous': page_obj.previous_page_number() if page_obj.has_previous() else None,
+                'page': page_obj.number,
+                'total_pages': paginator.num_pages
+            })
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+    
+    def post(self, request):
+        """Copie des produits sélectionnés"""
+        try:
+            product_ids = request.data.get('products', [])
+            
+            if not product_ids:
+                return Response({'error': 'Aucun produit sélectionné pour la copie'}, status=400)
+            
+            current_site = request.user.site_configuration
+            main_site = Configuration.objects.first()
+            
+            if not current_site or not main_site:
+                return Response({'error': 'Configuration de site invalide'}, status=400)
+            
+            from apps.inventory.models import ProductCopy
+            copied_count = 0
+            errors = []
+            
+            for product_id in product_ids:
+                try:
+                    # Récupérer le produit original
+                    original_product = Product.objects.get(
+                        id=product_id,
+                        site_configuration=main_site
+                    )
+                    
+                    # Vérifier si déjà copié
+                    if ProductCopy.objects.filter(
+                        original_product=original_product,
+                        destination_site=current_site
+                    ).exists():
+                        continue
+                    
+                    # Créer une copie du produit
+                    copied_product = Product.objects.create(
+                        name=original_product.name,
+                        cug=original_product.cug,
+                        description=original_product.description,
+                        selling_price=original_product.selling_price,
+                        purchase_price=original_product.purchase_price,
+                        quantity=0,  # Commencer avec 0 en stock
+                        alert_threshold=original_product.alert_threshold,
+                        category=original_product.category,
+                        brand=original_product.brand,
+                        image_url=original_product.image_url,
+                        site_configuration=current_site,
+                        is_active=True
+                    )
+                    
+                    # Créer l'enregistrement de copie
+                    ProductCopy.objects.create(
+                        original_product=original_product,
+                        copied_product=copied_product,
+                        source_site=main_site,
+                        destination_site=current_site,
+                        copied_by=request.user
+                    )
+                    
+                    copied_count += 1
+                    
+                except Product.DoesNotExist:
+                    errors.append(f'Produit ID {product_id} non trouvé')
+                except Exception as e:
+                    errors.append(f'Erreur lors de la copie du produit ID {product_id}: {str(e)}')
+            
+            return Response({
+                'success': True,
+                'copied_count': copied_count,
+                'errors': errors,
+                'message': f'{copied_count} produit(s) copié(s) avec succès'
+            })
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+
+class ProductCopyManagementAPIView(APIView):
+    """
+    Vue API pour gérer les produits copiés (synchronisation, désactivation, etc.)
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Récupère la liste des produits copiés"""
+        try:
+            current_site = request.user.site_configuration
+            
+            if not current_site:
+                return Response({'error': 'Aucune configuration de site trouvée'}, status=400)
+            
+            from apps.inventory.models import ProductCopy
+            product_copies = ProductCopy.objects.filter(
+                destination_site=current_site
+            ).select_related(
+                'original_product', 
+                'copied_product', 
+                'source_site'
+            ).order_by('-copied_at')
+            
+            # Recherche
+            search_query = request.GET.get('search', '').strip()
+            if search_query:
+                product_copies = product_copies.filter(
+                    Q(original_product__name__icontains=search_query) |
+                    Q(copied_product__name__icontains=search_query) |
+                    Q(original_product__cug__icontains=search_query)
+                )
+            
+            # Filtrage par catégorie
+            category_id = request.GET.get('category')
+            if category_id:
+                try:
+                    product_copies = product_copies.filter(
+                        Q(original_product__category_id=category_id) |
+                        Q(copied_product__category_id=category_id)
+                    )
+                except ValueError:
+                    pass  # Ignorer les IDs de catégorie invalides
+            
+            # Pagination
+            from django.core.paginator import Paginator
+            paginator = Paginator(product_copies, 20)
+            page_number = request.GET.get('page', 1)
+            page_obj = paginator.get_page(page_number)
+            
+            # Sérialiser les copies
+            copies_data = []
+            for copy in page_obj:
+                copies_data.append({
+                    'id': copy.id,
+                    'original_product': {
+                        'id': copy.original_product.id,
+                        'name': copy.original_product.name,
+                        'cug': copy.original_product.cug,
+                        'selling_price': float(copy.original_product.selling_price),
+                        'quantity': copy.original_product.quantity,
+                        'image_url': copy.original_product.image_url,
+                        'category': {
+                            'id': copy.original_product.category.id,
+                            'name': copy.original_product.category.name
+                        } if copy.original_product.category else None,
+                        'brand': {
+                            'id': copy.original_product.brand.id,
+                            'name': copy.original_product.brand.name
+                        } if copy.original_product.brand else None,
+                    },
+                    'copied_product': {
+                        'id': copy.copied_product.id,
+                        'name': copy.copied_product.name,
+                        'cug': copy.copied_product.cug,
+                        'selling_price': float(copy.copied_product.selling_price),
+                        'quantity': copy.copied_product.quantity,
+                        'is_active': copy.copied_product.is_active,
+                        'image_url': copy.copied_product.image_url,
+                    },
+                    'source_site': {
+                        'id': copy.source_site.id,
+                        'name': copy.source_site.site_name
+                    },
+                    'copied_at': copy.copied_at.isoformat(),
+                    'copied_by': {
+                        'id': copy.copied_by.id,
+                        'username': copy.copied_by.username
+                    }
+                })
+            
+            return Response({
+                'success': True,
+                'results': copies_data,
+                'count': paginator.count,
+                'next': page_obj.next_page_number() if page_obj.has_next() else None,
+                'previous': page_obj.previous_page_number() if page_obj.has_previous() else None,
+                'page': page_obj.number,
+                'total_pages': paginator.num_pages
+            })
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+    
+    def post(self, request):
+        """Actions sur les produits copiés (sync, toggle_active, delete)"""
+        try:
+            action = request.data.get('action')
+            copy_id = request.data.get('copy_id')
+            
+            if not action or not copy_id:
+                return Response({'error': 'Action et copy_id requis'}, status=400)
+            
+            from apps.inventory.models import ProductCopy
+            try:
+                copy = ProductCopy.objects.get(id=copy_id, destination_site=request.user.site_configuration)
+            except ProductCopy.DoesNotExist:
+                return Response({'error': 'Copie non trouvée'}, status=404)
+            
+            if action == 'sync':
+                # Synchroniser le produit copié avec l'original
+                original = copy.original_product
+                copied = copy.copied_product
+                
+                # Mettre à jour les données
+                copied.name = original.name
+                copied.description = original.description
+                copied.selling_price = original.selling_price
+                copied.purchase_price = original.purchase_price
+                copied.alert_threshold = original.alert_threshold
+                copied.image_url = original.image_url
+                copied.save()
+                
+                return Response({
+                    'success': True,
+                    'message': 'Produit synchronisé avec succès'
+                })
+                
+            elif action == 'toggle_active':
+                # Activer/désactiver le produit copié
+                copied = copy.copied_product
+                copied.is_active = not copied.is_active
+                copied.save()
+                
+                return Response({
+                    'success': True,
+                    'message': f'Produit {"activé" if copied.is_active else "désactivé"} avec succès',
+                    'is_active': copied.is_active
+                })
+                
+            elif action == 'delete_copy':
+                # Supprimer la copie
+                copied_product_id = copy.copied_product.id
+                copy.copied_product.delete()
+                copy.delete()
+                
+                return Response({
+                    'success': True,
+                    'message': 'Copie supprimée avec succès',
+                    'deleted_product_id': copied_product_id
+                })
+            
+            else:
+                return Response({'error': 'Action non reconnue'}, status=400)
+                
         except Exception as e:
             return Response({'error': str(e)}, status=500)

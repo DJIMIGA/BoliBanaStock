@@ -10,13 +10,14 @@ import {
   RefreshControl,
   TextInput,
   Image,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types';
-import { productCopyService } from '../services/api';
-import { ProductCopy } from '../types';
+import { productCopyService, categoryService } from '../services/api';
+import { ProductCopy, Category } from '../types';
 import theme from '../utils/theme';
 
 type ProductCopyManagementScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProductCopyManagement'>;
@@ -33,11 +34,14 @@ const ProductCopyManagementScreen: React.FC<ProductCopyManagementScreenProps> = 
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [syncing, setSyncing] = useState<number | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
 
-  const loadCopiedProducts = useCallback(async (pageNum: number = 1, search: string = '') => {
+  const loadCopiedProducts = useCallback(async (pageNum: number = 1, search: string = '', categoryId?: number) => {
     try {
       setLoading(true);
-      const response = await productCopyService.getCopiedProducts(search, pageNum);
+      const response = await productCopyService.getCopiedProducts(search, pageNum, categoryId);
       
       if (pageNum === 1) {
         setCopiedProducts(response.results || []);
@@ -55,20 +59,40 @@ const ProductCopyManagementScreen: React.FC<ProductCopyManagementScreenProps> = 
     }
   }, []);
 
+  const loadCategories = useCallback(async () => {
+    try {
+      const response = await categoryService.getCategories();
+      setCategories(response.results || response);
+    } catch (error) {
+      console.error('Erreur lors du chargement des catégories:', error);
+    }
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadCopiedProducts(1, searchQuery);
+    await loadCopiedProducts(1, searchQuery, selectedCategory?.id);
     setRefreshing(false);
-  }, [searchQuery]);
+  }, [searchQuery, selectedCategory]);
 
   useEffect(() => {
     loadCopiedProducts();
+    loadCategories();
   }, []);
+
+  useEffect(() => {
+    loadCopiedProducts(1, searchQuery, selectedCategory?.id);
+  }, [selectedCategory]);
 
   const handleSearch = useCallback((text: string) => {
     setSearchQuery(text);
     setPage(1);
-    loadCopiedProducts(1, text);
+    loadCopiedProducts(1, text, selectedCategory?.id);
+  }, [selectedCategory]);
+
+  const handleCategorySelect = useCallback((category: Category | null) => {
+    setSelectedCategory(category);
+    setPage(1);
+    setCategoryModalVisible(false);
   }, []);
 
   const handleSync = async (copyId: number) => {
@@ -140,7 +164,7 @@ const ProductCopyManagementScreen: React.FC<ProductCopyManagementScreenProps> = 
 
   const loadMoreProducts = () => {
     if (hasMore && !loading) {
-      loadCopiedProducts(page + 1, searchQuery);
+      loadCopiedProducts(page + 1, searchQuery, selectedCategory?.id);
     }
   };
 
@@ -374,6 +398,37 @@ const ProductCopyManagementScreen: React.FC<ProductCopyManagementScreenProps> = 
             </TouchableOpacity>
           )}
         </View>
+        
+        {/* Category Filter */}
+        <View style={styles.filterContainer}>
+          <TouchableOpacity
+            style={[styles.filterButton, selectedCategory && styles.filterButtonActive]}
+            onPress={() => setCategoryModalVisible(true)}
+          >
+            <Ionicons 
+              name="pricetag-outline" 
+              size={16} 
+              color={selectedCategory ? 'white' : theme.colors.primary} 
+            />
+            <Text style={[styles.filterButtonText, selectedCategory && styles.filterButtonTextActive]}>
+              {selectedCategory ? selectedCategory.name : 'Toutes les catégories'}
+            </Text>
+            <Ionicons 
+              name="chevron-down" 
+              size={16} 
+              color={selectedCategory ? 'white' : theme.colors.primary} 
+            />
+          </TouchableOpacity>
+          
+          {selectedCategory && (
+            <TouchableOpacity
+              style={styles.clearFilterButton}
+              onPress={() => handleCategorySelect(null)}
+            >
+              <Ionicons name="close-circle" size={20} color={theme.colors.error} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Copies List */}
@@ -411,6 +466,53 @@ const ProductCopyManagementScreen: React.FC<ProductCopyManagementScreenProps> = 
           )
         }
       />
+
+      {/* Category Selection Modal */}
+      <Modal
+        visible={categoryModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCategoryModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Sélectionner une catégorie</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setCategoryModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={[{ id: null, name: 'Toutes les catégories' }, ...categories]}
+              keyExtractor={(item) => item.id?.toString() || 'all'}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.categoryItem,
+                    selectedCategory?.id === item.id && styles.categoryItemSelected
+                  ]}
+                  onPress={() => handleCategorySelect(item.id ? item : null)}
+                >
+                  <Text style={[
+                    styles.categoryItemText,
+                    selectedCategory?.id === item.id && styles.categoryItemTextSelected
+                  ]}>
+                    {item.name}
+                  </Text>
+                  {selectedCategory?.id === item.id && (
+                    <Ionicons name="checkmark" size={20} color={theme.colors.primary} />
+                  )}
+                </TouchableOpacity>
+              )}
+              style={styles.categoryList}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -482,12 +584,45 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    marginBottom: 12,
   },
   searchInput: {
     flex: 1,
     marginLeft: 12,
     fontSize: 16,
     color: theme.colors.text.primary,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    gap: 8,
+  },
+  filterButtonActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  filterButtonText: {
+    flex: 1,
+    fontSize: 14,
+    color: theme.colors.primary,
+    fontWeight: '500',
+  },
+  filterButtonTextActive: {
+    color: 'white',
+  },
+  clearFilterButton: {
+    padding: 8,
   },
   copiesList: {
     flex: 1,
@@ -707,6 +842,57 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: theme.colors.background.primary,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  categoryList: {
+    maxHeight: 400,
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  categoryItemSelected: {
+    backgroundColor: theme.colors.primary + '10',
+  },
+  categoryItemText: {
+    fontSize: 16,
+    color: theme.colors.text.primary,
+  },
+  categoryItemTextSelected: {
+    fontWeight: '600',
+    color: theme.colors.primary,
   },
 });
 

@@ -47,18 +47,15 @@ const ProductImage: React.FC<ProductImageProps> = ({
   };
 
   const handleImageLoad = () => {
-    console.log('✅ Image chargée avec succès:', imageUrl);
     setImageError(false);
   };
 
   const handleImageError = (error: any) => {
-    console.error('❌ Erreur de chargement image:', imageUrl, error);
     setImageError(true);
   };
 
   // Si pas d'URL ou URL invalide, afficher le fallback
   if (!isValidImageUrl(imageUrl)) {
-    console.log('⚠️ URL image invalide ou manquante:', imageUrl);
     return (
       <View style={[styles.noImageContainer, containerStyle]}>
         <Ionicons 

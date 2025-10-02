@@ -21,6 +21,7 @@
                             <th>Logo</th>
                             <th>Nom</th>
                             <th>Description</th>
+                            <th>Rayons</th>
                             <th>Date de création</th>
                             <th>Actions</th>
                         </tr>
@@ -37,19 +38,35 @@
                             </td>
                             <td>{{ brand.name }}</td>
                             <td>{{ brand.description|truncatechars:50 }}</td>
+                            <td>
+                                {% if brand.rayons.exists %}
+                                    <div class="d-flex flex-wrap gap-1">
+                                        {% for rayon in brand.rayons.all %}
+                                            <span class="badge bg-info">{{ rayon.name }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">Aucun rayon</span>
+                                {% endif %}
+                            </td>
                             <td>{{ brand.created_at|date:"d/m/Y" }}</td>
                             <td>
-                                <a href="{% url 'inventory:brand_update' brand.pk %}" class="btn btn-sm btn-primary">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                                <a href="{% url 'inventory:brand_delete' brand.pk %}" class="btn btn-sm btn-danger">
-                                    <i class="fas fa-trash"></i>
-                                </a>
+                                <div class="btn-group" role="group">
+                                    <a href="{% url 'inventory:brand_update' brand.pk %}" class="btn btn-sm btn-primary" title="Modifier">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'inventory:brand_rayons' brand.pk %}" class="btn btn-sm btn-success" title="Gérer les rayons">
+                                        <i class="fas fa-tags"></i>
+                                    </a>
+                                    <a href="{% url 'inventory:brand_delete' brand.pk %}" class="btn btn-sm btn-danger" title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="5" class="text-center">Aucune marque trouvée</td>
+                            <td colspan="6" class="text-center">Aucune marque trouvée</td>
                         </tr>
                         {% endfor %}
                     </tbody>

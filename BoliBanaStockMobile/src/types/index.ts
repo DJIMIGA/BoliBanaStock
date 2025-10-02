@@ -51,6 +51,10 @@ export interface Brand {
   id: number;
   name: string;
   description?: string;
+  logo?: string;
+  is_active: boolean;
+  rayons: Category[];
+  rayons_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -187,6 +191,7 @@ export type RootStackParamList = {
   BarcodeTest: undefined;
   Categories: undefined;
   Brands: undefined;
+  BrandsByRayon: { rayon: Category };
   ProductCopy: undefined;
   ProductCopyManagement: undefined;
 };

@@ -260,45 +260,18 @@ export const authService = {
 export const productService = {
   getProducts: async (params?: any) => {
     try {
-      console.log('📡 Requête GET /products/ avec params:', params);
       const response = await api.get('/products/', { params });
-      console.log('✅ Réponse produits reçue:', response.status);
       return response.data;
     } catch (error: any) {
-      console.error('❌ Erreur getProducts:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        message: error.message,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          baseURL: error.config?.baseURL,
-        }
-      });
       throw error;
     }
   },
   
   getProduct: async (id: number) => {
     try {
-      console.log('📡 Requête GET /products/' + id + '/');
       const response = await api.get(`/products/${id}/`);
-      console.log('✅ Réponse produit reçue:', response.status);
       return response.data;
     } catch (error: any) {
-      console.error('❌ Erreur getProduct:', {
-        id,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        message: error.message,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          baseURL: error.config?.baseURL,
-        }
-      });
       throw error;
     }
   },
@@ -396,7 +369,6 @@ export const productService = {
         if (!token) {
           throw new Error('Aucun token d\'authentification trouvé. Veuillez vous reconnecter.');
         }
-        console.log('✅ Token d\'authentification trouvé');
         
         // Validation de la taille de l'image avant upload
         if (productData.image?.size && productData.image.size > 10 * 1024 * 1024) { // 10MB max
@@ -411,11 +383,9 @@ export const productService = {
           const productDataWithoutImage = { ...productData };
           delete productDataWithoutImage.image;
           
-          console.log('📝 Création du produit sans image...');
           const productResponse = await api.post('/products/', productDataWithoutImage);
           const createdProduct = productResponse.data;
           
-          console.log('✅ Produit créé avec succès, ID:', createdProduct.id);
           
           // 2. Uploader l'image séparément avec FileSystem.uploadAsync (méthode qui fonctionnait avant)
           if (productData.image) {
@@ -438,14 +408,13 @@ export const productService = {
                   httpMethod: 'POST',
                   uploadType: 'MULTIPART',
                   fieldName: 'image',
-                  headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json',
-                  },
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Accept': 'application/json',
+                },
                 }
               );
               
-              console.log('✅ Image uploadée avec succès via FileSystem.uploadAsync');
               return { ...createdProduct, image_uploaded: true };
             } catch (imageError: any) {
               console.warn('⚠️ Upload d\'image échoué, mais produit créé avec succès:', imageError?.message || imageError);
@@ -473,7 +442,6 @@ export const productService = {
             },
           });
           
-          console.log('✅ Upload direct réussi:', response.status);
           return response.data;
         }
       } else {
@@ -545,23 +513,19 @@ export const productService = {
       if (hasImage) {
         const imageAsset = productData.image as ImageAsset;
         const imageUri = imageAsset.uri;
-        
-        console.log('🔍 Image source détectée:', imageUri);
-        
+          
         // ✅ ANALYSE INTELLIGENTE : Détection du type d'image
-        if (imageUri.startsWith('http') || imageUri.startsWith('https')) {
+          if (imageUri.startsWith('http') || imageUri.startsWith('https')) {
           // Scénario A : Image S3 existante - pas de nouvelle image
-          console.log('ℹ️ Image S3 existante détectée, pas de nouvelle image à uploader');
+            
+            // Modifier le produit sans changer l'image
+            const productDataWithoutImage = { ...productData };
+            delete productDataWithoutImage.image;
+            
+            const response = await api.put(`/products/${id}/`, productDataWithoutImage);
+            return response.data;
           
-          // Modifier le produit sans changer l'image
-          const productDataWithoutImage = { ...productData };
-          delete productDataWithoutImage.image;
-          
-          console.log('📝 Modification du produit sans changer l\'image...');
-          const response = await api.put(`/products/${id}/`, productDataWithoutImage);
-          return response.data;
-          
-        } else {
+          } else {
           // Scénario B : Nouvelle image locale sélectionnée
           console.log('✅ Nouvelle image locale détectée, upload via Axios FormData...');
           
@@ -580,26 +544,22 @@ export const productService = {
           }
           
           // Préparer les paramètres pour l'upload
-          const uploadParams: any = {};
-          for (const [key, value] of Object.entries(productData)) {
-            if (key !== 'image' && value !== null && value !== undefined) {
-              // Traitement spécial pour certains champs
-              if (key === 'category' && value) {
-                uploadParams[key] = String(value);
-              } else if (key === 'brand' && value) {
-                uploadParams[key] = String(value);
-              } else {
-                uploadParams[key] = String(value);
+            const uploadParams: any = {};
+            for (const [key, value] of Object.entries(productData)) {
+              if (key !== 'image' && value !== null && value !== undefined) {
+                // Traitement spécial pour certains champs
+                if (key === 'category' && value) {
+                  uploadParams[key] = String(value);
+                } else if (key === 'brand' && value) {
+                  uploadParams[key] = String(value);
+                } else {
+                  uploadParams[key] = String(value);
+                }
               }
             }
-          }
-          
-          console.log('📤 Upload via Axios FormData avec image locale:', localImageUri);
-          console.log('📤 Paramètres:', uploadParams);
-          
+            
           // Utiliser Axios FormData (plus fiable que FileSystem.uploadAsync déprécié)
-          console.log('🔁 Upload direct via Axios avec FormData...');
-          
+            
           const formData = new FormData();
           formData.append('image', {
             uri: localImageUri,
@@ -645,25 +605,24 @@ export const productService = {
             console.warn('⚠️ Fetch natif échoué, tentative Axios...', fetchError?.message || fetchError);
             
             // Fallback vers Axios si fetch échoue
-            const response = await api.post(`/products/${id}/upload_image/`, formData, {
+          const response = await api.post(`/products/${id}/upload_image/`, formData, {
               timeout: 120000,
               maxContentLength: 100 * 1024 * 1024,
               maxBodyLength: 100 * 1024 * 1024,
-              headers: {
+                headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json',
-              },
-            });
+                },
+              });
             
             console.log('✅ Upload via Axios fallback réussi:', response.status);
-            return response.data;
+              return response.data;
           }
         }
       } else {
         // Pas d'image, modification standard
-        console.log('📝 Modification du produit sans image...');
         const response = await api.put(`/products/${id}/`, productData);
-        return response.data;
+          return response.data;
       }
     } catch (error: any) {
       console.error('❌ Erreur mise à jour produit avec image:', error);
@@ -814,11 +773,23 @@ export const categoryService = {
   getRayons: async () => {
     try {
       const response = await api.get('/rayons/');
-      return response.data;
+      const data = response.data;
+      // S'assurer que les rayons sont un tableau
+      if (data.rayons && Array.isArray(data.rayons)) {
+        return { results: data.rayons };
+      } else if (data.results && Array.isArray(data.results)) {
+        return data;
+      } else if (Array.isArray(data)) {
+        return { results: data };
+      } else {
+        console.warn('Format de données rayons inattendu:', data);
+        return { results: [] };
+      }
     } catch (error: any) {
       console.error('❌ Erreur API rayons:', error.response?.data || error.message);
       console.error('📊 Status:', error.response?.status);
-      throw error;
+      // Retourner un tableau vide en cas d'erreur
+      return { results: [] };
     }
   },
 
@@ -892,7 +863,16 @@ export const brandService = {
   getBrands: async () => {
     try {
     const response = await api.get('/brands/');
-    return response.data;
+    const data = response.data;
+    // S'assurer que les marques ont un tableau rayons
+    if (data.results) {
+      data.results = data.results.map((brand: any) => ({
+        ...brand,
+        rayons: brand.rayons || [],
+        rayons_count: brand.rayons_count || 0
+      }));
+    }
+    return data;
     } catch (error: any) {
       console.error('❌ Erreur API marques:', error.response?.data || error.message);
       throw error;
@@ -909,7 +889,31 @@ export const brandService = {
     }
   },
   
-  createBrand: async (brandData: { name: string; description?: string }) => {
+  // ✅ NOUVELLE MÉTHODE : Récupérer les marques d'un rayon spécifique
+  getBrandsByRayon: async (rayonId: number) => {
+    try {
+      const response = await api.get(`/brands/by-rayon/?rayon_id=${rayonId}`);
+      let data = response.data;
+      // S'assurer que les marques ont un tableau rayons
+      if (data.brands) {
+        data.brands = data.brands.map((brand: any) => ({
+          ...brand,
+          rayons: brand.rayons || [],
+          rayons_count: brand.rayons_count || 0
+        }));
+      }
+      return data;
+    } catch (error: any) {
+      console.error('❌ Erreur API marques par rayon:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+  
+  createBrand: async (brandData: { 
+    name: string; 
+    description?: string;
+    rayons?: number[];
+  }) => {
     try {
       const response = await api.post('/brands/', brandData);
       return response.data;
@@ -919,12 +923,29 @@ export const brandService = {
     }
   },
   
-  updateBrand: async (id: number, brandData: { name: string; description?: string }) => {
+  updateBrand: async (id: number, brandData: { 
+    name: string; 
+    description?: string;
+    rayons?: number[];
+  }) => {
     try {
       const response = await api.put(`/brands/${id}/`, brandData);
       return response.data;
     } catch (error: any) {
       console.error('❌ Erreur API mise à jour marque:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+  
+  // ✅ NOUVELLE MÉTHODE : Mettre à jour les rayons d'une marque
+  updateBrandRayons: async (id: number, rayonIds: number[]) => {
+    try {
+      const response = await api.put(`/brands/${id}/`, {
+        rayons: rayonIds
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur API mise à jour rayons marque:', error.response?.data || error.message);
       throw error;
     }
   },
@@ -1135,11 +1156,12 @@ export const profileService = {
 // Service pour la copie de produits entre sites
 export const productCopyService = {
   // Récupérer les produits disponibles pour la copie
-  getAvailableProductsForCopy: async (search?: string, page?: number) => {
+  getAvailableProductsForCopy: async (search?: string, page?: number, categoryId?: number) => {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (page) params.append('page', page.toString());
+      if (categoryId) params.append('category', categoryId.toString());
       
       const response = await api.get(`/inventory/copy/?${params.toString()}`);
       return response.data;
@@ -1161,11 +1183,12 @@ export const productCopyService = {
   },
 
   // Récupérer la liste des produits copiés
-  getCopiedProducts: async (search?: string, page?: number) => {
+  getCopiedProducts: async (search?: string, page?: number, categoryId?: number) => {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (page) params.append('page', page.toString());
+      if (categoryId) params.append('category', categoryId.toString());
       
       const response = await api.get(`/inventory/copy/management/?${params.toString()}`);
       return response.data;

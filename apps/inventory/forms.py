@@ -1,3 +1,5 @@
+
+
 from django import forms
 from .models import Product, Barcode, Category, Brand, Transaction, Supplier, Customer, Order, OrderItem
 from django.forms import inlineformset_factory
@@ -338,7 +340,7 @@ class CategoryForm(forms.ModelForm):
 class BrandForm(forms.ModelForm):
     class Meta:
         model = Brand
-        fields = ['name', 'description', 'logo', 'is_active']
+        fields = ['name', 'description', 'logo', 'is_active', 'rayons']
         widgets = {
             'name': forms.TextInput(attrs={
                 'class': 'block w-full rounded-md border-gray-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm',
@@ -354,16 +356,39 @@ class BrandForm(forms.ModelForm):
             }),
             'is_active': forms.CheckboxInput(attrs={
                 'class': 'h-4 w-4 text-bolibana-600 focus:ring-bolibana-500 border-gray-300 rounded'
+            }),
+            'rayons': forms.CheckboxSelectMultiple(attrs={
+                'class': 'space-y-2'
             })
         }
 
     def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+        
+        # Filtrer les rayons selon l'utilisateur
+        if user and not user.is_superuser and user.site_configuration:
+            # Utilisateur normal : rayons globaux uniquement
+            self.fields['rayons'].queryset = Category.objects.filter(
+                is_active=True,
+                is_global=True,
+                is_rayon=True,
+                level=0
+            ).order_by('rayon_type', 'order', 'name')
+        else:
+            # Superuser : tous les rayons
+            self.fields['rayons'].queryset = Category.objects.filter(
+                is_active=True,
+                is_rayon=True,
+                level=0
+            ).order_by('rayon_type', 'order', 'name')
+        
         # Personnaliser les labels
         self.fields['name'].label = 'Nom de la marque'
         self.fields['description'].label = 'Description'
         self.fields['logo'].label = 'Logo'
         self.fields['is_active'].label = 'Marque active'
+        self.fields['rayons'].label = 'Rayons associés'
 
 class OrderForm(forms.ModelForm):
     class Meta:

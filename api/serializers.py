@@ -334,9 +334,16 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class BrandSerializer(serializers.ModelSerializer):
     """Serializer pour les marques"""
+    rayons = CategorySerializer(source='rayons.all', many=True, read_only=True)
+    rayons_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = Brand
-        fields = ['id', 'name', 'description', 'logo', 'is_active', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'description', 'logo', 'is_active', 'rayons', 'rayons_count', 'created_at', 'updated_at']
+    
+    def get_rayons_count(self, obj):
+        """Retourne le nombre de rayons associés à la marque"""
+        return obj.rayons.count()
 
 
 class TransactionSerializer(serializers.ModelSerializer):

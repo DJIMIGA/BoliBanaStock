@@ -247,6 +247,16 @@ class Brand(models.Model):
         related_name='brands',
         verbose_name=_('Configuration du site')
     )
+    
+    # ✅ NOUVELLE FONCTIONNALITÉ: Liaison avec les rayons
+    rayons = models.ManyToManyField(
+        'Category',
+        blank=True,
+        limit_choices_to={'is_rayon': True, 'is_active': True},
+        related_name='brands',
+        verbose_name=_('Rayons associés'),
+        help_text=_('Sélectionnez les rayons où cette marque est présente')
+    )
 
     def __str__(self):
         return self.name

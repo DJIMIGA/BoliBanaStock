@@ -1,515 +1,677 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert,
-  Modal,
-  TextInput,
-  ActivityIndicator,
   RefreshControl,
+  Alert,
+  ActivityIndicator,
+  TextInput,
+  Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { brandService } from '../services/api';
-import { Brand } from '../types';
-import theme from '../utils/theme';
+import { Brand, Category } from '../types';
+import { brandService, categoryService } from '../services/api';
+import BrandCard from '../components/BrandCard';
+import BrandRayonsModal from '../components/BrandRayonsModal';
+import AddBrandModal from '../components/AddBrandModal';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 interface BrandsScreenProps {
   navigation: any;
 }
 
 const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
-  console.log('🏷️ BrandsScreen rendu avec succès!');
-  
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [filteredBrands, setFilteredBrands] = useState<Brand[]>([]);
+  const [rayons, setRayons] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
-  const [brandName, setBrandName] = useState('');
-  const [brandDescription, setBrandDescription] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedRayon, setSelectedRayon] = useState<number | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+  const [rayonsModalVisible, setRayonsModalVisible] = useState(false);
+  const [addBrandModalVisible, setAddBrandModalVisible] = useState(false);
+  const [rayonDropdownVisible, setRayonDropdownVisible] = useState(false);
+  const [categoryDropdownVisible, setCategoryDropdownVisible] = useState(false);
+  const [subcategories, setSubcategories] = useState<Category[]>([]);
 
   useEffect(() => {
-    console.log('🏷️ BrandsScreen useEffect - chargement des marques');
-    loadBrands();
+    loadData();
   }, []);
 
-  const loadBrands = async () => {
+  useEffect(() => {
+    filterBrands();
+  }, [brands, searchQuery, selectedRayon, selectedCategory]);
+
+  const loadData = async () => {
     try {
       setLoading(true);
+      const [brandsResponse, rayonsResponse] = await Promise.all([
+        brandService.getBrands(),
+        categoryService.getRayons(),
+      ]);
       
-      // Diagnostic de l'authentification
-      const accessToken = await AsyncStorage.getItem('access_token');
-      const refreshToken = await AsyncStorage.getItem('refresh_token');
+      // S'assurer que les données sont des tableaux
+      const brandsData = brandsResponse.results || brandsResponse;
+      const rayonsData = rayonsResponse.results || rayonsResponse;
       
-      console.log('🔍 Diagnostic auth - Access Token:', !!accessToken);
-      console.log('🔍 Diagnostic auth - Refresh Token:', !!refreshToken);
-      
-      const response = await brandService.getBrands();
-      console.log('🔍 Réponse API marques:', response);
-      
-      // Vérifier que la réponse est valide
-      if (!response) {
-        throw new Error('Réponse API vide');
-      }
-      
-      // L'API peut retourner soit {results: [...]} soit directement [...]
-      let brands;
-      if (Array.isArray(response)) {
-        brands = response;
-      } else if (response && Array.isArray(response.results)) {
-        brands = response.results;
-      } else if (response && Array.isArray(response.data)) {
-        brands = response.data;
-      } else {
-        console.error('❌ Format de réponse API inattendu:', typeof response, response);
-        throw new Error('Format de données invalide - structure de réponse API inattendue');
-      }
-      
-      console.log('🔍 Brands:', brands);
-      console.log('🔍 Type brands:', typeof brands, 'Is Array:', Array.isArray(brands));
-      
-      setBrands(brands);
+      setBrands(Array.isArray(brandsData) ? brandsData : []);
+      setRayons(Array.isArray(rayonsData) ? rayonsData : []);
     } catch (error) {
-      console.error('Erreur lors du chargement des marques:', error);
-      
-      // Vérifier si c'est une erreur d'authentification
-      if ((error as any).response?.status === 401) {
-        Alert.alert(
-          'Erreur d\'authentification', 
-          'Votre session a expiré. Veuillez vous reconnecter.',
-          [
-            { text: 'OK', onPress: () => navigation.navigate('Login') }
-          ]
-        );
-      } else if ((error as any).message?.includes('Format de données invalide')) {
-        Alert.alert(
-          'Erreur de données', 
-          'Les données reçues du serveur ne sont pas dans le bon format. Veuillez réessayer.',
-          [
-            { text: 'Réessayer', onPress: () => loadBrands() },
-            { text: 'Annuler', style: 'cancel' }
-          ]
-        );
-      } else if ((error as any).message?.includes('Réponse API vide')) {
-        Alert.alert(
-          'Erreur de connexion', 
-          'Le serveur n\'a pas renvoyé de données. Vérifiez votre connexion internet.',
-          [
-            { text: 'Réessayer', onPress: () => loadBrands() },
-            { text: 'Annuler', style: 'cancel' }
-          ]
-        );
-      } else {
-        Alert.alert(
-          'Erreur', 
-          `Impossible de charger les marques: ${(error as any).message || 'Erreur inconnue'}`,
-          [
-            { text: 'Réessayer', onPress: () => loadBrands() },
-            { text: 'Annuler', style: 'cancel' }
-          ]
-        );
-      }
+      console.error('Erreur lors du chargement:', error);
+      Alert.alert('Erreur', 'Impossible de charger les données');
+      setBrands([]);
+      setRayons([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadBrands();
+    await loadData();
     setRefreshing(false);
-  };
+  }, []);
 
-  const openModal = (brand?: Brand) => {
-    if (brand) {
-      setEditingBrand(brand);
-      setBrandName(brand.name);
-      setBrandDescription(brand.description || '');
-    } else {
-      setEditingBrand(null);
-      setBrandName('');
-      setBrandDescription('');
-    }
-    setModalVisible(true);
-  };
+  const filterBrands = () => {
+    let filtered = brands || [];
 
-  const closeModal = () => {
-    setModalVisible(false);
-    setEditingBrand(null);
-    setBrandName('');
-    setBrandDescription('');
-  };
-
-  const handleSave = async () => {
-    if (!brandName.trim()) {
-      Alert.alert('Erreur', 'Le nom de la marque est requis');
-      return;
+    // Filtrage par recherche
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(brand =>
+        brand.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        brand.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
     }
 
-    try {
-      if (editingBrand) {
-        // Mise à jour
-        await brandService.updateBrand(editingBrand.id, {
-          name: brandName.trim(),
-          description: brandDescription.trim(),
-        });
-        Alert.alert('Succès', 'Marque mise à jour avec succès');
-      } else {
-        // Création
-        await brandService.createBrand({
-          name: brandName.trim(),
-          description: brandDescription.trim(),
-        });
-        Alert.alert('Succès', 'Marque créée avec succès');
-      }
-      
-      closeModal();
-      loadBrands();
-    } catch (error) {
-      console.error('Erreur lors de la sauvegarde:', error);
-      Alert.alert('Erreur', 'Impossible de sauvegarder la marque');
+    // Filtrage par rayon
+    if (selectedRayon) {
+      filtered = filtered.filter(brand =>
+        brand.rayons?.some(rayon => rayon.id === selectedRayon)
+      );
     }
+
+    // Filtrage par catégorie (si une catégorie est sélectionnée)
+    if (selectedCategory) {
+      filtered = filtered.filter(brand => {
+        // Pour l'instant, on filtre par rayon car les marques n'ont pas de catégories directes
+        // Cette logique peut être étendue si nécessaire
+        return true;
+      });
+    }
+
+    setFilteredBrands(filtered);
   };
 
-  const handleDelete = async (brand: Brand) => {
-    Alert.alert(
-      'Confirmer la suppression',
-      `Êtes-vous sûr de vouloir supprimer la marque "${brand.name}" ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await brandService.deleteBrand(brand.id);
-              Alert.alert('Succès', 'Marque supprimée avec succès');
-              loadBrands();
-            } catch (error) {
-              console.error('Erreur lors de la suppression:', error);
-              Alert.alert('Erreur', 'Impossible de supprimer la marque');
-            }
-          },
-        },
-      ]
+  const handleBrandPress = (brand: Brand) => {
+    // Navigation vers les détails de la marque
+    console.log('Navigation vers:', brand.name);
+  };
+
+  const handleManageRayons = (brand: Brand) => {
+    setSelectedBrand(brand);
+    setRayonsModalVisible(true);
+  };
+
+  const handleRayonsUpdate = (updatedBrand: Brand) => {
+    setBrands(prevBrands =>
+      prevBrands.map(brand =>
+        brand.id === updatedBrand.id ? updatedBrand : brand
+      )
     );
   };
 
-  const renderBrandItem = ({ item }: { item: Brand }) => (
-    <View style={styles.brandItem}>
-      <View style={styles.brandInfo}>
-        <Text style={styles.brandName}>{item.name}</Text>
-        {item.description && (
-          <Text style={styles.brandDescription}>{item.description}</Text>
-        )}
+  const handleBrandAdded = (newBrand: Brand) => {
+    setBrands(prevBrands => [newBrand, ...prevBrands]);
+    setAddBrandModalVisible(false);
+  };
+
+  const handleRayonFilter = async (rayonId: number | null) => {
+    setSelectedRayon(rayonId);
+    setSelectedCategory(null); // Réinitialiser la catégorie
+    setRayonDropdownVisible(false);
+    
+    // Charger les sous-catégories si un rayon est sélectionné
+    if (rayonId) {
+      try {
+        const response = await categoryService.getSubcategories(rayonId);
+        const categoriesData = response.results || response;
+        setSubcategories(Array.isArray(categoriesData) ? categoriesData : []);
+      } catch (error) {
+        console.error('Erreur lors du chargement des catégories:', error);
+        setSubcategories([]);
+      }
+    } else {
+      setSubcategories([]);
+    }
+  };
+
+  const handleCategoryFilter = (categoryId: number | null) => {
+    setSelectedCategory(categoryId);
+    setCategoryDropdownVisible(false);
+  };
+
+  const getSelectedRayonName = () => {
+    if (!selectedRayon) return 'Tous les rayons';
+    const rayon = rayons.find(r => r.id === selectedRayon);
+    return rayon ? rayon.name : 'Tous les rayons';
+  };
+
+  const getSelectedCategoryName = () => {
+    if (!selectedCategory) return 'Toutes les catégories';
+    const category = subcategories.find(c => c.id === selectedCategory);
+    return category ? category.name : 'Toutes les catégories';
+  };
+
+  const getRayonTypeColor = (rayonType: string) => {
+    const colors: { [key: string]: string } = {
+      'frais_libre_service': '#4CAF50',
+      'rayons_traditionnels': '#FF9800',
+      'epicerie': '#2196F3',
+      'petit_dejeuner': '#9C27B0',
+      'tout_pour_bebe': '#E91E63',
+      'liquides': '#00BCD4',
+      'non_alimentaire': '#795548',
+      'dph': '#607D8B',
+      'textile': '#FF5722',
+      'bazar': '#3F51B5',
+    };
+    return colors[rayonType] || '#757575';
+  };
+
+  const renderBrand = ({ item }: { item: Brand }) => (
+    <BrandCard
+      brand={item}
+      onPress={() => handleBrandPress(item)}
+      onManageRayons={() => handleManageRayons(item)}
+    />
+  );
+
+  const renderRayonDropdownItem = ({ item }: { item: Category }) => (
+    <TouchableOpacity
+      style={[
+        styles.dropdownItem,
+        selectedRayon === item.id && styles.dropdownItemSelected
+      ]}
+      onPress={() => handleRayonFilter(item.id)}
+    >
+      <View style={styles.dropdownItemContent}>
+        <View
+          style={[
+            styles.rayonTypeIndicator,
+            { backgroundColor: getRayonTypeColor(item.rayon_type || '') }
+          ]}
+        />
+        <Text style={[
+          styles.dropdownItemText,
+          selectedRayon === item.id && styles.dropdownItemTextSelected
+        ]}>
+          {item.name}
+        </Text>
       </View>
-      <View style={styles.brandActions}>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => openModal(item)}
-        >
-          <Ionicons name="pencil" size={20} color={theme.colors.primary[500]} />
         </TouchableOpacity>
+  );
+
+  const renderCategoryDropdownItem = ({ item }: { item: Category }) => (
         <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => handleDelete(item)}
-        >
-          <Ionicons name="trash" size={20} color={theme.colors.error[500]} />
-        </TouchableOpacity>
+      style={[
+        styles.dropdownItem,
+        selectedCategory === item.id && styles.dropdownItemSelected
+      ]}
+      onPress={() => handleCategoryFilter(item.id)}
+    >
+      <View style={styles.dropdownItemContent}>
+        <View style={styles.categoryIndicator} />
+        <Text style={[
+          styles.dropdownItemText,
+          selectedCategory === item.id && styles.dropdownItemTextSelected
+        ]}>
+          {item.name}
+        </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary[500]} />
+        <ActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.loadingText}>Chargement des marques...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ErrorBoundary>
+      <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Gestion des Marques</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerButton} onPress={() => openModal()}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={() => navigation?.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Marques</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={() => setAddBrandModalVisible(true)}>
             <Ionicons name="add" size={24} color="#4CAF50" />
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <Ionicons name="search" size={20} color="#666" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher une marque..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#999"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Filtres Hiérarchiques */}
+      <View style={styles.filtersContainer}>
+        <Text style={styles.filtersTitle}>Filtrer par rayon et catégorie:</Text>
+        
+        {/* Rayon Dropdown */}
+        <TouchableOpacity
+          style={styles.dropdownButton}
+          onPress={() => setRayonDropdownVisible(!rayonDropdownVisible)}
+        >
+          <View style={styles.dropdownButtonContent}>
+            <Text style={styles.dropdownButtonText}>
+              {getSelectedRayonName()}
+            </Text>
+            <Ionicons 
+              name={rayonDropdownVisible ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color="#666" 
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Catégorie Dropdown (visible seulement si un rayon est sélectionné) */}
+        {selectedRayon && subcategories.length > 0 && (
+          <TouchableOpacity
+            style={[styles.dropdownButton, styles.categoryDropdownButton]}
+            onPress={() => setCategoryDropdownVisible(!categoryDropdownVisible)}
+          >
+            <View style={styles.dropdownButtonContent}>
+              <Text style={styles.dropdownButtonText}>
+                {getSelectedCategoryName()}
+              </Text>
+              <Ionicons 
+                name={categoryDropdownVisible ? "chevron-up" : "chevron-down"} 
+                size={20} 
+                color="#666" 
+              />
+            </View>
+          </TouchableOpacity>
+        )}
+        
+        {/* Boutons d'effacement */}
+        <View style={styles.clearFiltersContainer}>
+          {selectedRayon && (
+            <TouchableOpacity
+              onPress={() => handleRayonFilter(null)}
+              style={styles.clearFilterButton}
+            >
+              <Ionicons name="close" size={16} color="#007AFF" />
+              <Text style={styles.clearFilterText}>Effacer rayon</Text>
+            </TouchableOpacity>
+          )}
+          {selectedCategory && (
+            <TouchableOpacity
+              onPress={() => handleCategoryFilter(null)}
+              style={styles.clearFilterButton}
+            >
+              <Ionicons name="close" size={16} color="#007AFF" />
+              <Text style={styles.clearFilterText}>Effacer catégorie</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Rayon Dropdown Modal */}
+      <Modal
+        visible={rayonDropdownVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setRayonDropdownVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setRayonDropdownVisible(false)}
+        >
+          <View style={styles.dropdownContainer}>
+            <View style={styles.dropdownHeader}>
+              <Text style={styles.dropdownTitle}>Sélectionner un rayon</Text>
+              <TouchableOpacity
+                onPress={() => setRayonDropdownVisible(false)}
+                style={styles.dropdownCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={rayons || []}
+              renderItem={renderRayonDropdownItem}
+              keyExtractor={(item) => item.id.toString()}
+              style={styles.dropdownList}
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Catégorie Dropdown Modal */}
+      <Modal
+        visible={categoryDropdownVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setCategoryDropdownVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setCategoryDropdownVisible(false)}
+        >
+          <View style={styles.dropdownContainer}>
+            <View style={styles.dropdownHeader}>
+              <Text style={styles.dropdownTitle}>Sélectionner une catégorie</Text>
+              <TouchableOpacity
+                onPress={() => setCategoryDropdownVisible(false)}
+                style={styles.dropdownCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={subcategories || []}
+              renderItem={renderCategoryDropdownItem}
+              keyExtractor={(item) => item.id.toString()}
+              style={styles.dropdownList}
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Brands List */}
       <FlatList
-        data={brands}
-        renderItem={renderBrandItem}
+        data={filteredBrands}
+        renderItem={renderBrand}
         keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        contentContainerStyle={styles.brandsList}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="logo-apple" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>Aucune marque trouvée</Text>
-            <Text style={styles.emptySubtext}>
-              Appuyez sur le bouton + pour créer votre première marque
+            <Ionicons name="business-outline" size={48} color="#C7C7CC" />
+            <Text style={styles.emptyTitle}>Aucune marque trouvée</Text>
+            <Text style={styles.emptySubtitle}>
+              {searchQuery || selectedRayon
+                ? 'Aucune marque ne correspond à vos critères'
+                : 'Aucune marque n\'a été créée'}
             </Text>
           </View>
         }
       />
 
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={closeModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingBrand ? 'Modifier la marque' : 'Nouvelle marque'}
-              </Text>
-              <TouchableOpacity onPress={closeModal}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
+      {/* Rayons Modal */}
+      <BrandRayonsModal
+        visible={rayonsModalVisible}
+        onClose={() => setRayonsModalVisible(false)}
+        brand={selectedBrand}
+        onUpdate={handleRayonsUpdate}
+      />
 
-            <View style={styles.modalBody}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Nom de la marque *</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={brandName}
-                  onChangeText={setBrandName}
-                  placeholder="Ex: Apple, Samsung, Nike..."
-                  autoFocus
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Description (optionnel)</Text>
-                <TextInput
-                  style={[styles.textInput, styles.textArea]}
-                  value={brandDescription}
-                  onChangeText={setBrandDescription}
-                  placeholder="Description de la marque..."
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.cancelButton} onPress={closeModal}>
-                <Text style={styles.cancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                <Text style={styles.saveButtonText}>
-                  {editingBrand ? 'Modifier' : 'Créer'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+      {/* Add Brand Modal */}
+      <AddBrandModal
+        visible={addBrandModalVisible}
+        onClose={() => setAddBrandModalVisible(false)}
+        onBrandAdded={handleBrandAdded}
+      />
+    </View>
+    </ErrorBoundary>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background.primary,
+    backgroundColor: '#f5f5f5',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f5f5f5',
   },
   loadingText: {
+    marginTop: 12,
     fontSize: 16,
-    color: theme.colors.text.tertiary,
-    marginTop: 10,
+    color: '#666',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: theme.colors.background.secondary,
+    paddingHorizontal: 20,
+    paddingTop: 30,
+    paddingBottom: 20,
+    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.neutral[200],
+    borderBottomColor: '#e0e0e0',
+  },
+  headerLeft: {
+    width: 24,
+    alignItems: 'flex-start',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerRight: {
+    width: 24,
+    alignItems: 'flex-end',
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
   },
-  headerActions: {
+  searchContainer: {
+    padding: 20,
+    backgroundColor: 'white',
+  },
+  searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 25,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
   },
-  headerButton: {
-    padding: 8,
+  searchInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#333',
+  },
+  filtersContainer: {
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e1e5e9',
+  },
+  filtersTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  dropdownButton: {
+    marginHorizontal: 16,
+    backgroundColor: '#f8f9fa',
     borderRadius: 8,
-    backgroundColor: theme.colors.background.primary,
+    borderWidth: 1,
+    borderColor: '#e1e5e9',
   },
-  listContainer: {
-    padding: 16,
-  },
-  brandItem: {
+  dropdownButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
-  brandInfo: {
+  dropdownButtonText: {
+    fontSize: 16,
+    color: '#333',
     flex: 1,
+  },
+  categoryDropdownButton: {
+    marginTop: 8,
+  },
+  clearFiltersContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
     marginRight: 16,
   },
-  brandName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
-    marginBottom: 4,
-  },
-  brandDescription: {
-    fontSize: 14,
-    color: theme.colors.text.secondary,
-  },
-  brandActions: {
+  clearFilterButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginLeft: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#f0f8ff',
+    borderRadius: 12,
   },
-  actionButton: {
-    padding: 8,
-    marginLeft: 8,
-    borderRadius: 8,
-    backgroundColor: theme.colors.background.primary,
+  clearFilterText: {
+    fontSize: 12,
+    color: '#007AFF',
+    marginLeft: 4,
+    fontWeight: '500',
   },
-  deleteButton: {
-    backgroundColor: theme.colors.error[100],
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.colors.text.secondary,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: theme.colors.text.tertiary,
-    textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 32,
-  },
-  modalOverlay: {
+  // Dropdown Modal Styles
+  dropdownOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: 16,
-    width: '90%',
-    maxWidth: 400,
-    maxHeight: '80%',
+  dropdownContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginHorizontal: 20,
+    maxHeight: '70%',
+    minWidth: '80%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  modalHeader: {
+  dropdownHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.neutral[200],
+    borderBottomColor: '#e1e5e9',
   },
-  modalTitle: {
+  dropdownTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  dropdownCloseButton: {
+    padding: 4,
+  },
+  dropdownList: {
+    maxHeight: 300,
+  },
+  dropdownItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#e3f2fd',
+  },
+  dropdownItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rayonTypeIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  categoryIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#666',
+    marginRight: 12,
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  dropdownItemTextSelected: {
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  brandsList: {
+    paddingVertical: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: theme.colors.text.primary,
-  },
-  modalBody: {
-    padding: 20,
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: theme.colors.text.primary,
+    color: '#333',
+    marginTop: 16,
     marginBottom: 8,
   },
-  textInput: {
-    borderWidth: 1,
-    borderColor: theme.colors.neutral[200],
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: theme.colors.background.secondary,
-    color: theme.colors.text.primary,
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.neutral[200],
-  },
-  cancelButton: {
-    flex: 1,
-    padding: 12,
-    marginRight: 8,
-    borderRadius: 8,
-    backgroundColor: theme.colors.neutral[200],
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: theme.colors.text.primary,
-  },
-  saveButton: {
-    flex: 1,
-    padding: 12,
-    marginLeft: 8,
-    borderRadius: 8,
-    backgroundColor: theme.colors.primary[500],
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: theme.colors.text.inverse,
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
 });
 

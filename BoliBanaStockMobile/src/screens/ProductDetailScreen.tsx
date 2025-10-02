@@ -106,7 +106,6 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       const data = await productService.getProduct(productId);
       setProduct(data);
     } catch (e: any) {
-      console.error('❌ Erreur chargement produit:', e);
       setError("Impossible de charger le produit");
     } finally {
       setLoading(false);
@@ -121,7 +120,6 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       const data = await productService.getStockMovements(productId);
       setStockMovements(data.movements || []);
     } catch (e: any) {
-      console.error('❌ Erreur chargement mouvements:', e);
       setStockMovements([]);
     } finally {
       setLoadingMovements(false);
