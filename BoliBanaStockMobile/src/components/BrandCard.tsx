@@ -65,14 +65,28 @@ const BrandCard: React.FC<BrandCardProps> = ({
             </View>
           </View>
           
-          {/* Status badge */}
-          <View style={[
-            styles.statusBadge,
-            { backgroundColor: brand.is_active ? '#4CAF50' : '#F44336' }
-          ]}>
-            <Text style={styles.statusText}>
-              {brand.is_active ? 'Active' : 'Inactive'}
-            </Text>
+          {/* Actions */}
+          <View style={styles.headerActions}>
+            {/* Status badge */}
+            <View style={[
+              styles.statusBadge,
+              { backgroundColor: brand.is_active ? '#4CAF50' : '#F44336' }
+            ]}>
+              <Text style={styles.statusText}>
+                {brand.is_active ? 'Active' : 'Inactive'}
+              </Text>
+            </View>
+            
+            {/* Edit button */}
+            {onEdit && (
+              <TouchableOpacity
+                onPress={onEdit}
+                style={styles.headerEditButton}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={16} color="#4CAF50" />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -82,14 +96,6 @@ const BrandCard: React.FC<BrandCardProps> = ({
             <Text style={styles.rayonsTitle}>
               Rayons ({brand.rayons_count})
             </Text>
-            {onEdit && (
-              <TouchableOpacity
-                onPress={onEdit}
-                style={styles.editButton}
-              >
-                <Ionicons name="create-outline" size={14} color="#4CAF50" />
-              </TouchableOpacity>
-            )}
           </View>
           
           {brand.rayons && brand.rayons.length > 0 ? (
@@ -195,8 +201,17 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#666',
   },
-  editButton: {
-    padding: 2,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerEditButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#E8F5E8',
+    borderWidth: 1,
+    borderColor: '#4CAF50',
   },
   rayonsList: {
     flexDirection: 'row',
