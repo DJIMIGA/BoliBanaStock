@@ -18,12 +18,16 @@ interface AddBrandModalProps {
   visible: boolean;
   onClose: () => void;
   onBrandAdded: (brand: Brand) => void;
+  brandToEdit?: Brand | null; // Marque à modifier (optionnelle)
+  onBrandUpdated?: (brand: Brand) => void; // Callback pour la modification
 }
 
 const AddBrandModal: React.FC<AddBrandModalProps> = ({
   visible,
   onClose,
   onBrandAdded,
+  brandToEdit = null,
+  onBrandUpdated,
 }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -35,8 +39,19 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
   useEffect(() => {
     if (visible) {
       loadRayons();
+      // Pré-remplir le formulaire si on modifie une marque
+      if (brandToEdit) {
+        setName(brandToEdit.name);
+        setDescription(brandToEdit.description || '');
+        setSelectedRayons(brandToEdit.rayons?.map(r => r.id) || []);
+      } else {
+        // Réinitialiser le formulaire pour une nouvelle marque
+        setName('');
+        setDescription('');
+        setSelectedRayons([]);
+      }
     }
-  }, [visible]);
+  }, [visible, brandToEdit]);
 
   const loadRayons = async () => {
     try {
@@ -88,18 +103,37 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
 
     try {
       setLoading(true);
-      const newBrand = await brandService.createBrand({
-        name: name.trim(),
-        description: description.trim() || null,
-        is_active: true,
-        rayons: selectedRayons,
-      });
       
-      onBrandAdded(newBrand);
+      if (brandToEdit) {
+        // Modification d'une marque existante
+        const updatedBrand = await brandService.updateBrand(brandToEdit.id, {
+          name: name.trim(),
+          description: description.trim() || null,
+          is_active: brandToEdit.is_active,
+          rayons: selectedRayons,
+        });
+        
+        if (onBrandUpdated) {
+          onBrandUpdated(updatedBrand);
+        }
+        Alert.alert('Succès', 'Marque modifiée avec succès');
+      } else {
+        // Création d'une nouvelle marque
+        const newBrand = await brandService.createBrand({
+          name: name.trim(),
+          description: description.trim() || null,
+          is_active: true,
+          rayons: selectedRayons,
+        });
+        
+        onBrandAdded(newBrand);
+        Alert.alert('Succès', 'Marque créée avec succès');
+      }
+      
       handleClose();
     } catch (error) {
-      console.error('Erreur lors de la création de la marque:', error);
-      Alert.alert('Erreur', 'Impossible de créer la marque');
+      console.error('Erreur lors de la sauvegarde de la marque:', error);
+      Alert.alert('Erreur', 'Impossible de sauvegarder la marque');
     } finally {
       setLoading(false);
     }
@@ -123,7 +157,9 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
         <View style={styles.container}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Nouvelle marque</Text>
+            <Text style={styles.title}>
+              {brandToEdit ? 'Modifier la marque' : 'Nouvelle marque'}
+            </Text>
             <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
@@ -236,7 +272,9 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
               {loading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.submitButtonText}>Créer la marque</Text>
+                <Text style={styles.submitButtonText}>
+                  {brandToEdit ? 'Modifier' : 'Créer la marque'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
