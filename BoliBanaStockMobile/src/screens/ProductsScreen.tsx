@@ -45,19 +45,30 @@ export default function ProductsScreen({ navigation, route }: any) {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  
   // Paramètres de navigation
   const brandFilter = route?.params?.brandFilter;
   const brandName = route?.params?.brandName;
   const categoryFilter = route?.params?.categoryFilter;
   const categoryName = route?.params?.categoryName;
 
-  const loadProducts = async () => {
+  const loadProducts = async (page: number = 1, append: boolean = false) => {
     try {
-      setLoading(true);
-      let data;
+      if (page === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       
-      // Charger les produits avec filtrage
-      const params: any = {};
+      // Charger les produits avec filtrage et pagination
+      const params: any = {
+        page: page,
+        page_size: 20
+      };
       
       // Filtre par catégorie (priorité aux paramètres de navigation)
       if (categoryFilter) {
@@ -72,25 +83,46 @@ export default function ProductsScreen({ navigation, route }: any) {
       }
       
       console.log('🔧 ProductsScreen - Paramètres de filtrage:', params);
-      data = await productService.getProducts(params);
-      setProducts(data.results || data);
+      const data = await productService.getProducts(params);
+      const newProducts = data.results || data;
+      
+      if (append) {
+        setProducts(prev => [...prev, ...newProducts]);
+      } else {
+        setProducts(newProducts);
+      }
+      
+      // Vérifier s'il y a plus de pages
+      setHasMore(data.next ? true : false);
+      setCurrentPage(page);
+      
     } catch (error: any) {
       console.error('❌ ProductsScreen - Erreur chargement produits:', error);
       Alert.alert('Erreur', 'Impossible de charger les produits');
+      if (page === 1) {
+        setProducts([]);
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadProducts();
+    await loadProducts(1, false);
     setRefreshing(false);
   };
 
+  const loadMoreProducts = async () => {
+    if (hasMore && !loadingMore) {
+      await loadProducts(currentPage + 1, true);
+    }
+  };
+
   useEffect(() => {
-    loadProducts();
+    loadProducts(1, false);
   }, [filter, selectedCategory, brandFilter, categoryFilter]);
 
 
@@ -329,6 +361,16 @@ export default function ProductsScreen({ navigation, route }: any) {
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        onEndReached={loadMoreProducts}
+        onEndReachedThreshold={0.1}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadingMoreContainer}>
+              <ActivityIndicator size="small" color="#4CAF50" />
+              <Text style={styles.loadingMoreText}>Chargement...</Text>
+            </View>
+          ) : null
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -584,5 +626,16 @@ const styles = StyleSheet.create({
   clearCategoryButton: {
     marginLeft: 10,
     padding: 5,
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  loadingMoreText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#666',
   },
 }); 
