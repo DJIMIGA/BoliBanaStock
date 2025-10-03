@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Brand, Category } from '../types';
 import { brandService } from '../services/api';
 import BrandCard from '../components/BrandCard';
-import BrandRayonsModal from '../components/BrandRayonsModal';
+import AddBrandModal from '../components/AddBrandModal';
 
 interface BrandsByRayonScreenProps {
   route: {
@@ -36,7 +36,7 @@ const BrandsByRayonScreen: React.FC<BrandsByRayonScreenProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
-  const [rayonsModalVisible, setRayonsModalVisible] = useState(false);
+  const [editBrandModalVisible, setEditBrandModalVisible] = useState(false);
 
   useEffect(() => {
     loadBrands();
@@ -87,17 +87,25 @@ const BrandsByRayonScreen: React.FC<BrandsByRayonScreenProps> = ({
     });
   };
 
-  const handleManageRayons = (brand: Brand) => {
+
+  const handleEditBrand = (brand: Brand) => {
     setSelectedBrand(brand);
-    setRayonsModalVisible(true);
+    setEditBrandModalVisible(true);
   };
 
-  const handleRayonsUpdate = (updatedBrand: Brand) => {
-    setBrands(prevBrands =>
-      prevBrands.map(brand =>
+  const handleBrandUpdated = (updatedBrand: Brand) => {
+    setBrands(prevBrands => 
+      prevBrands.map(brand => 
         brand.id === updatedBrand.id ? updatedBrand : brand
       )
     );
+    setFilteredBrands(prevFiltered => 
+      prevFiltered.map(brand => 
+        brand.id === updatedBrand.id ? updatedBrand : brand
+      )
+    );
+    setEditBrandModalVisible(false);
+    setSelectedBrand(null);
   };
 
   const getRayonTypeColor = (rayonType: string) => {
@@ -120,7 +128,7 @@ const BrandsByRayonScreen: React.FC<BrandsByRayonScreenProps> = ({
     <BrandCard
       brand={item}
       onPress={() => handleBrandPress(item)}
-      onManageRayons={() => handleManageRayons(item)}
+      onEdit={() => handleEditBrand(item)}
     />
   );
 
@@ -206,12 +214,13 @@ const BrandsByRayonScreen: React.FC<BrandsByRayonScreenProps> = ({
         }
       />
 
-      {/* Rayons Modal */}
-      <BrandRayonsModal
-        visible={rayonsModalVisible}
-        onClose={() => setRayonsModalVisible(false)}
-        brand={selectedBrand}
-        onUpdate={handleRayonsUpdate}
+      {/* Edit Brand Modal */}
+      <AddBrandModal
+        visible={editBrandModalVisible}
+        onClose={() => setEditBrandModalVisible(false)}
+        onBrandAdded={() => {}} // Pas utilisé dans ce contexte
+        brandToEdit={selectedBrand}
+        onBrandUpdated={handleBrandUpdated}
       />
     </View>
   );

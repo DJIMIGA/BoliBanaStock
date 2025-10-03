@@ -13,13 +13,13 @@ import RayonChip from './RayonChip';
 interface BrandCardProps {
   brand: Brand;
   onPress: () => void;
-  onManageRayons: () => void;
+  onEdit?: () => void; // Callback pour l'édition
 }
 
 const BrandCard: React.FC<BrandCardProps> = ({
   brand,
   onPress,
-  onManageRayons,
+  onEdit,
 }) => {
   const getRayonTypeColor = (rayonType: string) => {
     const colors: { [key: string]: string } = {
@@ -82,12 +82,14 @@ const BrandCard: React.FC<BrandCardProps> = ({
             <Text style={styles.rayonsTitle}>
               Rayons ({brand.rayons_count})
             </Text>
-            <TouchableOpacity
-              onPress={onManageRayons}
-              style={styles.manageButton}
-            >
-              <Ionicons name="settings" size={14} color="#007AFF" />
-            </TouchableOpacity>
+            {onEdit && (
+              <TouchableOpacity
+                onPress={onEdit}
+                style={styles.editButton}
+              >
+                <Ionicons name="create-outline" size={14} color="#4CAF50" />
+              </TouchableOpacity>
+            )}
           </View>
           
           {brand.rayons && brand.rayons.length > 0 ? (
@@ -193,7 +195,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#666',
   },
-  manageButton: {
+  editButton: {
     padding: 2,
   },
   rayonsList: {

@@ -15,7 +15,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Brand, Category } from '../types';
 import { brandService, categoryService } from '../services/api';
 import BrandCard from '../components/BrandCard';
-import BrandRayonsModal from '../components/BrandRayonsModal';
 import AddBrandModal from '../components/AddBrandModal';
 import ErrorBoundary from '../components/ErrorBoundary';
 
@@ -33,8 +32,8 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
   const [selectedRayon, setSelectedRayon] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
-  const [rayonsModalVisible, setRayonsModalVisible] = useState(false);
   const [addBrandModalVisible, setAddBrandModalVisible] = useState(false);
+  const [editBrandModalVisible, setEditBrandModalVisible] = useState(false);
   const [rayonDropdownVisible, setRayonDropdownVisible] = useState(false);
   const [categoryDropdownVisible, setCategoryDropdownVisible] = useState(false);
   const [subcategories, setSubcategories] = useState<Category[]>([]);
@@ -116,22 +115,25 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
     });
   };
 
-  const handleManageRayons = (brand: Brand) => {
-    setSelectedBrand(brand);
-    setRayonsModalVisible(true);
-  };
-
-  const handleRayonsUpdate = (updatedBrand: Brand) => {
-    setBrands(prevBrands =>
-      prevBrands.map(brand =>
-        brand.id === updatedBrand.id ? updatedBrand : brand
-      )
-    );
-  };
 
   const handleBrandAdded = (newBrand: Brand) => {
     setBrands(prevBrands => [newBrand, ...prevBrands]);
     setAddBrandModalVisible(false);
+  };
+
+  const handleEditBrand = (brand: Brand) => {
+    setSelectedBrand(brand);
+    setEditBrandModalVisible(true);
+  };
+
+  const handleBrandUpdated = (updatedBrand: Brand) => {
+    setBrands(prevBrands => 
+      prevBrands.map(brand => 
+        brand.id === updatedBrand.id ? updatedBrand : brand
+      )
+    );
+    setEditBrandModalVisible(false);
+    setSelectedBrand(null);
   };
 
   const handleRayonFilter = async (rayonId: number | null) => {
@@ -191,7 +193,7 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
     <BrandCard
       brand={item}
       onPress={() => handleBrandPress(item)}
-      onManageRayons={() => handleManageRayons(item)}
+      onEdit={() => handleEditBrand(item)}
     />
   );
 
@@ -442,19 +444,20 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
         }
       />
 
-      {/* Rayons Modal */}
-      <BrandRayonsModal
-        visible={rayonsModalVisible}
-        onClose={() => setRayonsModalVisible(false)}
-        brand={selectedBrand}
-        onUpdate={handleRayonsUpdate}
-      />
-
       {/* Add Brand Modal */}
       <AddBrandModal
         visible={addBrandModalVisible}
         onClose={() => setAddBrandModalVisible(false)}
         onBrandAdded={handleBrandAdded}
+      />
+
+      {/* Edit Brand Modal */}
+      <AddBrandModal
+        visible={editBrandModalVisible}
+        onClose={() => setEditBrandModalVisible(false)}
+        onBrandAdded={handleBrandAdded}
+        brandToEdit={selectedBrand}
+        onBrandUpdated={handleBrandUpdated}
       />
     </View>
     </ErrorBoundary>
