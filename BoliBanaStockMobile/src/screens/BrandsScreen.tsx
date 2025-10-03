@@ -28,6 +28,9 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
   const [rayons, setRayons] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRayon, setSelectedRayon] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -46,35 +49,60 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
     filterBrands();
   }, [brands, searchQuery, selectedRayon, selectedCategory]);
 
-  const loadData = async () => {
+  const loadData = async (page: number = 1, append: boolean = false) => {
     try {
-      setLoading(true);
+      if (page === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+      
       const [brandsResponse, rayonsResponse] = await Promise.all([
-        brandService.getBrands(),
-        categoryService.getRayons(),
+        brandService.getBrands(page, 20),
+        page === 1 ? categoryService.getRayons() : Promise.resolve(null),
       ]);
       
-      // S'assurer que les données sont des tableaux
-      const brandsData = brandsResponse.results || brandsResponse;
-      const rayonsData = rayonsResponse.results || rayonsResponse;
+      const newBrands = brandsResponse.results || brandsResponse;
       
-      setBrands(Array.isArray(brandsData) ? brandsData : []);
-      setRayons(Array.isArray(rayonsData) ? rayonsData : []);
+      if (append) {
+        setBrands(prev => [...prev, ...newBrands]);
+      } else {
+        setBrands(Array.isArray(newBrands) ? newBrands : []);
+      }
+      
+      if (page === 1 && rayonsResponse) {
+        const rayonsData = rayonsResponse.results || rayonsResponse;
+        setRayons(Array.isArray(rayonsData) ? rayonsData : []);
+      }
+      
+      // Vérifier s'il y a plus de pages
+      setHasMore(brandsResponse.next ? true : false);
+      setCurrentPage(page);
+      
     } catch (error) {
       console.error('Erreur lors du chargement:', error);
       Alert.alert('Erreur', 'Impossible de charger les données');
-      setBrands([]);
-      setRayons([]);
+      if (page === 1) {
+        setBrands([]);
+        setRayons([]);
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(1, false);
     setRefreshing(false);
   }, []);
+
+  const loadMoreBrands = useCallback(async () => {
+    if (hasMore && !loadingMore) {
+      await loadData(currentPage + 1, true);
+    }
+  }, [hasMore, loadingMore, currentPage]);
 
   const filterBrands = () => {
     let filtered = brands || [];
@@ -431,6 +459,16 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
         }
         contentContainerStyle={styles.brandsList}
         showsVerticalScrollIndicator={false}
+        onEndReached={loadMoreBrands}
+        onEndReachedThreshold={0.1}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadingMoreContainer}>
+              <ActivityIndicator size="small" color="#007AFF" />
+              <Text style={styles.loadingMoreText}>Chargement...</Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="business-outline" size={48} color="#C7C7CC" />
@@ -679,6 +717,17 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     paddingHorizontal: 32,
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  loadingMoreText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#666',
   },
 });
 

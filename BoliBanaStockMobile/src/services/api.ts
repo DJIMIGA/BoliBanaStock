@@ -860,19 +860,23 @@ export const categoryService = {
 
 // Services pour les marques
 export const brandService = {
-  getBrands: async () => {
+  getBrands: async (page: number = 1, pageSize: number = 20) => {
     try {
-    const response = await api.get('/brands/');
-    const data = response.data;
-    // S'assurer que les marques ont un tableau rayons
-    if (data.results) {
-      data.results = data.results.map((brand: any) => ({
-        ...brand,
-        rayons: brand.rayons || [],
-        rayons_count: brand.rayons_count || 0
-      }));
-    }
-    return data;
+      console.log('🔧 getBrands - Page:', page, 'PageSize:', pageSize);
+      const response = await api.get(`/brands/?page=${page}&page_size=${pageSize}`);
+      const data = response.data;
+      
+      // S'assurer que les marques ont un tableau rayons
+      if (data.results) {
+        data.results = data.results.map((brand: any) => ({
+          ...brand,
+          rayons: brand.rayons || [],
+          rayons_count: brand.rayons_count || 0
+        }));
+      }
+      
+      console.log('✅ getBrands - Chargé:', data.results?.length || 0, 'marques');
+      return data;
     } catch (error: any) {
       console.error('❌ Erreur API marques:', error.response?.data || error.message);
       throw error;
@@ -890,10 +894,12 @@ export const brandService = {
   },
   
   // ✅ NOUVELLE MÉTHODE : Récupérer les marques d'un rayon spécifique
-  getBrandsByRayon: async (rayonId: number) => {
+  getBrandsByRayon: async (rayonId: number, page: number = 1, pageSize: number = 20) => {
     try {
-      const response = await api.get(`/brands/by-rayon/?rayon_id=${rayonId}`);
+      console.log('🔧 getBrandsByRayon - Rayon:', rayonId, 'Page:', page, 'PageSize:', pageSize);
+      const response = await api.get(`/brands/by-rayon/?rayon_id=${rayonId}&page=${page}&page_size=${pageSize}`);
       let data = response.data;
+      
       // S'assurer que les marques ont un tableau rayons
       if (data.brands) {
         data.brands = data.brands.map((brand: any) => ({
@@ -902,6 +908,8 @@ export const brandService = {
           rayons_count: brand.rayons_count || 0
         }));
       }
+      
+      console.log('✅ getBrandsByRayon - Chargé:', data.brands?.length || 0, 'marques');
       return data;
     } catch (error: any) {
       console.error('❌ Erreur API marques par rayon:', error.response?.data || error.message);
