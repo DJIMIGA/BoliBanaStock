@@ -108,8 +108,12 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
   };
 
   const handleBrandPress = (brand: Brand) => {
-    // Navigation vers les détails de la marque
+    // Navigation vers les produits de cette marque
     console.log('Navigation vers:', brand.name);
+    navigation.navigate('Products', { 
+      brandFilter: brand.id,
+      brandName: brand.name 
+    });
   };
 
   const handleManageRayons = (brand: Brand) => {

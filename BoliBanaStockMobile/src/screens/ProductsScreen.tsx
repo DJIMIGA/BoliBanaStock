@@ -36,7 +36,7 @@ interface Product {
   image_url?: string;
 }
 
-export default function ProductsScreen({ navigation }: any) {
+export default function ProductsScreen({ navigation, route }: any) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,21 +44,38 @@ export default function ProductsScreen({ navigation }: any) {
   const [filter, setFilter] = useState('all'); // all, low_stock, out_of_stock
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  
+  // Paramètres de navigation
+  const brandFilter = route?.params?.brandFilter;
+  const brandName = route?.params?.brandName;
+  const categoryFilter = route?.params?.categoryFilter;
+  const categoryName = route?.params?.categoryName;
 
   const loadProducts = async () => {
     try {
       setLoading(true);
       let data;
       
-      // Charger les produits avec filtrage par catégorie si sélectionnée
+      // Charger les produits avec filtrage
       const params: any = {};
-      if (selectedCategory) {
+      
+      // Filtre par catégorie (priorité aux paramètres de navigation)
+      if (categoryFilter) {
+        params.category = categoryFilter;
+      } else if (selectedCategory) {
         params.category = selectedCategory.id;
       }
       
+      // Filtre par marque
+      if (brandFilter) {
+        params.brand = brandFilter;
+      }
+      
+      console.log('🔧 ProductsScreen - Paramètres de filtrage:', params);
       data = await productService.getProducts(params);
       setProducts(data.results || data);
     } catch (error: any) {
+      console.error('❌ ProductsScreen - Erreur chargement produits:', error);
       Alert.alert('Erreur', 'Impossible de charger les produits');
     } finally {
       setLoading(false);
@@ -74,7 +91,7 @@ export default function ProductsScreen({ navigation }: any) {
 
   useEffect(() => {
     loadProducts();
-  }, [filter, selectedCategory]);
+  }, [filter, selectedCategory, brandFilter, categoryFilter]);
 
 
   const filteredProducts = products.filter(product => {
@@ -227,7 +244,11 @@ export default function ProductsScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.title}>Produits</Text>
+        <Text style={styles.title}>
+          {brandName ? `Produits - ${brandName}` : 
+           categoryName ? `Produits - ${categoryName}` : 
+           'Produits'}
+        </Text>
         <View style={styles.headerActions}>
           <TouchableOpacity 
             style={styles.headerButton}
