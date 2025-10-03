@@ -349,6 +349,31 @@ class BrandSerializer(serializers.ModelSerializer):
     def get_is_global(self, obj):
         """Retourne True si la marque est globale (site_configuration=None)"""
         return obj.site_configuration is None
+    
+    def create(self, validated_data):
+        """Créer une marque avec gestion des rayons"""
+        rayons_data = self.initial_data.get('rayons', [])
+        brand = Brand.objects.create(**validated_data)
+        
+        if rayons_data:
+            brand.rayons.set(rayons_data)
+        
+        return brand
+    
+    def update(self, instance, validated_data):
+        """Mettre à jour une marque avec gestion des rayons"""
+        rayons_data = self.initial_data.get('rayons', [])
+        
+        # Mettre à jour les champs de base
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Mettre à jour les rayons
+        if 'rayons' in self.initial_data:
+            instance.rayons.set(rayons_data)
+        
+        return instance
 
 
 class TransactionSerializer(serializers.ModelSerializer):
