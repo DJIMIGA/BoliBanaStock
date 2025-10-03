@@ -1052,11 +1052,14 @@ class BrandViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Créer une marque avec gestion du site"""
-        user_site = self.request.user.site_configuration
+        try:
+            user_site = getattr(self.request.user, 'site_configuration', None)
+        except:
+            user_site = None
         
         if self.request.user.is_superuser:
             # Superuser peut créer des marques globales (sans site) ou pour un site spécifique
-            # Si site_configuration n'est pas fourni, créer une marque globale
+            # Si site_configuration n'est pas fourni dans la requête, créer une marque globale
             site_config = serializer.validated_data.get('site_configuration')
             if not site_config:
                 # Marque globale - accessible à tous les sites

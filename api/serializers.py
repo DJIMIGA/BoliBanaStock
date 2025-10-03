@@ -336,14 +336,19 @@ class BrandSerializer(serializers.ModelSerializer):
     """Serializer pour les marques"""
     rayons = CategorySerializer(source='rayons.all', many=True, read_only=True)
     rayons_count = serializers.SerializerMethodField()
+    is_global = serializers.SerializerMethodField()
     
     class Meta:
         model = Brand
-        fields = ['id', 'name', 'description', 'logo', 'is_active', 'rayons', 'rayons_count', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'description', 'logo', 'is_active', 'rayons', 'rayons_count', 'is_global', 'created_at', 'updated_at']
     
     def get_rayons_count(self, obj):
         """Retourne le nombre de rayons associés à la marque"""
         return obj.rayons.count()
+    
+    def get_is_global(self, obj):
+        """Retourne True si la marque est globale (site_configuration=None)"""
+        return obj.site_configuration is None
 
 
 class TransactionSerializer(serializers.ModelSerializer):
