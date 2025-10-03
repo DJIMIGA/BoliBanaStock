@@ -1029,16 +1029,64 @@ class BrandViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Filtrer les marques par site de l'utilisateur"""
-        user_site = self.request.user.site_configuration
+        try:
+            user_site = getattr(self.request.user, 'site_configuration', None)
+        except:
+            user_site = None
         
         if self.request.user.is_superuser:
             # Superuser voit tout
             return Brand.objects.prefetch_related('rayons')
         else:
-            # Utilisateur normal voit seulement son site
+            # Utilisateur normal voit les marques de son site + les marques globales
             if not user_site:
-                return Brand.objects.none()
-            return Brand.objects.filter(site_configuration=user_site).prefetch_related('rayons')
+                # Si pas de site, voir seulement les marques globales
+                return Brand.objects.filter(site_configuration__isnull=True).prefetch_related('rayons')
+            else:
+                # Marques du site de l'utilisateur + marques globales
+                from django.db import models
+                return Brand.objects.filter(
+                    models.Q(site_configuration=user_site) | 
+                    models.Q(site_configuration__isnull=True)
+                ).prefetch_related('rayons')
+    
+    def perform_create(self, serializer):
+        """Créer une marque avec gestion du site"""
+        user_site = self.request.user.site_configuration
+        
+        if self.request.user.is_superuser:
+            # Superuser peut créer des marques globales (sans site) ou pour un site spécifique
+            # Si site_configuration n'est pas fourni, créer une marque globale
+            site_config = serializer.validated_data.get('site_configuration')
+            if not site_config:
+                # Marque globale - accessible à tous les sites
+                serializer.save(site_configuration=None)
+            else:
+                serializer.save(site_configuration=site_config)
+        else:
+            # Utilisateur normal crée pour son site uniquement
+            if not user_site:
+                raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
+            serializer.save(site_configuration=user_site)
+    
+    def perform_update(self, serializer):
+        """Mettre à jour une marque avec gestion du site"""
+        user_site = self.request.user.site_configuration
+        
+        if self.request.user.is_superuser:
+            # Superuser peut modifier n'importe quelle marque
+            serializer.save()
+        else:
+            # Utilisateur normal ne peut modifier que les marques de son site
+            if not user_site:
+                raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
+            
+            # Vérifier que la marque appartient au site de l'utilisateur
+            brand = self.get_object()
+            if brand.site_configuration != user_site:
+                raise ValidationError({"detail": "Vous ne pouvez pas modifier cette marque"})
+            
+            serializer.save()
     
     @action(detail=False, methods=['get'])
     def by_rayon(self, request):
@@ -2671,19 +2719,28 @@ class BrandsByRayonAPIView(APIView):
             rayon = Category.objects.get(id=rayon_id, is_rayon=True)
             
             # Récupérer les marques du rayon
-            user_site = request.user.site_configuration
+            try:
+                user_site = getattr(request.user, 'site_configuration', None)
+            except:
+                user_site = None
+                
             if request.user.is_superuser:
                 brands = Brand.objects.filter(rayons=rayon).prefetch_related('rayons')
             else:
                 if not user_site:
-                    return Response(
-                        {'error': 'Aucun site configuré pour cet utilisateur'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                brands = Brand.objects.filter(
-                    site_configuration=user_site,
-                    rayons=rayon
-                ).prefetch_related('rayons')
+                    # Si pas de site, voir seulement les marques globales
+                    brands = Brand.objects.filter(
+                        site_configuration__isnull=True,
+                        rayons=rayon
+                    ).prefetch_related('rayons')
+                else:
+                    # Marques du site de l'utilisateur + marques globales
+                    from django.db import models
+                    brands = Brand.objects.filter(
+                        models.Q(site_configuration=user_site) | 
+                        models.Q(site_configuration__isnull=True),
+                        rayons=rayon
+                    ).prefetch_related('rayons')
             
             serializer = BrandSerializer(brands, many=True)
             return Response({
