@@ -41,11 +41,16 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
       loadRayons();
       // Pré-remplir le formulaire si on modifie une marque
       if (brandToEdit) {
+        console.log('🔧 AddBrandModal - Pré-remplissage pour modification:', brandToEdit);
+        console.log('🔧 AddBrandModal - Rayons de la marque:', brandToEdit.rayons);
         setName(brandToEdit.name);
         setDescription(brandToEdit.description || '');
-        setSelectedRayons(brandToEdit.rayons?.map(r => r.id) || []);
+        const rayonIds = brandToEdit.rayons?.map(r => r.id) || [];
+        console.log('🔧 AddBrandModal - IDs des rayons à pré-sélectionner:', rayonIds);
+        setSelectedRayons(rayonIds);
       } else {
         // Réinitialiser le formulaire pour une nouvelle marque
+        console.log('🔧 AddBrandModal - Réinitialisation pour nouvelle marque');
         setName('');
         setDescription('');
         setSelectedRayons([]);
@@ -68,12 +73,13 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
   };
 
   const handleRayonToggle = (rayonId: number) => {
+    console.log('🔧 AddBrandModal - Toggle rayon:', rayonId);
     setSelectedRayons(prev => {
-      if (prev.includes(rayonId)) {
-        return prev.filter(id => id !== rayonId);
-      } else {
-        return [...prev, rayonId];
-      }
+      const newSelection = prev.includes(rayonId) 
+        ? prev.filter(id => id !== rayonId)
+        : [...prev, rayonId];
+      console.log('🔧 AddBrandModal - Nouveaux rayons sélectionnés:', newSelection);
+      return newSelection;
     });
   };
 
@@ -104,8 +110,13 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
     try {
       setLoading(true);
       
+      console.log('🔧 AddBrandModal - Rayons sélectionnés:', selectedRayons);
+      console.log('🔧 AddBrandModal - Nom:', name.trim());
+      console.log('🔧 AddBrandModal - Description:', description.trim());
+      
       if (brandToEdit) {
         // Modification d'une marque existante
+        console.log('🔧 AddBrandModal - Modification de la marque:', brandToEdit.id);
         const updatedBrand = await brandService.updateBrand(brandToEdit.id, {
           name: name.trim(),
           description: description.trim() || null,
@@ -113,12 +124,14 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
           rayons: selectedRayons,
         });
         
+        console.log('✅ AddBrandModal - Marque modifiée:', updatedBrand);
         if (onBrandUpdated) {
           onBrandUpdated(updatedBrand);
         }
         Alert.alert('Succès', 'Marque modifiée avec succès');
       } else {
         // Création d'une nouvelle marque
+        console.log('🔧 AddBrandModal - Création d\'une nouvelle marque');
         const newBrand = await brandService.createBrand({
           name: name.trim(),
           description: description.trim() || null,
@@ -126,13 +139,14 @@ const AddBrandModal: React.FC<AddBrandModalProps> = ({
           rayons: selectedRayons,
         });
         
+        console.log('✅ AddBrandModal - Marque créée:', newBrand);
         onBrandAdded(newBrand);
         Alert.alert('Succès', 'Marque créée avec succès');
       }
       
       handleClose();
     } catch (error) {
-      console.error('Erreur lors de la sauvegarde de la marque:', error);
+      console.error('❌ AddBrandModal - Erreur lors de la sauvegarde de la marque:', error);
       Alert.alert('Erreur', 'Impossible de sauvegarder la marque');
     } finally {
       setLoading(false);

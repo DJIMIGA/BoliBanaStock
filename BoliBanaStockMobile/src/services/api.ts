@@ -915,7 +915,9 @@ export const brandService = {
     rayons?: number[];
   }) => {
     try {
+      console.log('🔧 createBrand - Données:', brandData);
       const response = await api.post('/brands/', brandData);
+      console.log('✅ createBrand - Succès:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Erreur API création marque:', error.response?.data || error.message);
@@ -929,7 +931,9 @@ export const brandService = {
     rayons?: number[];
   }) => {
     try {
+      console.log('🔧 updateBrand - ID:', id, 'Données:', brandData);
       const response = await api.put(`/brands/${id}/`, brandData);
+      console.log('✅ updateBrand - Succès:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Erreur API mise à jour marque:', error.response?.data || error.message);
@@ -940,9 +944,11 @@ export const brandService = {
   // ✅ NOUVELLE MÉTHODE : Mettre à jour les rayons d'une marque
   updateBrandRayons: async (id: number, rayonIds: number[]) => {
     try {
+      console.log('🔧 updateBrandRayons - ID:', id, 'Rayons:', rayonIds);
       const response = await api.put(`/brands/${id}/`, {
         rayons: rayonIds
       });
+      console.log('✅ updateBrandRayons - Succès:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Erreur API mise à jour rayons marque:', error.response?.data || error.message);
