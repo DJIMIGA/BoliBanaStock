@@ -1091,6 +1091,55 @@ class BrandViewSet(viewsets.ModelViewSet):
             
             serializer.save()
     
+    def destroy(self, request, *args, **kwargs):
+        """Supprimer une marque avec gestion du site"""
+        try:
+            user_site = getattr(request.user, 'site_configuration', None)
+        except:
+            user_site = None
+        
+        brand = self.get_object()
+        
+        if request.user.is_superuser:
+            # Superuser peut supprimer n'importe quelle marque
+            # Vérifier s'il y a des produits associés
+            from apps.inventory.models import Product
+            products_count = Product.objects.filter(brand=brand).count()
+            if products_count > 0:
+                return Response(
+                    {'error': f'Impossible de supprimer cette marque. {products_count} produit(s) y sont encore associés.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            brand.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            # Utilisateur normal ne peut supprimer que les marques de son site
+            if not user_site:
+                return Response(
+                    {'error': 'Aucun site configuré pour cet utilisateur'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Vérifier que la marque appartient au site de l'utilisateur
+            if brand.site_configuration != user_site:
+                return Response(
+                    {'error': 'Vous ne pouvez pas supprimer cette marque'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Vérifier s'il y a des produits associés
+            from apps.inventory.models import Product
+            products_count = Product.objects.filter(brand=brand).count()
+            if products_count > 0:
+                return Response(
+                    {'error': f'Impossible de supprimer cette marque. {products_count} produit(s) y sont encore associés.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            brand.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+    
     @action(detail=False, methods=['get'])
     def by_rayon(self, request):
         """Récupère les marques d'un rayon spécifique"""
@@ -1617,25 +1666,38 @@ class UserProfileAPIView(APIView):
     def get(self, request):
         """Récupérer les informations du profil utilisateur"""
         try:
+            from apps.core.services import UserInfoService
+            
             user = request.user
-            data = {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'telephone': getattr(user, 'telephone', ''),
-                'poste': getattr(user, 'poste', ''),
-                'adresse': getattr(user, 'adresse', ''),
-                'is_staff': user.is_staff,
-                'is_superuser': user.is_superuser,
-                'is_active': user.is_active,
-                'date_joined': user.date_joined.isoformat(),
-                'last_login': user.last_login.isoformat() if user.last_login else None,
-            }
+            user_info = UserInfoService.get_user_complete_info(user)
+            
+            if not user_info:
+                return Response({
+                    'success': False,
+                    'error': 'Utilisateur non trouvé'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Formater les dates pour l'API
+            if user_info['basic_info'].get('date_joined'):
+                user_info['basic_info']['date_joined'] = user_info['basic_info']['date_joined'].isoformat()
+            if user_info['basic_info'].get('last_login'):
+                user_info['basic_info']['last_login'] = user_info['basic_info']['last_login'].isoformat()
+            if user_info['activity_summary'].get('last_login'):
+                user_info['activity_summary']['last_login'] = user_info['activity_summary']['last_login'].isoformat()
+            if user_info['activity_summary'].get('derniere_connexion'):
+                user_info['activity_summary']['derniere_connexion'] = user_info['activity_summary']['derniere_connexion'].isoformat()
+            if user_info['activity_summary'].get('date_joined'):
+                user_info['activity_summary']['date_joined'] = user_info['activity_summary']['date_joined'].isoformat()
+            
             return Response({
                 'success': True,
-                'user': data
+                'user': user_info['basic_info'],
+                'status_summary': user_info['status_summary'],
+                'permissions': user_info['permissions'],
+                'activity_summary': user_info['activity_summary'],
+                'display_name': user_info['display_name'],
+                'available_sites': user_info['available_sites'],
+                'site_configuration': user_info['site_configuration'],
             })
         except Exception as e:
             return Response({
@@ -1688,6 +1750,70 @@ class UserProfileAPIView(APIView):
             return Response({
                 'success': False,
                 'error': 'Erreur lors de la mise à jour du profil'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class UserInfoAPIView(APIView):
+    """
+    API endpoint pour récupérer les informations d'utilisateur de manière simplifiée
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer les informations d'utilisateur simplifiées"""
+        try:
+            from apps.core.services import get_user_info, get_user_permissions_quick
+            
+            user = request.user
+            user_info = get_user_info(user)
+            permissions = get_user_permissions_quick(user)
+            
+            if not user_info:
+                return Response({
+                    'success': False,
+                    'error': 'Utilisateur non trouvé'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'user': user_info['basic_info'],
+                    'permissions': permissions,
+                    'status': user_info['status_summary'],
+                    'activity': user_info['activity_summary'],
+                }
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la récupération des informations utilisateur',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class UserPermissionsAPIView(APIView):
+    """
+    API endpoint pour récupérer uniquement les permissions d'un utilisateur
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer les permissions de l'utilisateur"""
+        try:
+            from apps.core.services import get_user_permissions_quick
+            
+            user = request.user
+            permissions = get_user_permissions_quick(user)
+            
+            return Response({
+                'success': True,
+                'permissions': permissions
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la récupération des permissions',
+                'details': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

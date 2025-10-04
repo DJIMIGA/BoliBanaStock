@@ -340,7 +340,7 @@ class BrandSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Brand
-        fields = ['id', 'name', 'description', 'logo', 'is_active', 'rayons', 'rayons_count', 'is_global', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'description', 'logo', 'is_active', 'rayons', 'rayons_count', 'is_global', 'site_configuration', 'created_at', 'updated_at']
     
     def get_rayons_count(self, obj):
         """Retourne le nombre de rayons associés à la marque"""

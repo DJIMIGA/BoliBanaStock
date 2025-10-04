@@ -95,6 +95,88 @@ class User(AbstractUser):
         """
         return self.is_superuser or self.is_site_admin
 
+    def get_user_status_info(self):
+        """
+        Retourne un dictionnaire complet avec toutes les informations de statut de l'utilisateur
+        """
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+            'full_name': self.get_full_name(),
+            'is_active': self.is_active,
+            'is_staff': self.is_staff,
+            'is_superuser': self.is_superuser,
+            'is_site_admin': self.is_site_admin,
+            'est_actif': self.est_actif,
+            'site_configuration_id': self.site_configuration_id if self.site_configuration else None,
+            'site_configuration_name': self.site_configuration.site_name if self.site_configuration else None,
+            'permission_level': self.get_permission_level(),
+            'can_manage_users': self.can_manage_users(),
+            'can_access_admin': self.is_superuser or self.is_staff,
+            'can_manage_site': self.is_superuser or self.is_site_admin,
+            'date_joined': self.date_joined,
+            'last_login': self.last_login,
+            'derniere_connexion': self.derniere_connexion,
+        }
+
+    def get_permission_level(self):
+        """
+        Retourne le niveau de permission de l'utilisateur sous forme de string
+        """
+        if self.is_superuser:
+            return 'superuser'
+        elif self.is_site_admin:
+            return 'site_admin'
+        elif self.is_staff:
+            return 'staff'
+        else:
+            return 'user'
+
+    def get_user_role_display(self):
+        """
+        Retourne le rôle de l'utilisateur en français
+        """
+        role_map = {
+            'superuser': 'Superutilisateur',
+            'site_admin': 'Administrateur de Site',
+            'staff': 'Membre du Staff',
+            'user': 'Utilisateur Standard'
+        }
+        return role_map.get(self.get_permission_level(), 'Utilisateur')
+
+    def get_access_scope(self):
+        """
+        Retourne la portée d'accès de l'utilisateur
+        """
+        if self.is_superuser:
+            return 'global'
+        elif self.site_configuration:
+            return 'site_specific'
+        else:
+            return 'limited'
+
+    def can_access_site(self, site_configuration):
+        """
+        Vérifie si l'utilisateur peut accéder à un site spécifique
+        """
+        if self.is_superuser:
+            return True
+        return self.site_configuration == site_configuration
+
+    def get_available_sites(self):
+        """
+        Retourne les sites auxquels l'utilisateur peut accéder
+        """
+        if self.is_superuser:
+            return Configuration.objects.all()
+        elif self.site_configuration:
+            return Configuration.objects.filter(id=self.site_configuration.id)
+        else:
+            return Configuration.objects.none()
+
 class BaseModel(models.Model):
     """
     Modèle de base avec horodatage

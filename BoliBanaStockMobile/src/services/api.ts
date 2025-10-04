@@ -973,6 +973,43 @@ export const brandService = {
       throw error;
     }
   },
+
+  // Récupérer les informations de l'utilisateur actuel
+  getCurrentUser: async () => {
+    try {
+      const response = await api.get('/users/');
+      return response.data.user; // L'API retourne { success: true, user: {...} }
+    } catch (error: any) {
+      console.error('❌ Erreur API utilisateur:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // ✅ NOUVELLE MÉTHODE : Récupérer les informations complètes de l'utilisateur
+  getUserInfo: async () => {
+    try {
+      console.log('🔧 getUserInfo - Récupération des informations utilisateur...');
+      const response = await api.get('/user/info/');
+      console.log('✅ getUserInfo - Réponse reçue:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur API getUserInfo:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // ✅ NOUVELLE MÉTHODE : Récupérer uniquement les permissions de l'utilisateur
+  getUserPermissions: async () => {
+    try {
+      console.log('🔧 getUserPermissions - Récupération des permissions...');
+      const response = await api.get('/user/permissions/');
+      console.log('✅ getUserPermissions - Réponse reçue:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur API getUserPermissions:', error.response?.data || error.message);
+      throw error;
+    }
+  },
 };
 
 // Service pour les ventes

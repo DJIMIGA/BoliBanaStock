@@ -14,12 +14,16 @@ interface BrandCardProps {
   brand: Brand;
   onPress: () => void;
   onEdit?: () => void; // Callback pour l'édition
+  onDelete?: () => void; // Callback pour la suppression
+  canDelete?: boolean; // Indique si l'utilisateur peut supprimer cette marque
 }
 
 const BrandCard: React.FC<BrandCardProps> = ({
   brand,
   onPress,
   onEdit,
+  onDelete,
+  canDelete = false,
 }) => {
   const getRayonTypeColor = (rayonType: string) => {
     const colors: { [key: string]: string } = {
@@ -85,6 +89,17 @@ const BrandCard: React.FC<BrandCardProps> = ({
                 activeOpacity={0.7}
               >
                 <Ionicons name="create-outline" size={16} color="#4CAF50" />
+              </TouchableOpacity>
+            )}
+            
+            {/* Delete button */}
+            {onDelete && canDelete && (
+              <TouchableOpacity
+                onPress={onDelete}
+                style={styles.headerDeleteButton}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="trash-outline" size={16} color="#F44336" />
               </TouchableOpacity>
             )}
           </View>
@@ -212,6 +227,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F5E8',
     borderWidth: 1,
     borderColor: '#4CAF50',
+  },
+  headerDeleteButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#FFEBEE',
+    borderWidth: 1,
+    borderColor: '#F44336',
   },
   rayonsList: {
     flexDirection: 'row',

@@ -180,4 +180,126 @@ def cleanup_temporary_files(directory, max_age_days=7):
                     os.remove(file_path)
                     logger.info(f"Fichier temporaire supprimé: {file_path}")
     except Exception as e:
-        logger.error(f"Erreur lors du nettoyage des fichiers temporaires: {str(e)}") 
+        logger.error(f"Erreur lors du nettoyage des fichiers temporaires: {str(e)}")
+
+# ===== FONCTIONS UTILITAIRES POUR LES INFORMATIONS UTILISATEUR =====
+
+def get_user_status_summary(user):
+    """
+    Retourne un résumé des statuts de l'utilisateur
+    """
+    if not user:
+        return None
+    
+    return {
+        'is_active': user.is_active and user.est_actif,
+        'permission_level': user.get_permission_level(),
+        'role_display': user.get_user_role_display(),
+        'access_scope': user.get_access_scope(),
+        'can_manage_users': user.can_manage_users(),
+        'can_access_admin': user.is_superuser or user.is_staff,
+        'can_manage_site': user.is_superuser or user.is_site_admin,
+        'site_name': user.site_configuration.site_name if user.site_configuration else None,
+    }
+
+def get_user_permissions(user):
+    """
+    Retourne les permissions détaillées de l'utilisateur
+    """
+    if not user:
+        return {}
+    
+    return {
+        'can_create_users': user.is_superuser or user.is_site_admin,
+        'can_edit_users': user.is_superuser or user.is_site_admin,
+        'can_delete_users': user.is_superuser or user.is_site_admin,
+        'can_manage_products': True,  # Tous les utilisateurs actifs peuvent gérer les produits
+        'can_manage_categories': True,
+        'can_manage_brands': True,
+        'can_manage_sales': True,
+        'can_view_reports': user.is_superuser or user.is_site_admin or user.is_staff,
+        'can_manage_settings': user.is_superuser or user.is_site_admin,
+        'can_access_all_sites': user.is_superuser,
+        'can_export_data': user.is_superuser or user.is_site_admin or user.is_staff,
+    }
+
+def get_user_context(user):
+    """
+    Retourne le contexte complet de l'utilisateur pour les vues
+    """
+    if not user:
+        return {}
+    
+    return {
+        'user_info': user.get_user_status_info(),
+        'status_summary': get_user_status_summary(user),
+        'permissions': get_user_permissions(user),
+        'site_configuration': get_configuration(user),
+        'available_sites': list(user.get_available_sites().values('id', 'site_name')),
+    }
+
+def check_user_can_access_resource(user, resource_site_configuration=None):
+    """
+    Vérifie si l'utilisateur peut accéder à une ressource spécifique
+    """
+    if not user or not user.is_active or not user.est_actif:
+        return False
+    
+    # Superutilisateur peut accéder à tout
+    if user.is_superuser:
+        return True
+    
+    # Si pas de site spécifié, vérifier que l'utilisateur a un site configuré
+    if not resource_site_configuration:
+        return user.site_configuration is not None
+    
+    # Vérifier que l'utilisateur peut accéder à ce site
+    return user.can_access_site(resource_site_configuration)
+
+def get_user_dashboard_data(user):
+    """
+    Retourne les données spécifiques au tableau de bord selon le rôle de l'utilisateur
+    """
+    if not user:
+        return {}
+    
+    context = get_user_context(user)
+    
+    # Ajouter des données spécifiques selon le rôle
+    if user.is_superuser:
+        context['can_manage_all_sites'] = True
+        context['can_view_global_stats'] = True
+    elif user.is_site_admin:
+        context['can_manage_site_users'] = True
+        context['can_view_site_stats'] = True
+    elif user.is_staff:
+        context['can_view_advanced_features'] = True
+    
+    return context
+
+def format_user_display_name(user):
+    """
+    Retourne le nom d'affichage formaté de l'utilisateur
+    """
+    if not user:
+        return "Utilisateur inconnu"
+    
+    full_name = user.get_full_name()
+    if full_name:
+        return f"{full_name} ({user.username})"
+    return user.username
+
+def get_user_activity_summary(user):
+    """
+    Retourne un résumé de l'activité de l'utilisateur
+    """
+    if not user:
+        return {}
+    
+    return {
+        'last_login': user.last_login,
+        'derniere_connexion': user.derniere_connexion,
+        'date_joined': user.date_joined,
+        'is_online': user.derniere_connexion and (timezone.now() - user.derniere_connexion).seconds < 300,  # 5 minutes
+        'account_age_days': (timezone.now() - user.date_joined).days,
+    } 

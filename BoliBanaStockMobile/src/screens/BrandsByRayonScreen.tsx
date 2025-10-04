@@ -15,6 +15,7 @@ import { Brand, Category } from '../types';
 import { brandService } from '../services/api';
 import BrandCard from '../components/BrandCard';
 import AddBrandModal from '../components/AddBrandModal';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 
 interface BrandsByRayonScreenProps {
   route: {
@@ -35,6 +36,9 @@ const BrandsByRayonScreen: React.FC<BrandsByRayonScreenProps> = ({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Hook pour les permissions utilisateur
+  const { canDeleteBrand } = useUserPermissions();
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [editBrandModalVisible, setEditBrandModalVisible] = useState(false);
 
@@ -108,6 +112,38 @@ const BrandsByRayonScreen: React.FC<BrandsByRayonScreenProps> = ({
     setSelectedBrand(null);
   };
 
+  const handleDeleteBrand = (brand: Brand) => {
+    Alert.alert(
+      'Supprimer la marque',
+      `Êtes-vous sûr de vouloir supprimer la marque "${brand.name}" ?\n\nCette action est irréversible.`,
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => deleteBrand(brand.id),
+        },
+      ]
+    );
+  };
+
+  const deleteBrand = async (brandId: number) => {
+    try {
+      await brandService.deleteBrand(brandId);
+      setBrands(prevBrands => prevBrands.filter(brand => brand.id !== brandId));
+      setFilteredBrands(prevFiltered => prevFiltered.filter(brand => brand.id !== brandId));
+      Alert.alert('Succès', 'Marque supprimée avec succès');
+    } catch (error: any) {
+      console.error('Erreur lors de la suppression:', error);
+      const errorMessage = error.response?.data?.error || 'Impossible de supprimer la marque';
+      Alert.alert('Erreur', errorMessage);
+    }
+  };
+
+
   const getRayonTypeColor = (rayonType: string) => {
     const colors: { [key: string]: string } = {
       'frais_libre_service': '#4CAF50',
@@ -129,6 +165,8 @@ const BrandsByRayonScreen: React.FC<BrandsByRayonScreenProps> = ({
       brand={item}
       onPress={() => handleBrandPress(item)}
       onEdit={() => handleEditBrand(item)}
+      onDelete={() => handleDeleteBrand(item)}
+      canDelete={canDeleteBrand(item)}
     />
   );
 

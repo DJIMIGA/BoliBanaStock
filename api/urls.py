@@ -8,7 +8,7 @@ from rest_framework import permissions
 from .views import (
     LoginView, LogoutView, DashboardView,
     ConfigurationAPIView, ParametresAPIView, ConfigurationResetAPIView,
-    UserProfileAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
+    UserProfileAPIView, UserInfoAPIView, UserPermissionsAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
     RefreshTokenView, ForceLogoutAllView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
@@ -62,6 +62,10 @@ urlpatterns = [
     path('users/', UserProfileAPIView.as_view(), name='api_users'),  # Endpoint users principal
     path('users/profile/', UserProfileAPIView.as_view(), name='api_profile'),  # Alias pour compatibilité
     path('profile/', UserProfileAPIView.as_view(), name='api_profile_alt'),    # Alias alternatif
+    
+    # Nouvelles APIs pour les informations utilisateur
+    path('user/info/', UserInfoAPIView.as_view(), name='api_user_info'),
+    path('user/permissions/', UserPermissionsAPIView.as_view(), name='api_user_permissions'),
     
     # Configuration et paramètres
     path('configuration/', ConfigurationAPIView.as_view(), name='api_configuration'),

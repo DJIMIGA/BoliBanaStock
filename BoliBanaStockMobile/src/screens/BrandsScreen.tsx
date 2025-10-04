@@ -17,6 +17,7 @@ import { brandService, categoryService } from '../services/api';
 import BrandCard from '../components/BrandCard';
 import AddBrandModal from '../components/AddBrandModal';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 
 interface BrandsScreenProps {
   navigation: any;
@@ -28,6 +29,9 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
   const [rayons, setRayons] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Hook pour les permissions utilisateur
+  const { canDeleteBrand } = useUserPermissions();
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -164,6 +168,37 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
     setSelectedBrand(null);
   };
 
+  const handleDeleteBrand = (brand: Brand) => {
+    Alert.alert(
+      'Supprimer la marque',
+      `Êtes-vous sûr de vouloir supprimer la marque "${brand.name}" ?\n\nCette action est irréversible.`,
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => deleteBrand(brand.id),
+        },
+      ]
+    );
+  };
+
+  const deleteBrand = async (brandId: number) => {
+    try {
+      await brandService.deleteBrand(brandId);
+      setBrands(prevBrands => prevBrands.filter(brand => brand.id !== brandId));
+      Alert.alert('Succès', 'Marque supprimée avec succès');
+    } catch (error: any) {
+      console.error('Erreur lors de la suppression:', error);
+      const errorMessage = error.response?.data?.error || 'Impossible de supprimer la marque';
+      Alert.alert('Erreur', errorMessage);
+    }
+  };
+
+
   const handleRayonFilter = async (rayonId: number | null) => {
     setSelectedRayon(rayonId);
     setSelectedCategory(null); // Réinitialiser la catégorie
@@ -222,6 +257,8 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
       brand={item}
       onPress={() => handleBrandPress(item)}
       onEdit={() => handleEditBrand(item)}
+      onDelete={() => handleDeleteBrand(item)}
+      canDelete={canDeleteBrand(item)}
     />
   );
 
