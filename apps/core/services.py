@@ -5,6 +5,7 @@ Services centralisés pour la gestion des utilisateurs et des permissions
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
+from django.db.models import Q
 from .models import Configuration
 from .utils import (
     get_user_status_summary,
@@ -206,6 +207,18 @@ class PermissionService:
             'view_reports': user.is_superuser or user.is_site_admin or user.is_staff,
             'export_data': user.is_superuser or user.is_site_admin or user.is_staff,
             'access_admin': user.is_superuser or user.is_staff,
+            # Permissions pour les marques
+            'create_brand': user.is_superuser or user.is_site_admin or user.is_staff,
+            'edit_brand': user.is_superuser or user.is_site_admin or user.is_staff,
+            'delete_brand': user.is_superuser or user.is_site_admin or user.is_staff,
+            'view_brand': user.is_superuser or user.is_site_admin or user.is_staff,
+            'manage_brand_rayons': user.is_superuser or user.is_site_admin or user.is_staff,
+            # Permissions pour les catégories
+            'create_category': user.is_superuser or user.is_site_admin or user.is_staff,
+            'edit_category': user.is_superuser or user.is_site_admin or user.is_staff,
+            'delete_category': user.is_superuser or user.is_site_admin or user.is_staff,
+            'view_category': user.is_superuser or user.is_site_admin or user.is_staff,
+            'manage_category_hierarchy': user.is_superuser or user.is_site_admin or user.is_staff,
         }
         
         if action in action_permissions:
@@ -229,9 +242,261 @@ class PermissionService:
             return model_class.objects.all()
         
         if hasattr(model_class, 'site_configuration'):
-            return model_class.objects.filter(site_configuration=user.site_configuration)
+            # Inclure les ressources du site de l'utilisateur ET les ressources globales
+            return model_class.objects.filter(
+                Q(site_configuration=user.site_configuration) | 
+                Q(site_configuration__isnull=True)
+            )
         
         return model_class.objects.none()
+    
+    @staticmethod
+    def can_user_manage_brand(user, brand=None):
+        """
+        Vérifie si un utilisateur peut gérer une marque spécifique
+        """
+        logger.info(f"🔍 Vérification permission GESTION marque - User: {user.username if user else 'None'}, Brand: {brand.name if brand else 'None'}")
+        
+        if not user or not user.is_active or not user.est_actif:
+            logger.warning(f"❌ User inactif ou None - User: {user}, is_active: {getattr(user, 'is_active', 'N/A')}, est_actif: {getattr(user, 'est_actif', 'N/A')}")
+            return False
+        
+        # Superutilisateur peut gérer toutes les marques
+        if user.is_superuser:
+            logger.info(f"✅ Superuser peut gérer toutes les marques - User: {user.username}")
+            return True
+        
+        # Vérifier les permissions de base
+        has_base_permission = PermissionService.can_user_perform_action(user, 'edit_brand')
+        logger.info(f"🔐 Permission de base 'edit_brand': {has_base_permission} - User: {user.username}")
+        
+        if not has_base_permission:
+            logger.warning(f"❌ Pas de permission de base pour gérer les marques - User: {user.username}")
+            return False
+        
+        # Si une marque spécifique est fournie, vérifier l'accès au site
+        if brand:
+            brand_site = brand.site_configuration
+            user_site = user.site_configuration
+            
+            logger.info(f"🏢 Vérification site - Brand site: {brand_site.site_name if brand_site else 'GLOBALE'}, User site: {user_site.site_name if user_site else 'None'}")
+            
+            if brand_site is None:
+                # Marque globale - accessible à tous les utilisateurs autorisés
+                logger.info(f"✅ Marque globale accessible - User: {user.username}")
+                return True
+            else:
+                # Vérifier que l'utilisateur appartient au même site
+                can_manage = user_site == brand_site
+                logger.info(f"{'✅' if can_manage else '❌'} Accès site - User: {user.username}, Brand: {brand.name}")
+                return can_manage
+        
+        logger.info(f"✅ Permission générale accordée - User: {user.username}")
+        return True
+    
+    @staticmethod
+    def can_user_create_brand(user, target_site=None):
+        """
+        Vérifie si un utilisateur peut créer une marque
+        """
+        logger.info(f"🔍 Vérification permission CRÉATION marque - User: {user.username if user else 'None'}, Target site: {target_site.site_name if target_site else 'None'}")
+        
+        if not user or not user.is_active or not user.est_actif:
+            logger.warning(f"❌ User inactif ou None - User: {user}")
+            return False
+        
+        # Superutilisateur peut créer des marques partout
+        if user.is_superuser:
+            logger.info(f"✅ Superuser peut créer des marques partout - User: {user.username}")
+            return True
+        
+        # Vérifier les permissions de base
+        has_base_permission = PermissionService.can_user_perform_action(user, 'create_brand')
+        logger.info(f"🔐 Permission de base 'create_brand': {has_base_permission} - User: {user.username}")
+        
+        if not has_base_permission:
+            logger.warning(f"❌ Pas de permission de base pour créer des marques - User: {user.username}")
+            return False
+        
+        # Si un site cible est spécifié
+        if target_site:
+            if target_site is None:
+                # Création d'une marque globale - seulement pour les superutilisateurs
+                logger.info(f"❌ Création marque globale refusée - User: {user.username} (pas superuser)")
+                return user.is_superuser
+            else:
+                # Vérifier que l'utilisateur peut créer pour ce site
+                user_site = user.site_configuration
+                can_create = user_site == target_site
+                logger.info(f"{'✅' if can_create else '❌'} Création pour site - User: {user.username}, Target: {target_site.site_name}")
+                return can_create
+        
+        logger.info(f"✅ Permission de création accordée - User: {user.username}")
+        return True
+    
+    @staticmethod
+    def can_user_delete_brand(user, brand):
+        """
+        Vérifie si un utilisateur peut supprimer une marque spécifique
+        """
+        logger.info(f"🔍 Vérification permission SUPPRESSION marque - User: {user.username if user else 'None'}, Brand: {brand.name if brand else 'None'}")
+        
+        if not user or not user.is_active or not user.est_actif:
+            logger.warning(f"❌ User inactif ou None - User: {user}")
+            return False
+        
+        # Superutilisateur peut supprimer toutes les marques
+        if user.is_superuser:
+            logger.info(f"✅ Superuser peut supprimer toutes les marques - User: {user.username}")
+            return True
+        
+        # Vérifier les permissions de base
+        has_base_permission = PermissionService.can_user_perform_action(user, 'delete_brand')
+        logger.info(f"🔐 Permission de base 'delete_brand': {has_base_permission} - User: {user.username}")
+        
+        if not has_base_permission:
+            logger.warning(f"❌ Pas de permission de base pour supprimer des marques - User: {user.username}")
+            return False
+        
+        # Vérifier l'accès au site de la marque
+        brand_site = brand.site_configuration
+        user_site = user.site_configuration
+        
+        logger.info(f"🏢 Vérification site - Brand site: {brand_site.site_name if brand_site else 'GLOBALE'}, User site: {user_site.site_name if user_site else 'None'}")
+        
+        if brand_site is None:
+            # Marque globale - accessible à tous les utilisateurs autorisés
+            logger.info(f"✅ Marque globale accessible pour suppression - User: {user.username}")
+            return True
+        else:
+            # Vérifier que l'utilisateur appartient au même site
+            can_delete = user_site == brand_site
+            logger.info(f"{'✅' if can_delete else '❌'} Suppression site - User: {user.username}, Brand: {brand.name}")
+            return can_delete
+    
+    @staticmethod
+    def can_user_manage_category(user, category=None):
+        """
+        Vérifie si un utilisateur peut gérer une catégorie spécifique
+        """
+        logger.info(f"🔍 Vérification permission GESTION catégorie - User: {user.username if user else 'None'}, Category: {category.name if category else 'None'}")
+        
+        if not user or not user.is_active or not user.est_actif:
+            logger.warning(f"❌ User inactif ou None - User: {user}, is_active: {getattr(user, 'is_active', 'N/A')}, est_actif: {getattr(user, 'est_actif', 'N/A')}")
+            return False
+        
+        # Superutilisateur peut gérer toutes les catégories
+        if user.is_superuser:
+            logger.info(f"✅ Superuser peut gérer toutes les catégories - User: {user.username}")
+            return True
+        
+        # Vérifier les permissions de base
+        has_base_permission = PermissionService.can_user_perform_action(user, 'edit_category')
+        logger.info(f"🔐 Permission de base 'edit_category': {has_base_permission} - User: {user.username}")
+        
+        if not has_base_permission:
+            logger.warning(f"❌ Pas de permission de base pour gérer les catégories - User: {user.username}")
+            return False
+        
+        # Si une catégorie spécifique est fournie, vérifier l'accès au site
+        if category:
+            category_site = category.site_configuration
+            user_site = user.site_configuration
+            
+            logger.info(f"🏢 Vérification site - Category site: {category_site.site_name if category_site else 'GLOBALE'}, User site: {user_site.site_name if user_site else 'None'}")
+            
+            if category_site is None:
+                # Catégorie globale - accessible à tous les utilisateurs autorisés
+                logger.info(f"✅ Catégorie globale accessible - User: {user.username}")
+                return True
+            else:
+                # Vérifier que l'utilisateur appartient au même site
+                can_manage = user_site == category_site
+                logger.info(f"{'✅' if can_manage else '❌'} Accès site - User: {user.username}, Category: {category.name}")
+                return can_manage
+        
+        logger.info(f"✅ Permission générale accordée - User: {user.username}")
+        return True
+    
+    @staticmethod
+    def can_user_create_category(user, target_site=None):
+        """
+        Vérifie si un utilisateur peut créer une catégorie
+        """
+        logger.info(f"🔍 Vérification permission CRÉATION catégorie - User: {user.username if user else 'None'}, Target site: {target_site.site_name if target_site else 'None'}")
+        
+        if not user or not user.is_active or not user.est_actif:
+            logger.warning(f"❌ User inactif ou None - User: {user}")
+            return False
+        
+        # Superutilisateur peut créer des catégories partout
+        if user.is_superuser:
+            logger.info(f"✅ Superuser peut créer des catégories partout - User: {user.username}")
+            return True
+        
+        # Vérifier les permissions de base
+        has_base_permission = PermissionService.can_user_perform_action(user, 'create_category')
+        logger.info(f"🔐 Permission de base 'create_category': {has_base_permission} - User: {user.username}")
+        
+        if not has_base_permission:
+            logger.warning(f"❌ Pas de permission de base pour créer des catégories - User: {user.username}")
+            return False
+        
+        # Si un site cible est spécifié
+        if target_site:
+            if target_site is None:
+                # Création d'une catégorie globale - seulement pour les superutilisateurs
+                logger.info(f"❌ Création catégorie globale refusée - User: {user.username} (pas superuser)")
+                return user.is_superuser
+            else:
+                # Vérifier que l'utilisateur peut créer pour ce site
+                user_site = user.site_configuration
+                can_create = user_site == target_site
+                logger.info(f"{'✅' if can_create else '❌'} Création pour site - User: {user.username}, Target: {target_site.site_name}")
+                return can_create
+        
+        logger.info(f"✅ Permission de création accordée - User: {user.username}")
+        return True
+    
+    @staticmethod
+    def can_user_delete_category(user, category):
+        """
+        Vérifie si un utilisateur peut supprimer une catégorie spécifique
+        """
+        logger.info(f"🔍 Vérification permission SUPPRESSION catégorie - User: {user.username if user else 'None'}, Category: {category.name if category else 'None'}")
+        
+        if not user or not user.is_active or not user.est_actif:
+            logger.warning(f"❌ User inactif ou None - User: {user}")
+            return False
+        
+        # Superutilisateur peut supprimer toutes les catégories
+        if user.is_superuser:
+            logger.info(f"✅ Superuser peut supprimer toutes les catégories - User: {user.username}")
+            return True
+        
+        # Vérifier les permissions de base
+        has_base_permission = PermissionService.can_user_perform_action(user, 'delete_category')
+        logger.info(f"🔐 Permission de base 'delete_category': {has_base_permission} - User: {user.username}")
+        
+        if not has_base_permission:
+            logger.warning(f"❌ Pas de permission de base pour supprimer des catégories - User: {user.username}")
+            return False
+        
+        # Vérifier l'accès au site de la catégorie
+        category_site = category.site_configuration
+        user_site = user.site_configuration
+        
+        logger.info(f"🏢 Vérification site - Category site: {category_site.site_name if category_site else 'GLOBALE'}, User site: {user_site.site_name if user_site else 'None'}")
+        
+        if category_site is None:
+            # Catégorie globale - accessible à tous les utilisateurs autorisés
+            logger.info(f"✅ Catégorie globale accessible pour suppression - User: {user.username}")
+            return True
+        else:
+            # Vérifier que l'utilisateur appartient au même site
+            can_delete = user_site == category_site
+            logger.info(f"{'✅' if can_delete else '❌'} Suppression site - User: {user.username}, Category: {category.name}")
+            return can_delete
 
 
 # ===== FONCTIONS UTILITAIRES RAPIDES =====
@@ -253,3 +518,57 @@ def get_user_permissions_quick(user):
     Fonction rapide pour récupérer les permissions d'un utilisateur
     """
     return UserInfoService.get_user_permissions_summary(user)
+
+def can_user_manage_brand_quick(user, brand=None):
+    """
+    Fonction rapide pour vérifier si un utilisateur peut gérer une marque
+    """
+    logger.info(f"🚀 FONCTION RAPIDE - Gestion marque - User: {user.username if user else 'None'}, Brand: {brand.name if brand else 'None'}")
+    result = PermissionService.can_user_manage_brand(user, brand)
+    logger.info(f"🚀 RÉSULTAT - Gestion marque: {result} - User: {user.username if user else 'None'}")
+    return result
+
+def can_user_create_brand_quick(user, target_site=None):
+    """
+    Fonction rapide pour vérifier si un utilisateur peut créer une marque
+    """
+    logger.info(f"🚀 FONCTION RAPIDE - Création marque - User: {user.username if user else 'None'}, Target site: {target_site.site_name if target_site else 'None'}")
+    result = PermissionService.can_user_create_brand(user, target_site)
+    logger.info(f"🚀 RÉSULTAT - Création marque: {result} - User: {user.username if user else 'None'}")
+    return result
+
+def can_user_delete_brand_quick(user, brand):
+    """
+    Fonction rapide pour vérifier si un utilisateur peut supprimer une marque
+    """
+    logger.info(f"🚀 FONCTION RAPIDE - Suppression marque - User: {user.username if user else 'None'}, Brand: {brand.name if brand else 'None'}")
+    result = PermissionService.can_user_delete_brand(user, brand)
+    logger.info(f"🚀 RÉSULTAT - Suppression marque: {result} - User: {user.username if user else 'None'}")
+    return result
+
+def can_user_manage_category_quick(user, category=None):
+    """
+    Fonction rapide pour vérifier si un utilisateur peut gérer une catégorie
+    """
+    logger.info(f"🚀 FONCTION RAPIDE - Gestion catégorie - User: {user.username if user else 'None'}, Category: {category.name if category else 'None'}")
+    result = PermissionService.can_user_manage_category(user, category)
+    logger.info(f"🚀 RÉSULTAT - Gestion catégorie: {result} - User: {user.username if user else 'None'}")
+    return result
+
+def can_user_create_category_quick(user, target_site=None):
+    """
+    Fonction rapide pour vérifier si un utilisateur peut créer une catégorie
+    """
+    logger.info(f"🚀 FONCTION RAPIDE - Création catégorie - User: {user.username if user else 'None'}, Target site: {target_site.site_name if target_site else 'None'}")
+    result = PermissionService.can_user_create_category(user, target_site)
+    logger.info(f"🚀 RÉSULTAT - Création catégorie: {result} - User: {user.username if user else 'None'}")
+    return result
+
+def can_user_delete_category_quick(user, category):
+    """
+    Fonction rapide pour vérifier si un utilisateur peut supprimer une catégorie
+    """
+    logger.info(f"🚀 FONCTION RAPIDE - Suppression catégorie - User: {user.username if user else 'None'}, Category: {category.name if category else 'None'}")
+    result = PermissionService.can_user_delete_category(user, category)
+    logger.info(f"🚀 RÉSULTAT - Suppression catégorie: {result} - User: {user.username if user else 'None'}")
+    return result
