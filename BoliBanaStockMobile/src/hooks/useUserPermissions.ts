@@ -62,6 +62,10 @@ interface UserPermissionsHook {
   isSuperuser: boolean;
   siteConfiguration: number | null;
   canDeleteBrand: (brand: any) => boolean;
+  canEditBrand: (brand: any) => boolean;
+  canDeleteCategory: (category: any) => boolean;
+  canEditCategory: (category: any) => boolean;
+  canCreateCategory: () => boolean;
   canManageUsers: boolean;
   canAccessAdmin: boolean;
   canManageSite: boolean;
@@ -148,6 +152,12 @@ export const useUserPermissions = (): UserPermissionsHook => {
       return false;
     }
     
+    // Utiliser les permissions du serveur si disponibles
+    if (brand.can_delete !== undefined) {
+      return brand.can_delete;
+    }
+    
+    // Fallback sur la logique locale
     // Superuser peut supprimer toutes les marques
     if (userInfo.is_superuser) {
       return true;
@@ -162,6 +172,100 @@ export const useUserPermissions = (): UserPermissionsHook => {
     return brand.site_configuration === null;
   };
 
+  const canEditBrand = (brand: any): boolean => {
+    if (loading || !userInfo) {
+      return false;
+    }
+    
+    // Utiliser les permissions du serveur si disponibles
+    if (brand.can_edit !== undefined) {
+      return brand.can_edit;
+    }
+    
+    // Fallback sur la logique locale
+    // Superuser peut modifier toutes les marques
+    if (userInfo.is_superuser) {
+      return true;
+    }
+    
+    // Vérifier si la marque appartient au site de l'utilisateur
+    if (userInfo.site_configuration_id) {
+      return brand.site_configuration === userInfo.site_configuration_id;
+    }
+    
+    // Si pas de site configuré, permettre la modification des marques globales
+    return brand.site_configuration === null;
+  };
+
+  const canDeleteCategory = (category: any): boolean => {
+    if (loading || !userInfo) {
+      return false;
+    }
+    
+    // Utiliser les permissions du serveur si disponibles
+    if (category.can_delete !== undefined) {
+      return category.can_delete;
+    }
+    
+    // Fallback sur la logique locale
+    // Superuser peut supprimer toutes les catégories
+    if (userInfo.is_superuser) {
+      return true;
+    }
+    
+    // Vérifier si la catégorie appartient au site de l'utilisateur
+    if (userInfo.site_configuration_id) {
+      return category.site_configuration === userInfo.site_configuration_id;
+    }
+    
+    // Si pas de site configuré, permettre la suppression des catégories globales
+    return category.site_configuration === null;
+  };
+
+  const canEditCategory = (category: any): boolean => {
+    if (loading || !userInfo) {
+      return false;
+    }
+    
+    // Utiliser les permissions du serveur si disponibles
+    if (category.can_edit !== undefined) {
+      return category.can_edit;
+    }
+    
+    // Fallback sur la logique locale
+    // Superuser peut modifier toutes les catégories
+    if (userInfo.is_superuser) {
+      return true;
+    }
+    
+    // Vérifier si la catégorie appartient au site de l'utilisateur
+    if (userInfo.site_configuration_id) {
+      return category.site_configuration === userInfo.site_configuration_id;
+    }
+    
+    // Si pas de site configuré, permettre la modification des catégories globales
+    return category.site_configuration === null;
+  };
+
+  const canCreateCategory = (): boolean => {
+    if (loading || !userInfo) {
+      return false;
+    }
+    
+    // Superuser peut créer toutes les catégories
+    if (userInfo.is_superuser) {
+      return true;
+    }
+    
+    // Administrateur de site peut créer des catégories
+    if (userInfo.is_staff || userInfo.can_manage_site) {
+      return true;
+    }
+    
+    // Utilisateur normal ne peut pas créer de catégories par défaut
+    return false;
+  };
+
   return {
     userInfo,
     permissions,
@@ -172,6 +276,10 @@ export const useUserPermissions = (): UserPermissionsHook => {
     isSuperuser: userInfo?.is_superuser || false,
     siteConfiguration: userInfo?.site_configuration_id || null,
     canDeleteBrand,
+    canEditBrand,
+    canDeleteCategory,
+    canEditCategory,
+    canCreateCategory,
     canManageUsers: userInfo?.can_manage_users || false,
     canAccessAdmin: userInfo?.can_access_admin || false,
     canManageSite: userInfo?.can_manage_site || false,

@@ -118,10 +118,10 @@ def test_api_endpoints():
         print("   ❌ Impossible de se connecter au serveur. Assurez-vous que le serveur Django est démarré.")
         print("   💡 Lancez: python manage.py runserver 8000")
         return False
-    except Exception as e:
+        except Exception as e:
         print(f"   ❌ Erreur inattendue: {e}")
-        return False
-
+            return False
+    
 def test_performance():
     """Test de performance des endpoints"""
     print("\n🚀 Test de performance des endpoints")

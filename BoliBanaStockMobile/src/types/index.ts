@@ -44,6 +44,9 @@ export interface Category {
   // Informations du rayon parent pour l'affichage
   parent_name?: string;
   parent_rayon_type?: string;
+  // Permissions dynamiques
+  can_edit?: boolean;
+  can_delete?: boolean;
 }
 
 // Types pour les marques
@@ -57,6 +60,9 @@ export interface Brand {
   rayons_count: number;
   created_at: string;
   updated_at: string;
+  // Permissions dynamiques
+  can_edit?: boolean;
+  can_delete?: boolean;
 }
 
 // Types pour les produits

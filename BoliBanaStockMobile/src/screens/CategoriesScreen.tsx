@@ -22,6 +22,7 @@ import { RootState } from '../store';
 import theme from '../utils/theme';
 import CategoryCreationModal from '../components/CategoryCreationModal';
 import CategoryEditModal from '../components/CategoryEditModal';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 
 interface CategoriesScreenProps {
   navigation: any;
@@ -29,18 +30,13 @@ interface CategoriesScreenProps {
 
 const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
   const { user } = useSelector((state: RootState) => state.auth);
+  const { canEditCategory, canDeleteCategory, canCreateCategory } = useUserPermissions();
   const [isStaffEffective, setIsStaffEffective] = useState<boolean>(!!user?.is_staff);
 
   // Toujours se baser sur le user Redux (source de vérité), évite le cache périmé
   useEffect(() => {
     setIsStaffEffective(!!user?.is_staff);
   }, [user?.is_staff, user?.username]);
-
-  // Fonction pour vérifier les permissions de modification
-  const canEditCategories = () => {
-    // Seuls les admins peuvent éditer
-    return !!(user?.is_staff || user?.is_superuser || (user as any)?.is_site_admin);
-  };
   const [categories, setCategories] = useState<Category[]>([]);
   const [rayons, setRayons] = useState<Category[]>([]);
   const [customCategories, setCustomCategories] = useState<Category[]>([]);
@@ -50,7 +46,6 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
   const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
   const [selectedCategoryForEdit, setSelectedCategoryForEdit] = useState<Category | null>(null);
   const [activeTab, setActiveTab] = useState<'rayons' | 'custom'>('rayons');
-  const [showComingSoon, setShowComingSoon] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -245,19 +240,6 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
     });
   };
 
-  // Fonction pour tout développer/réduire
-  const toggleAllGroups = () => {
-    const groupedRayons = groupRayonsByType();
-    const allGroupTypes = Object.keys(groupedRayons);
-    
-    if (expandedGroups.size === allGroupTypes.length) {
-      // Tout réduire
-      setExpandedGroups(new Set());
-    } else {
-      // Tout développer
-      setExpandedGroups(new Set(allGroupTypes));
-    }
-  };
 
   // Grouper les rayons par type
   const groupRayonsByType = () => {
@@ -358,10 +340,10 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
 
   const editCategory = (category: Category) => {
     // Vérifier les permissions de modification
-    if (!canEditCategories()) {
+    if (!canEditCategory(category)) {
       Alert.alert(
         'Permissions insuffisantes',
-        'Seuls les administrateurs de site et les superutilisateurs peuvent modifier les catégories.',
+        'Vous n\'avez pas les permissions pour modifier cette catégorie.',
         [{ text: 'OK' }]
       );
       return;
@@ -380,7 +362,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
 
   const deleteCategory = (category: Category) => {
     // Vérifier les permissions de suppression
-    if (!canEditCategories()) {
+    if (!canDeleteCategory(category)) {
       Alert.alert(
         'Permissions insuffisantes',
         'Seuls les administrateurs de site et les superutilisateurs peuvent supprimer les catégories.',
@@ -464,30 +446,30 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           style={[
             styles.actionButton, 
             styles.editButton,
-            !canEditCategories() && styles.disabledButton
+            !canEditCategory(item) && styles.disabledButton
           ]}
           onPress={() => editCategory(item)}
-          disabled={!canEditCategories()}
+          disabled={!canEditCategory(item)}
         >
           <Ionicons 
-            name="cube-outline" 
+            name="pencil" 
             size={20} 
-            color={canEditCategories() ? "#FF9800" : "#ccc"} 
+            color={canEditCategory(item) ? "#FF9800" : "#ccc"} 
           />
         </TouchableOpacity>
         <TouchableOpacity
           style={[
             styles.actionButton, 
             styles.deleteButton,
-            !canEditCategories() && styles.disabledButton
+            !canDeleteCategory(item) && styles.disabledButton
           ]}
           onPress={() => deleteCategory(item)}
-          disabled={!canEditCategories()}
+          disabled={!canDeleteCategory(item)}
         >
           <Ionicons 
-            name="list-outline" 
+            name="trash" 
             size={20} 
-            color={canEditCategories() ? "#F44336" : "#ccc"} 
+            color={canDeleteCategory(item) ? "#F44336" : "#ccc"} 
           />
         </TouchableOpacity>
       </View>
@@ -520,30 +502,30 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           style={[
             styles.actionButton, 
             styles.editButton,
-            !canEditCategories() && styles.disabledButton
+            !canEditCategory(item) && styles.disabledButton
           ]}
           onPress={() => editCategory(item)}
-          disabled={!canEditCategories()}
+          disabled={!canEditCategory(item)}
         >
           <Ionicons 
             name="pencil" 
             size={20} 
-            color={canEditCategories() ? "#FF9800" : "#ccc"} 
+            color={canEditCategory(item) ? "#FF9800" : "#ccc"} 
           />
         </TouchableOpacity>
         <TouchableOpacity
           style={[
             styles.actionButton, 
             styles.deleteButton,
-            !canEditCategories() && styles.disabledButton
+            !canDeleteCategory(item) && styles.disabledButton
           ]}
           onPress={() => deleteCategory(item)}
-          disabled={!canEditCategories()}
+          disabled={!canDeleteCategory(item)}
         >
           <Ionicons 
             name="trash" 
             size={20} 
-            color={canEditCategories() ? "#F44336" : "#ccc"} 
+            color={canDeleteCategory(item) ? "#F44336" : "#ccc"} 
           />
         </TouchableOpacity>
       </View>
@@ -609,15 +591,15 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         </TouchableOpacity>
         <Text style={styles.title}>Catégories & Rayons</Text>
         <View style={styles.headerActions}>
-          {activeTab === 'rayons' && (
+          {canCreateCategory() && (
             <TouchableOpacity 
               style={styles.headerButton} 
-              onPress={toggleAllGroups}
+              onPress={() => setNewCategoryModalVisible(true)}
             >
               <Ionicons 
-                name={expandedGroups.size > 0 ? "contract-outline" : "expand-outline"} 
+                name="add" 
                 size={20} 
-                color="#666" 
+                color="#4CAF50" 
               />
             </TouchableOpacity>
           )}
@@ -640,16 +622,16 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'custom' && styles.activeTab, styles.disabledTab]}
-          onPress={() => setShowComingSoon(true)}
+          style={[styles.tab, activeTab === 'custom' && styles.activeTab]}
+          onPress={() => setActiveTab('custom')}
         >
           <Ionicons 
             name="folder-outline" 
             size={20} 
-            color="#999" 
+            color={activeTab === 'custom' ? "#4CAF50" : "#666"} 
           />
-          <Text style={[styles.tabText, styles.disabledTabText]}>
-            Mes Catégories (Bientôt)
+          <Text style={[styles.tabText, activeTab === 'custom' && styles.activeTabText]}>
+            Mes Catégories
           </Text>
         </TouchableOpacity>
       </View>
@@ -661,21 +643,52 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Affichage des rayons groupés par type uniquement */}
-        <View style={styles.rayonsContainer}>
-          {Object.entries(groupRayonsByType()).map(([rayonType, rayons]) =>
-            renderRayonGroup(rayonType, rayons)
-          )}
-          {rayons.length === 0 && (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="storefront-outline" size={64} color="#ccc" />
-              <Text style={styles.emptyText}>Aucun rayon trouvé</Text>
-              <Text style={styles.emptySubtext}>
-                Les rayons de supermarché seront chargés automatiquement
-              </Text>
-            </View>
-          )}
-        </View>
+        {activeTab === 'rayons' ? (
+          /* Affichage des rayons groupés par type */
+          <View style={styles.rayonsContainer}>
+            {Object.entries(groupRayonsByType()).map(([rayonType, rayons]) =>
+              renderRayonGroup(rayonType, rayons)
+            )}
+            {rayons.length === 0 && (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="storefront-outline" size={64} color="#ccc" />
+                <Text style={styles.emptyText}>Aucun rayon trouvé</Text>
+                <Text style={styles.emptySubtext}>
+                  Les rayons de supermarché seront chargés automatiquement
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          /* Affichage des catégories personnalisées */
+          <View style={styles.customCategoriesContainer}>
+            {customCategories.length > 0 ? (
+              <FlatList
+                data={customCategories}
+                renderItem={renderCustomCategoryItem}
+                keyExtractor={(item) => item.id.toString()}
+                scrollEnabled={false}
+              />
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="folder-outline" size={64} color="#ccc" />
+                <Text style={styles.emptyText}>Aucune catégorie personnalisée</Text>
+                <Text style={styles.emptySubtext}>
+                  Créez votre première catégorie personnalisée
+                </Text>
+                {canCreateCategory() && (
+                  <TouchableOpacity
+                    style={styles.createButton}
+                    onPress={() => setNewCategoryModalVisible(true)}
+                  >
+                    <Ionicons name="add" size={20} color="#fff" />
+                    <Text style={styles.createButtonText}>Créer une catégorie</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
 
 
@@ -697,34 +710,6 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         category={selectedCategoryForEdit}
       />
 
-      {/* Modal Bientôt disponible */}
-      <Modal
-        visible={showComingSoon}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowComingSoon(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.comingSoonModal}>
-            <View style={styles.comingSoonIconContainer}>
-              <Ionicons name="time-outline" size={64} color="#4CAF50" />
-            </View>
-            <Text style={styles.comingSoonTitle}>Bientôt disponible !</Text>
-            <Text style={styles.comingSoonMessage}>
-              La fonctionnalité "Mes Catégories" sera disponible dans une prochaine mise à jour.
-            </Text>
-            <Text style={styles.comingSoonSubtext}>
-              Pour l'instant, vous pouvez utiliser les rayons de supermarché disponibles.
-            </Text>
-            <TouchableOpacity
-              style={styles.comingSoonButton}
-              onPress={() => setShowComingSoon(false)}
-            >
-              <Text style={styles.comingSoonButtonText}>Compris</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -863,6 +848,13 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontWeight: '600',
   },
+  inactiveTab: {
+    backgroundColor: '#f5f5f5',
+  },
+  inactiveTabText: {
+    color: '#666',
+    fontWeight: '500',
+  },
   content: {
     flex: 1,
   },
@@ -960,66 +952,25 @@ const styles = StyleSheet.create({
   disabledTabText: {
     color: '#999',
   },
-  // Styles pour le modal "Bientôt disponible"
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  // Styles pour les catégories personnalisées
+  customCategoriesContainer: {
+    padding: 16,
+  },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  comingSoonModal: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 30,
-    alignItems: 'center',
-    maxWidth: 350,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  comingSoonIconContainer: {
-    marginBottom: 20,
-  },
-  comingSoonTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  comingSoonMessage: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 12,
-    lineHeight: 22,
-  },
-  comingSoonSubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  comingSoonButton: {
     backgroundColor: '#4CAF50',
-    paddingHorizontal: 32,
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 25,
-    minWidth: 120,
+    borderRadius: 8,
+    marginTop: 16,
+    gap: 8,
   },
-  comingSoonButtonText: {
-    color: 'white',
+  createButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    textAlign: 'center',
   },
 });
 

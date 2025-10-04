@@ -14,7 +14,8 @@ from .views import (
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
     CatalogPDFAPIView, LabelPrintAPIView,
     collect_static_files, GetRayonsView, GetSubcategoriesMobileView,
-    ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView
+    ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView,
+    DebugRayonView
 )
 
 # Configuration Swagger
@@ -92,6 +93,9 @@ urlpatterns = [
     
     # Marques par rayon
     path('brands/by-rayon/', BrandsByRayonAPIView.as_view(), name='api_brands_by_rayon'),
+    
+    # Debug temporaire
+    path('debug/rayon/', DebugRayonView.as_view(), name='api_debug_rayon'),
     
     # Administration - Collecte des fichiers statiques
     path('admin/collectstatic/', collect_static_files, name='api_collect_static'),

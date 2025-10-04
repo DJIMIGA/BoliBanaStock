@@ -16,6 +16,7 @@ interface BrandCardProps {
   onEdit?: () => void; // Callback pour l'édition
   onDelete?: () => void; // Callback pour la suppression
   canDelete?: boolean; // Indique si l'utilisateur peut supprimer cette marque
+  canEdit?: boolean; // Indique si l'utilisateur peut modifier cette marque
 }
 
 const BrandCard: React.FC<BrandCardProps> = ({
@@ -24,6 +25,7 @@ const BrandCard: React.FC<BrandCardProps> = ({
   onEdit,
   onDelete,
   canDelete = false,
+  canEdit = false,
 }) => {
   const getRayonTypeColor = (rayonType: string) => {
     const colors: { [key: string]: string } = {
@@ -82,7 +84,7 @@ const BrandCard: React.FC<BrandCardProps> = ({
             </View>
             
             {/* Edit button */}
-            {onEdit && (
+            {onEdit && canEdit && (
               <TouchableOpacity
                 onPress={onEdit}
                 style={styles.headerEditButton}

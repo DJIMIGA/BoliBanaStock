@@ -855,7 +855,7 @@ export const categoryService = {
       console.error('❌ Erreur API suppression catégorie:', error.response?.data || error.message);
       throw error;
     }
-  },
+  }
 };
 
 // Services pour les marques

@@ -14,6 +14,11 @@ from django.utils import timezone
 from apps.core.forms import CustomUserUpdateForm, PublicSignUpForm
 from apps.core.models import User, Configuration, Parametre, Activite
 from apps.core.views import PublicSignUpView
+from apps.core.services import (
+    PermissionService, UserInfoService,
+    can_user_manage_brand_quick, can_user_create_brand_quick, can_user_delete_brand_quick,
+    can_user_manage_category_quick, can_user_create_category_quick, can_user_delete_category_quick
+)
 from django.db import transaction
 
 from .serializers import (
@@ -979,34 +984,13 @@ class CategoryViewSet(viewsets.ModelViewSet):
     pagination_class = None  # Désactiver la pagination pour les catégories
     
     def get_queryset(self):
-        """Filtrer les catégories par site de l'utilisateur + rayons globaux"""
-        try:
-            user_site = getattr(self.request.user, 'site_configuration', None)
-        except:
-            user_site = None
+        """Filtrer les catégories par site de l'utilisateur en utilisant le service centralisé"""
+        # Utiliser le service centralisé pour obtenir les catégories accessibles
+        queryset = PermissionService.get_user_accessible_resources(self.request.user, Category).select_related('parent')
         
         # Gérer les paramètres de filtrage du mobile
         site_only = self.request.GET.get('site_only', '').lower() == 'true'
         global_only = self.request.GET.get('global_only', '').lower() == 'true'
-        
-        if self.request.user.is_superuser:
-            # Superuser voit tout
-            queryset = Category.objects.select_related('parent').all()
-        else:
-            # Utilisateur normal voit les catégories de son site + les rayons globaux
-            from django.db import models
-            
-            if not user_site:
-                # Si pas de site, voir seulement les rayons globaux
-                queryset = Category.objects.select_related('parent').filter(
-                    models.Q(is_global=True)
-                )
-            else:
-                # Catégories du site de l'utilisateur + rayons globaux
-                queryset = Category.objects.select_related('parent').filter(
-                    models.Q(site_configuration=user_site) | 
-                    models.Q(is_global=True)
-                )
         
         # Appliquer les filtres supplémentaires
         if site_only:
@@ -1017,6 +1001,65 @@ class CategoryViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_global=True)
         
         return queryset
+    
+    def perform_create(self, serializer):
+        """Créer une catégorie avec gestion du site en utilisant le service centralisé"""
+        user = self.request.user
+        site_config = serializer.validated_data.get('site_configuration')
+        
+        # Vérifier les permissions de création
+        if not can_user_create_category_quick(user, site_config):
+            raise ValidationError({"detail": "Vous n'avez pas les permissions pour créer cette catégorie"})
+        
+        # Tous les utilisateurs créent pour leur site par défaut
+        user_site = getattr(user, 'site_configuration', None)
+        if not user_site:
+            raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
+        
+        # Superutilisateur peut créer des catégories globales ou pour un site spécifique
+        if user.is_superuser and site_config is not None:
+            # Superuser a explicitement spécifié un site
+            serializer.save(site_configuration=site_config)
+        else:
+            # Tous les autres cas : assigner au site de l'utilisateur
+            serializer.save(site_configuration=user_site)
+    
+    def perform_update(self, serializer):
+        """Mettre à jour une catégorie avec gestion du site en utilisant le service centralisé"""
+        user = self.request.user
+        category = self.get_object()
+        
+        # Vérifier les permissions de modification
+        if not can_user_manage_category_quick(user, category):
+            raise ValidationError({"detail": "Vous n'avez pas les permissions pour modifier cette catégorie"})
+        
+        serializer.save()
+    
+    def destroy(self, request, *args, **kwargs):
+        """Supprimer une catégorie avec gestion du site en utilisant le service centralisé"""
+        user = request.user
+        category = self.get_object()
+        
+        # Vérifier les permissions de suppression
+        if not can_user_delete_category_quick(user, category):
+            return Response(
+                {'error': 'Vous n\'avez pas les permissions pour supprimer cette catégorie'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Vérifier s'il y a des produits ou sous-catégories associés
+        from apps.inventory.models import Product
+        products_count = Product.objects.filter(category=category).count()
+        subcategories_count = Category.objects.filter(parent=category).count()
+        
+        if products_count > 0 or subcategories_count > 0:
+            return Response(
+                {'error': f'Impossible de supprimer cette catégorie. {products_count} produit(s) et {subcategories_count} sous-catégorie(s) y sont encore associés.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        category.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class BrandViewSet(viewsets.ModelViewSet):
@@ -3231,5 +3274,90 @@ class ProductCopyManagementAPIView(APIView):
             else:
                 return Response({'error': 'Action non reconnue'}, status=400)
                 
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+
+# Vue de debug temporaire pour tester les rayons sur Railway
+class DebugRayonView(APIView):
+    """Vue de debug temporaire pour tester la visibilité des rayons"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        try:
+            from apps.inventory.models import Category
+            from apps.core.services import PermissionService
+            from django.test import RequestFactory
+            from api.views import CategoryViewSet
+            
+            user = request.user
+            result = {
+                'user': {
+                    'username': user.username,
+                    'is_superuser': user.is_superuser,
+                    'site_configuration_id': getattr(user, 'site_configuration_id', None)
+                }
+            }
+            
+            # Test 1: Rayon "Franchement" directement
+            franchement = Category.objects.filter(name="Franchement").first()
+            if franchement:
+                result['franchement_direct'] = {
+                    'found': True,
+                    'id': franchement.id,
+                    'name': franchement.name,
+                    'is_rayon': franchement.is_rayon,
+                    'site_configuration_id': franchement.site_configuration_id,
+                    'is_active': franchement.is_active
+                }
+            else:
+                result['franchement_direct'] = {'found': False}
+            
+            # Test 2: Service centralisé
+            categories = PermissionService.get_user_accessible_resources(user, Category)
+            rayons = categories.filter(is_rayon=True)
+            franchement_service = rayons.filter(name="Franchement").first()
+            
+            result['service_centralise'] = {
+                'categories_accessibles': categories.count(),
+                'rayons_accessibles': rayons.count(),
+                'franchement_found': franchement_service is not None,
+                'franchement_id': franchement_service.id if franchement_service else None
+            }
+            
+            # Test 3: API ViewSet
+            factory = RequestFactory()
+            api_request = factory.get('/api/categories/?site_only=true')
+            api_request.user = user
+            
+            viewset = CategoryViewSet()
+            viewset.request = api_request
+            queryset = viewset.get_queryset()
+            rayons_api = queryset.filter(is_rayon=True)
+            franchement_api = rayons_api.filter(name="Franchement").first()
+            
+            result['api_viewset'] = {
+                'queryset_count': queryset.count(),
+                'rayons_count': rayons_api.count(),
+                'franchement_found': franchement_api is not None,
+                'franchement_id': franchement_api.id if franchement_api else None
+            }
+            
+            # Test 4: Tous les rayons
+            all_rayons = Category.objects.filter(is_rayon=True)
+            rayons_global = all_rayons.filter(site_configuration__isnull=True)
+            
+            user_site = getattr(user, 'site_configuration', None)
+            rayons_site = all_rayons.filter(site_configuration=user_site) if user_site else []
+            
+            result['tous_rayons'] = {
+                'total': all_rayons.count(),
+                'globaux': rayons_global.count(),
+                'site_utilisateur': rayons_site.count() if user_site else 0,
+                'site_name': user_site.site_name if user_site else None
+            }
+            
+            return Response(result)
+            
         except Exception as e:
             return Response({'error': str(e)}, status=500)

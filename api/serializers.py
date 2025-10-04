@@ -295,13 +295,16 @@ class CategorySerializer(serializers.ModelSerializer):
     )
     parent_name = serializers.CharField(source='parent.name', read_only=True)
     parent_rayon_type = serializers.CharField(source='parent.rayon_type', read_only=True)
+    can_edit = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
         fields = [
             'id', 'name', 'slug', 'description', 'image', 'level', 'order', 'is_active', 
             'created_at', 'updated_at', 'is_global', 'is_rayon', 'rayon_type', 
-            'parent', 'site_configuration', 'parent_name', 'parent_rayon_type'
+            'parent', 'site_configuration', 'parent_name', 'parent_rayon_type',
+            'can_edit', 'can_delete'
         ]
         read_only_fields = ['id', 'slug', 'level', 'created_at', 'updated_at', 'parent_name', 'parent_rayon_type']
     
@@ -330,6 +333,24 @@ class CategorySerializer(serializers.ModelSerializer):
             })
         
         return data
+    
+    def get_can_edit(self, obj):
+        """Retourne True si l'utilisateur peut modifier cette catégorie"""
+        request = self.context.get('request')
+        if not request or not request.user:
+            return False
+        
+        from apps.core.services import can_user_manage_category_quick
+        return can_user_manage_category_quick(request.user, obj)
+    
+    def get_can_delete(self, obj):
+        """Retourne True si l'utilisateur peut supprimer cette catégorie"""
+        request = self.context.get('request')
+        if not request or not request.user:
+            return False
+        
+        from apps.core.services import can_user_delete_category_quick
+        return can_user_delete_category_quick(request.user, obj)
 
 
 class BrandSerializer(serializers.ModelSerializer):
@@ -337,10 +358,12 @@ class BrandSerializer(serializers.ModelSerializer):
     rayons = CategorySerializer(source='rayons.all', many=True, read_only=True)
     rayons_count = serializers.SerializerMethodField()
     is_global = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
     
     class Meta:
         model = Brand
-        fields = ['id', 'name', 'description', 'logo', 'is_active', 'rayons', 'rayons_count', 'is_global', 'site_configuration', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'description', 'logo', 'is_active', 'rayons', 'rayons_count', 'is_global', 'site_configuration', 'created_at', 'updated_at', 'can_edit', 'can_delete']
     
     def get_rayons_count(self, obj):
         """Retourne le nombre de rayons associés à la marque"""
@@ -349,6 +372,24 @@ class BrandSerializer(serializers.ModelSerializer):
     def get_is_global(self, obj):
         """Retourne True si la marque est globale (site_configuration=None)"""
         return obj.site_configuration is None
+    
+    def get_can_edit(self, obj):
+        """Retourne True si l'utilisateur peut modifier cette marque"""
+        request = self.context.get('request')
+        if not request or not request.user:
+            return False
+        
+        from apps.core.services import can_user_manage_brand_quick
+        return can_user_manage_brand_quick(request.user, obj)
+    
+    def get_can_delete(self, obj):
+        """Retourne True si l'utilisateur peut supprimer cette marque"""
+        request = self.context.get('request')
+        if not request or not request.user:
+            return False
+        
+        from apps.core.services import can_user_delete_brand_quick
+        return can_user_delete_brand_quick(request.user, obj)
     
     def create(self, validated_data):
         """Créer une marque avec gestion des rayons"""

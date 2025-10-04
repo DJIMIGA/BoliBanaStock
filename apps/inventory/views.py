@@ -19,6 +19,11 @@ from django.http import Http404
 from django.db import transaction
 from django.core.paginator import Paginator
 from apps.core.models import Configuration
+from apps.core.services import (
+    PermissionService, UserInfoService,
+    can_user_manage_brand_quick, can_user_create_brand_quick, can_user_delete_brand_quick,
+    can_user_manage_category_quick, can_user_create_category_quick, can_user_delete_category_quick
+)
 from .models import ProductCopy
 
 class ProductListView(SiteRequiredMixin, ListView):
@@ -325,7 +330,19 @@ class CategoryCreateView(SiteRequiredMixin, CreateView):
     template_name = 'inventory/category_form.html'
     success_url = reverse_lazy('inventory:category_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        """Vérifier les permissions avant d'afficher la vue"""
+        if not can_user_create_category_quick(request.user):
+            messages.error(request, 'Vous n\'avez pas les permissions pour créer une catégorie.')
+            return redirect('inventory:category_list')
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
+        # Vérifier les permissions avant de sauvegarder
+        if not can_user_create_category_quick(self.request.user):
+            messages.error(self.request, 'Vous n\'avez pas les permissions pour créer une catégorie.')
+            return redirect('inventory:category_list')
+        
         # Assigner automatiquement le site de l'utilisateur
         if not self.request.user.is_superuser:
             form.instance.site_configuration = self.request.user.site_configuration
@@ -342,7 +359,20 @@ class CategoryUpdateView(SiteFilterMixin, UpdateView):
     template_name = 'inventory/category_form.html'
     success_url = reverse_lazy('inventory:category_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        """Vérifier les permissions avant d'afficher la vue"""
+        category = self.get_object()
+        if not can_user_manage_category_quick(request.user, category):
+            messages.error(request, 'Vous n\'avez pas les permissions pour modifier cette catégorie.')
+            return redirect('inventory:category_list')
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
+        # Vérifier les permissions avant de sauvegarder
+        if not can_user_manage_category_quick(self.request.user, self.object):
+            messages.error(self.request, 'Vous n\'avez pas les permissions pour modifier cette catégorie.')
+            return redirect('inventory:category_list')
+        
         # Gérer l'image avec le stockage du modèle
         if 'image' in self.request.FILES:
             # Supprimer l'ancienne image si elle existe
@@ -358,8 +388,31 @@ class CategoryDeleteView(SiteFilterMixin, DeleteView):
     template_name = 'inventory/category_confirm_delete.html'
     success_url = reverse_lazy('inventory:category_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        """Vérifier les permissions avant d'afficher la vue"""
+        category = self.get_object()
+        if not can_user_delete_category_quick(request.user, category):
+            messages.error(request, 'Vous n\'avez pas les permissions pour supprimer cette catégorie.')
+            return redirect('inventory:category_list')
+        return super().dispatch(request, *args, **kwargs)
+
     def delete(self, request, *args, **kwargs):
         category = self.get_object()
+        
+        # Vérifier les permissions avant de supprimer
+        if not can_user_delete_category_quick(request.user, category):
+            messages.error(request, 'Vous n\'avez pas les permissions pour supprimer cette catégorie.')
+            return redirect('inventory:category_list')
+        
+        # Vérifier s'il y a des produits ou sous-catégories associés
+        from apps.inventory.models import Product
+        products_count = Product.objects.filter(category=category).count()
+        subcategories_count = Category.objects.filter(parent=category).count()
+        
+        if products_count > 0 or subcategories_count > 0:
+            messages.error(request, f'Impossible de supprimer cette catégorie. {products_count} produit(s) et {subcategories_count} sous-catégorie(s) y sont encore associés.')
+            return redirect('inventory:category_list')
+        
         if category.image:
             category.image.delete()  # Utiliser la méthode du modèle
         return super().delete(request, *args, **kwargs)
@@ -379,7 +432,19 @@ class BrandCreateView(SiteRequiredMixin, CreateView):
     template_name = 'inventory/brand_form.html'
     success_url = reverse_lazy('inventory:brand_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        """Vérifier les permissions avant d'afficher la vue"""
+        if not can_user_create_brand_quick(request.user):
+            messages.error(request, 'Vous n\'avez pas les permissions pour créer une marque.')
+            return redirect('inventory:brand_list')
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
+        # Vérifier les permissions avant de sauvegarder
+        if not can_user_create_brand_quick(self.request.user):
+            messages.error(self.request, 'Vous n\'avez pas les permissions pour créer une marque.')
+            return redirect('inventory:brand_list')
+        
         # Assigner automatiquement le site de l'utilisateur
         if not self.request.user.is_superuser:
             form.instance.site_configuration = self.request.user.site_configuration
@@ -396,7 +461,20 @@ class BrandUpdateView(SiteFilterMixin, UpdateView):
     template_name = 'inventory/brand_form.html'
     success_url = reverse_lazy('inventory:brand_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        """Vérifier les permissions avant d'afficher la vue"""
+        brand = self.get_object()
+        if not can_user_manage_brand_quick(request.user, brand):
+            messages.error(request, 'Vous n\'avez pas les permissions pour modifier cette marque.')
+            return redirect('inventory:brand_list')
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
+        # Vérifier les permissions avant de sauvegarder
+        if not can_user_manage_brand_quick(self.request.user, self.object):
+            messages.error(self.request, 'Vous n\'avez pas les permissions pour modifier cette marque.')
+            return redirect('inventory:brand_list')
+        
         # Gérer le logo avec le stockage du modèle
         if 'logo' in self.request.FILES:
             # Supprimer l'ancien logo s'il existe
@@ -412,8 +490,29 @@ class BrandDeleteView(SiteFilterMixin, DeleteView):
     template_name = 'inventory/brand_confirm_delete.html'
     success_url = reverse_lazy('inventory:brand_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        """Vérifier les permissions avant d'afficher la vue"""
+        brand = self.get_object()
+        if not can_user_delete_brand_quick(request.user, brand):
+            messages.error(request, 'Vous n\'avez pas les permissions pour supprimer cette marque.')
+            return redirect('inventory:brand_list')
+        return super().dispatch(request, *args, **kwargs)
+
     def delete(self, request, *args, **kwargs):
         brand = self.get_object()
+        
+        # Vérifier les permissions avant de supprimer
+        if not can_user_delete_brand_quick(request.user, brand):
+            messages.error(request, 'Vous n\'avez pas les permissions pour supprimer cette marque.')
+            return redirect('inventory:brand_list')
+        
+        # Vérifier s'il y a des produits associés
+        from apps.inventory.models import Product
+        products_count = Product.objects.filter(brand=brand).count()
+        if products_count > 0:
+            messages.error(request, f'Impossible de supprimer cette marque. {products_count} produit(s) y sont encore associés.')
+            return redirect('inventory:brand_list')
+        
         if brand.logo:
             storage.delete(brand.logo.name)
         return super().delete(request, *args, **kwargs)
@@ -424,6 +523,14 @@ class BrandRayonsView(SiteFilterMixin, UpdateView):
     form_class = BrandForm
     template_name = 'inventory/brand_rayons.html'
     success_url = reverse_lazy('inventory:brand_list')
+
+    def dispatch(self, request, *args, **kwargs):
+        """Vérifier les permissions avant d'afficher la vue"""
+        brand = self.get_object()
+        if not can_user_manage_brand_quick(request.user, brand):
+            messages.error(request, 'Vous n\'avez pas les permissions pour gérer les rayons de cette marque.')
+            return redirect('inventory:brand_list')
+        return super().dispatch(request, *args, **kwargs)
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()

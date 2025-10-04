@@ -31,7 +31,7 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   
   // Hook pour les permissions utilisateur
-  const { canDeleteBrand } = useUserPermissions();
+  const { canDeleteBrand, canEditBrand } = useUserPermissions();
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -259,6 +259,7 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
       onEdit={() => handleEditBrand(item)}
       onDelete={() => handleDeleteBrand(item)}
       canDelete={canDeleteBrand(item)}
+      canEdit={canEditBrand(item)}
     />
   );
 
