@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from apps.inventory.models import Product, Category, Brand, Transaction, Barcode, LabelTemplate, LabelBatch, LabelItem
-from apps.sales.models import Sale, SaleItem, Customer
+from apps.sales.models import Sale, SaleItem, Customer, CreditTransaction
 from apps.core.models import Configuration
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -450,13 +450,50 @@ class SaleSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
+class CustomerSerializer(serializers.ModelSerializer):
+    """Serializer pour les clients avec gestion du crédit"""
+    credit_balance_formatted = serializers.CharField(source='formatted_credit_balance', read_only=True)
+    has_credit_debt = serializers.BooleanField(read_only=True)
+    credit_debt_amount = serializers.DecimalField(max_digits=12, decimal_places=0, read_only=True)
+    recent_credit_transactions = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Customer
+        fields = [
+            'id', 'name', 'first_name', 'phone', 'email', 'address', 
+            'credit_balance', 'credit_limit', 'is_active', 'created_at',
+            'credit_balance_formatted', 'has_credit_debt', 'credit_debt_amount',
+            'recent_credit_transactions'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_recent_credit_transactions(self, obj):
+        """Retourne les 5 dernières transactions de crédit"""
+        transactions = obj.credit_transactions.all()[:5]
+        return CreditTransactionSerializer(transactions, many=True, context=self.context).data
+
+
+class CreditTransactionSerializer(serializers.ModelSerializer):
+    """Serializer pour les transactions de crédit"""
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+    formatted_amount = serializers.CharField(read_only=True)
+    formatted_balance_after = serializers.CharField(read_only=True)
+    customer_name = serializers.CharField(source='customer.__str__', read_only=True)
+    sale_reference = serializers.CharField(source='sale.reference', read_only=True)
+    user_name = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = CreditTransaction
+        fields = [
+            'id', 'customer', 'customer_name', 'sale', 'sale_reference', 'type', 'type_display',
+            'amount', 'balance_after', 'transaction_date', 'notes', 'user', 'user_name',
+            'formatted_amount', 'formatted_balance_after'
+        ]
+        read_only_fields = ['id', 'transaction_date']
+
+
 class SaleCreateSerializer(serializers.ModelSerializer):
     """Serializer pour la création de ventes"""
-    items = serializers.ListField(
-        child=serializers.DictField(),
-        write_only=True,
-        required=False
-    )
     customer = serializers.PrimaryKeyRelatedField(
         queryset=Customer.objects.all(),
         required=False,
@@ -466,7 +503,8 @@ class SaleCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sale
         fields = [
-            'customer', 'total_amount', 'payment_method', 'status', 'notes', 'items'
+            'customer', 'total_amount', 'payment_method', 'status', 'notes',
+            'sarali_reference', 'amount_given', 'change_amount'
         ]
 
 

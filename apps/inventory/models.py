@@ -537,6 +537,28 @@ class Customer(models.Model):
     address = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
+    # Gestion du crédit client
+    credit_balance = models.DecimalField(
+        max_digits=12, 
+        decimal_places=0, 
+        default=0, 
+        verbose_name="Solde crédit (FCFA)",
+        help_text="Montant total du crédit en cours (négatif = dette)"
+    )
+    credit_limit = models.DecimalField(
+        max_digits=12, 
+        decimal_places=0, 
+        null=True, 
+        blank=True, 
+        verbose_name="Limite de crédit (FCFA)",
+        help_text="Limite de crédit autorisée (optionnel)"
+    )
+    is_active = models.BooleanField(
+        default=True, 
+        verbose_name="Client actif",
+        help_text="Désactiver pour empêcher les nouvelles ventes à crédit"
+    )
+    
     # Support multi-sites
     site_configuration = models.ForeignKey(
         'core.Configuration', 
@@ -549,6 +571,21 @@ class Customer(models.Model):
 
     def __str__(self):
         return f"{self.name} {self.first_name}" if self.first_name else self.name
+
+    @property
+    def formatted_credit_balance(self):
+        """Retourne le solde crédit formaté en FCFA"""
+        return f"{self.credit_balance:,}".replace(",", " ") + " FCFA"
+
+    @property
+    def has_credit_debt(self):
+        """Indique si le client a une dette (solde négatif)"""
+        return self.credit_balance < 0
+
+    @property
+    def credit_debt_amount(self):
+        """Retourne le montant de la dette (valeur absolue)"""
+        return abs(self.credit_balance) if self.credit_balance < 0 else 0
 
     class Meta:
         verbose_name = "Client"

@@ -205,7 +205,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: theme.colors.background.secondary,
   },
   scrollContent: {
     flexGrow: 1,
@@ -241,12 +241,12 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background.secondary,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.colors.text.primary,
   },
   subtitleContainer: {
     padding: theme.spacing.md,
@@ -259,49 +259,49 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   selectionSummary: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: theme.colors.primary[50],
     padding: 12,
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#2196f3',
+    borderLeftColor: theme.colors.primary[500],
   },
   selectionSummaryText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#1976d2',
+    color: theme.colors.primary[600],
     textAlign: 'center',
     marginBottom: 4,
   },
   selectionSummarySubtext: {
     fontSize: 12,
-    color: '#1565c0',
+    color: theme.colors.primary[700],
     textAlign: 'center',
   },
   labelsSummary: {
     margin: 16,
   },
   summaryCard: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: theme.colors.background.secondary,
     padding: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderColor: theme.colors.neutral[200],
   },
   summaryText: {
     fontSize: 14,
-    color: '#495057',
+    color: theme.colors.text.tertiary,
     marginBottom: 4,
     textAlign: 'center',
   },
   summaryTotal: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#28a745',
+    color: theme.colors.success[500],
     textAlign: 'center',
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#e9ecef',
+    borderTopColor: theme.colors.neutral[200],
   },
   errorContainer: {
     flex: 1,
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   backButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: theme.colors.primary[500],
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
@@ -478,14 +478,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   generateButton: {
-    backgroundColor: '#28a745',
+    backgroundColor: theme.colors.success[500],
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 20,
   },
   disabledButton: {
-    backgroundColor: '#6c757d',
+    backgroundColor: theme.colors.neutral[400],
   },
   generateButtonText: {
     color: 'white',

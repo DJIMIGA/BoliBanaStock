@@ -45,6 +45,8 @@ import {
   BrandsByRayonScreen,
   ProductCopyScreen,
   ProductCopyManagementScreen,
+  CustomerListScreen,
+  CustomerDetailScreen,
 } from './src/screens';
 import { RootStackParamList } from './src/types';
 import theme, { actionColors } from './src/utils/theme';
@@ -96,35 +98,13 @@ const MainTabs = () => (
       }}
     />
     <Tab.Screen
-      name="Transactions"
-      component={TransactionsScreen}
+      name="CustomerList"
+      component={CustomerListScreen}
       options={{
-        title: 'Transactions',
-        tabBarLabel: 'Transactions',
+        title: 'Clients',
+        tabBarLabel: 'Clients',
         tabBarIcon: ({ color, size }) => (
-          <Ionicons name="swap-horizontal-outline" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Labels"
-      component={LabelGeneratorScreen}
-      options={{
-        title: 'Étiquettes',
-        tabBarLabel: 'Étiquettes',
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="pricetag-outline" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Settings"
-      component={SettingsScreen}
-      options={{
-        title: 'Paramètres',
-        tabBarLabel: 'Paramètres',
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="settings-outline" size={size} color={color} />
+          <Ionicons name="people-outline" size={size} color={color} />
         ),
       }}
     />
@@ -189,6 +169,10 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="BrandsByRayon" component={BrandsByRayonScreen} />
           <Stack.Screen name="ProductCopy" component={ProductCopyScreen} />
           <Stack.Screen name="ProductCopyManagement" component={ProductCopyManagementScreen} />
+          <Stack.Screen name="CustomerList" component={CustomerListScreen} />
+          <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
+          <Stack.Screen name="Transactions" component={TransactionsScreen} />
+          <Stack.Screen name="Labels" component={LabelGeneratorScreen} />
         </>
       )}
     </Stack.Navigator>

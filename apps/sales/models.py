@@ -65,6 +65,8 @@ class Sale(models.Model):
         ('card', 'Carte bancaire'),
         ('mobile', 'Mobile Money'),
         ('transfer', 'Virement'),
+        ('sarali', 'Sarali'),
+        ('credit', 'Crédit'),
     ]
 
     # Informations de base
@@ -89,6 +91,31 @@ class Sale(models.Model):
     # Paiement
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='cash', verbose_name="Mode de paiement")
     payment_reference = models.CharField(max_length=100, blank=True, null=True, verbose_name="Référence paiement")
+    
+    # Champs spécifiques aux nouveaux modes de paiement
+    sarali_reference = models.CharField(
+        max_length=100, 
+        blank=True, 
+        null=True, 
+        verbose_name="Référence Sarali",
+        help_text="Référence de la transaction Sarali"
+    )
+    amount_given = models.DecimalField(
+        max_digits=12, 
+        decimal_places=0, 
+        null=True, 
+        blank=True, 
+        verbose_name="Montant donné (FCFA)",
+        help_text="Montant donné par le client en liquide"
+    )
+    change_amount = models.DecimalField(
+        max_digits=12, 
+        decimal_places=0, 
+        null=True, 
+        blank=True, 
+        verbose_name="Monnaie rendue (FCFA)",
+        help_text="Montant de la monnaie rendue"
+    )
     
     # Métadonnées
     notes = models.TextField(blank=True, null=True, verbose_name="Notes")
@@ -120,7 +147,7 @@ class Sale(models.Model):
 
     def update_totals(self):
         """Met à jour tous les totaux de la vente"""
-        items = self.saleitem_set.all()
+        items = self.items.all()
         
         # Calculer le sous-total
         self.subtotal = sum(item.amount for item in items)
@@ -238,6 +265,84 @@ class SaleItem(models.Model):
     class Meta:
         verbose_name = "Article vendu"
         verbose_name_plural = "Articles vendus"
+
+class CreditTransaction(models.Model):
+    """Modèle pour tracer les transactions de crédit client"""
+    TYPE_CHOICES = [
+        ('credit', 'Crédit'),      # Achat à crédit (-)
+        ('payment', 'Paiement'),   # Remboursement (+)
+    ]
+    
+    customer = models.ForeignKey(
+        Customer, 
+        on_delete=models.CASCADE, 
+        related_name='credit_transactions',
+        verbose_name="Client"
+    )
+    sale = models.ForeignKey(
+        Sale, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='credit_transactions',
+        verbose_name="Vente"
+    )
+    type = models.CharField(
+        max_length=10, 
+        choices=TYPE_CHOICES, 
+        verbose_name="Type de transaction"
+    )
+    amount = models.DecimalField(
+        max_digits=12, 
+        decimal_places=0, 
+        verbose_name="Montant (FCFA)"
+    )
+    balance_after = models.DecimalField(
+        max_digits=12, 
+        decimal_places=0, 
+        verbose_name="Solde après transaction"
+    )
+    transaction_date = models.DateTimeField(
+        auto_now_add=True, 
+        verbose_name="Date de transaction"
+    )
+    notes = models.TextField(
+        blank=True, 
+        null=True, 
+        verbose_name="Notes"
+    )
+    user = models.ForeignKey(
+        User, 
+        on_delete=models.PROTECT, 
+        verbose_name="Utilisateur"
+    )
+    site_configuration = models.ForeignKey(
+        'core.Configuration', 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True,
+        related_name='credit_transactions',
+        verbose_name='Configuration du site'
+    )
+
+    def __str__(self):
+        return f"{self.get_type_display()} - {self.customer} ({self.amount} FCFA)"
+
+    @property
+    def formatted_amount(self):
+        """Retourne le montant formaté en FCFA"""
+        return f"{self.amount:,}".replace(",", " ") + " FCFA"
+
+    @property
+    def formatted_balance_after(self):
+        """Retourne le solde après transaction formaté en FCFA"""
+        return f"{self.balance_after:,}".replace(",", " ") + " FCFA"
+
+    class Meta:
+        verbose_name = "Transaction crédit"
+        verbose_name_plural = "Transactions crédit"
+        ordering = ['-transaction_date']
+
 
 class Payment(models.Model):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='payments')

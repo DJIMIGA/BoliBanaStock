@@ -10,6 +10,7 @@ from .views import (
     ConfigurationAPIView, SitesAPIView, ParametresAPIView, ConfigurationResetAPIView,
     UserProfileAPIView, UserInfoAPIView, UserPermissionsAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
+    CustomerViewSet, CreditTransactionViewSet,
     RefreshTokenView, ForceLogoutAllView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
     CatalogPDFAPIView, LabelPrintAPIView,
@@ -38,6 +39,8 @@ router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'brands', BrandViewSet, basename='brand')
 router.register(r'transactions', TransactionViewSet, basename='transaction')
 router.register(r'sales', SaleViewSet, basename='sale')
+router.register(r'customers', CustomerViewSet, basename='customer')
+router.register(r'credit-transactions', CreditTransactionViewSet, basename='credit-transaction')
 router.register(r'labels/templates', LabelTemplateViewSet, basename='label-template')
 router.register(r'labels/batches', LabelBatchViewSet, basename='label-batch')
 router.register(r'barcodes', BarcodeViewSet, basename='barcode')

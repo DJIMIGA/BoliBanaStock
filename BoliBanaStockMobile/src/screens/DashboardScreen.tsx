@@ -213,20 +213,14 @@ export default function DashboardScreen({ navigation }: any) {
               onPress={() => navigation.navigate('ScanProduct')}
             />
             <ActionButton
-              title="Nouvelle Vente"
-              icon="add-circle-outline"
-              color={actionColors.primary}
-              onPress={() => navigation.navigate('NewSale')}
-            />
-            <ActionButton
               title="Inventaire"
               icon="list-outline"
-              color={actionColors.warning}
+              color={actionColors.primary}
               onPress={() => navigation.navigate('Inventory')}
             />
             <ActionButton
-              title="Livraison"
-              icon="car-outline"
+              title="Réception"
+              icon="cube-outline"
               color={actionColors.info}
               onPress={() => navigation.navigate('Delivery')}
             />
@@ -237,10 +231,22 @@ export default function DashboardScreen({ navigation }: any) {
               onPress={() => navigation.navigate('Reports')}
             />
             <ActionButton
-              title="Nouveau Produit"
-              icon="add-circle-outline"
+              title="Transactions"
+              icon="swap-horizontal-outline"
               color={actionColors.info}
-              onPress={() => navigation.navigate('AddProduct')}
+              onPress={() => navigation.navigate('Transactions')}
+            />
+            <ActionButton
+              title="Étiquettes"
+              icon="pricetag-outline"
+              color={actionColors.warning}
+              onPress={() => navigation.navigate('Labels')}
+            />
+            <ActionButton
+              title="Paramètres"
+              icon="settings-outline"
+              color={theme.colors.neutral[500]}
+              onPress={() => navigation.navigate('Settings')}
             />
           </View>
         </View>

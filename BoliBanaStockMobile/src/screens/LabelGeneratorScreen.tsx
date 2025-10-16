@@ -8,13 +8,14 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import api from '../services/api';
-import { KeyDebugger } from '../components';
+import { KeyDebugger, CategorySelector } from '../components';
 import theme from '../utils/theme';
 
 interface Product {
@@ -55,8 +56,8 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
   const [loading, setLoading] = useState(true);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
-  const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
   const [generatingLabels, setGeneratingLabels] = useState(false);
+  const [showCategorySelector, setShowCategorySelector] = useState(false);
 
   const { tokens } = useSelector((state: RootState) => state.auth);
 
@@ -111,6 +112,15 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
     });
   };
 
+  const handleCategorySelect = (category: any) => {
+    if (category === null) {
+      setSelectedCategory(null);
+    } else {
+      setSelectedCategory(category?.id || null);
+    }
+    setShowCategorySelector(false);
+  };
+
   const showLabelsDetails = (labels: any[]) => {
     // Afficher les détails des étiquettes générées
     const details = labels.map(label => 
@@ -122,7 +132,6 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
 
   const filteredProducts = labelData?.products.filter(product => {
     if (selectedCategory && product.category?.id !== selectedCategory) return false;
-    if (selectedBrand && product.brand?.id !== selectedBrand) return false;
     return true;
   }) || [];
 
@@ -168,64 +177,40 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
         <KeyDebugger data={labelData?.brands || []} name="Brands" />
         <KeyDebugger data={filteredProducts} name="FilteredProducts" /> */}
         
-        <View style={styles.subtitleContainer}>
-          <Text style={styles.subtitle}>
-            {labelData.total_products} produits artisanaux avec EAN générés automatiquement
-          </Text>
-        </View>
 
       {/* Contrôles */}
       <View style={styles.controls}>
-        <Text style={styles.sectionTitle}>🔍 Filtres et Recherche</Text>
-
         <View style={styles.filterSection}>
           <Text style={styles.filterLabel}>Filtrer par catégorie:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <TouchableOpacity
-              style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
-              onPress={() => setSelectedCategory(null)}
-            >
-              <Text style={styles.filterChipText}>Toutes</Text>
-            </TouchableOpacity>
-            {labelData.categories.map(category => (
-              <TouchableOpacity
-                key={category.id}
-                style={[styles.filterChip, selectedCategory === category.id && styles.filterChipActive]}
-                onPress={() => setSelectedCategory(category.id)}
-              >
-                <Text style={styles.filterChipText}>{category.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        <View style={styles.filterSection}>
-          <Text style={styles.filterLabel}>Filtrer par marque:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <TouchableOpacity
-              style={[styles.filterChip, !selectedBrand && styles.filterChipActive]}
-              onPress={() => setSelectedBrand(null)}
-            >
-              <Text style={styles.filterChipText}>Toutes</Text>
-            </TouchableOpacity>
-            {labelData.brands.map(brand => (
-              <TouchableOpacity
-                key={brand.id}
-                style={[styles.filterChip, selectedBrand === brand.id && styles.filterChipActive]}
-                onPress={() => setSelectedBrand(brand.id)}
-              >
-                <Text style={styles.filterChipText}>{brand.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <TouchableOpacity
+            style={styles.categoryButton}
+            onPress={() => setShowCategorySelector(true)}
+          >
+            <View style={styles.categoryButtonContent}>
+              <Ionicons name="folder-outline" size={16} color="#4CAF50" />
+              <Text style={styles.categoryButtonText}>
+                {selectedCategory 
+                  ? labelData.categories.find(c => c.id === selectedCategory)?.name || 'Catégorie sélectionnée'
+                  : 'Toutes les catégories'
+                }
+              </Text>
+              <Ionicons name="chevron-down" size={16} color="#666" />
+            </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.selectionControls}>
           <TouchableOpacity style={styles.selectionButton} onPress={selectAllProducts}>
-            <Text style={styles.selectionButtonText}>Tout sélectionner</Text>
+            <View style={styles.selectionButtonContent}>
+              <Ionicons name="checkmark-circle-outline" size={18} color="#4CAF50" />
+              <Text style={styles.selectionButtonText}>Tout sélectionner</Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity style={styles.selectionButton} onPress={deselectAllProducts}>
-            <Text style={styles.selectionButtonText}>Tout désélectionner</Text>
+            <View style={styles.selectionButtonContent}>
+              <Ionicons name="close-circle-outline" size={18} color="#F44336" />
+              <Text style={styles.selectionButtonText}>Tout désélectionner</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -246,9 +231,15 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
 
       {/* Liste des produits */}
       <View style={styles.productsSection}>
-        <Text style={styles.sectionTitle}>
-          📦 Produits ({filteredProducts.length})
-        </Text>
+        <View style={styles.productsHeader}>
+          <View style={styles.productsTitleContainer}>
+            <Ionicons name="cube-outline" size={24} color="#4CAF50" />
+            <Text style={styles.productsTitle}>Produits</Text>
+          </View>
+          <View style={styles.productsCounter}>
+            <Text style={styles.productsCounterText}>{filteredProducts.length}</Text>
+          </View>
+        </View>
         
         {filteredProducts.map(product => (
           <TouchableOpacity
@@ -277,6 +268,22 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
         ))}
       </View>
       </ScrollView>
+
+      {/* Modal de sélection de catégorie */}
+      <Modal
+        visible={showCategorySelector}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowCategorySelector(false)}
+      >
+        <CategorySelector
+          visible={showCategorySelector}
+          onClose={() => setShowCategorySelector(false)}
+          onCategorySelect={handleCategorySelect}
+          selectedCategory={selectedCategory ? labelData?.categories.find(c => c.id === selectedCategory) : null}
+          title="Sélectionner une catégorie"
+        />
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -338,30 +345,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 16,
   },
-  subtitleContainer: {
-    padding: theme.spacing.md,
-  },
-  subtitle: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-  },
   controls: {
     backgroundColor: 'white',
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
   switchRow: {
     flexDirection: 'row',
@@ -374,7 +362,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   filterSection: {
-    marginTop: 16,
+    marginBottom: 16,
   },
   filterLabel: {
     fontSize: 16,
@@ -382,31 +370,45 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 8,
   },
-  filterChip: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
+  categoryButton: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 25,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
   },
-  filterChipActive: {
-    backgroundColor: '#007AFF',
+  categoryButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  filterChipText: {
-    color: '#333',
+  categoryButtonText: {
+    flex: 1,
     fontSize: 14,
+    color: '#333',
+    marginLeft: 8,
   },
   selectionControls: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     marginTop: 16,
     marginBottom: 16,
+    gap: 12,
   },
   selectionButton: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectionButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   selectionButtonText: {
     color: '#333',
@@ -414,13 +416,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   generateButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.primary[500],
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
   },
   generateButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: theme.colors.neutral[300],
   },
   generateButtonText: {
     color: 'white',
@@ -429,6 +431,36 @@ const styles = StyleSheet.create({
   },
   productsSection: {
     margin: 16,
+  },
+  productsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  productsTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  productsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+  },
+  productsCounter: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  productsCounterText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
   },
   productCard: {
     backgroundColor: 'white',

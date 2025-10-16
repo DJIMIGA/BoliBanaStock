@@ -181,12 +181,12 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background.secondary,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.colors.text.primary,
   },
   subtitleContainer: {
     backgroundColor: theme.colors.background.primary,
@@ -202,23 +202,23 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   selectionInfo: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: theme.colors.primary[50],
     padding: 12,
     borderRadius: 8,
     marginTop: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#2196f3',
+    borderLeftColor: theme.colors.primary[500],
   },
   selectionInfoText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#1976d2',
+    color: theme.colors.primary[600],
     textAlign: 'center',
     marginBottom: 4,
   },
   selectionInfoSubtext: {
     fontSize: 12,
-    color: '#1565c0',
+    color: theme.colors.primary[700],
     textAlign: 'center',
   },
   modesContainer: {
@@ -242,17 +242,17 @@ const styles = StyleSheet.create({
   },
   catalogCard: {
     borderLeftWidth: 4,
-    borderLeftColor: '#007bff',
+    borderLeftColor: theme.colors.primary[500],
   },
   labelCard: {
     borderLeftWidth: 4,
-    borderLeftColor: '#28a745',
+    borderLeftColor: theme.colors.success[500],
   },
   modeIcon: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: theme.colors.background.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -266,12 +266,12 @@ const styles = StyleSheet.create({
   modeTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#212529',
+    color: theme.colors.text.primary,
     marginBottom: 8,
   },
   modeDescription: {
     fontSize: 14,
-    color: '#6c757d',
+    color: theme.colors.text.secondary,
     marginBottom: 12,
     lineHeight: 20,
   },
@@ -280,18 +280,18 @@ const styles = StyleSheet.create({
   },
   featureText: {
     fontSize: 12,
-    color: '#495057',
+    color: theme.colors.text.tertiary,
     marginBottom: 2,
     lineHeight: 16,
   },
   modeUsage: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: theme.colors.background.secondary,
     padding: 8,
     borderRadius: 6,
   },
   usageText: {
     fontSize: 12,
-    color: '#495057',
+    color: theme.colors.text.tertiary,
     fontStyle: 'italic',
   },
   modeArrow: {
@@ -302,26 +302,26 @@ const styles = StyleSheet.create({
   },
   arrowText: {
     fontSize: 20,
-    color: '#6c757d',
+    color: theme.colors.text.secondary,
     fontWeight: 'bold',
   },
   infoSection: {
     marginTop: 30,
-    backgroundColor: '#e3f2fd',
+    backgroundColor: theme.colors.primary[50],
     padding: 16,
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#2196f3',
+    borderLeftColor: theme.colors.primary[500],
   },
   infoTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1976d2',
+    color: theme.colors.primary[600],
     marginBottom: 8,
   },
   infoText: {
     fontSize: 14,
-    color: '#1565c0',
+    color: theme.colors.primary[700],
     lineHeight: 20,
   },
 });

@@ -24,13 +24,15 @@ from django.db import transaction
 from .serializers import (
     ProductSerializer, ProductListSerializer, CategorySerializer, BrandSerializer,
     TransactionSerializer, SaleSerializer, BarcodeSerializer,
+    CustomerSerializer, CreditTransactionSerializer,
     LabelTemplateSerializer, LabelBatchSerializer, UserSerializer,
     LoginSerializer, RefreshTokenSerializer, ProductScanSerializer,
     StockUpdateSerializer, SaleCreateSerializer, LabelBatchCreateSerializer
 )
-from apps.inventory.models import Product, Category, Brand, Transaction, LabelTemplate, LabelBatch, LabelItem, Barcode
+from apps.inventory.models import Product, Category, Brand, Transaction, LabelTemplate, LabelBatch, LabelItem, Barcode, Customer
 from apps.inventory.utils import generate_ean13_from_cug
-from apps.sales.models import Sale, SaleItem
+from apps.sales.models import Sale, SaleItem, CreditTransaction
+from apps.sales.services import CreditService
 from apps.core.views import ConfigurationUpdateView, ParametreListView, ParametreUpdateView
 from django.http import JsonResponse
 from django.core.files.base import ContentFile
@@ -1428,7 +1430,7 @@ class SaleViewSet(viewsets.ModelViewSet):
         # Créer la vente
         sale = serializer.save(
             site_configuration=user_site,
-            user=self.request.user
+            seller=self.request.user
         )
         
         # Traiter les articles de la vente
@@ -1452,8 +1454,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                         sale=sale,
                         product=product,
                         quantity=quantity,
-                        unit_price=unit_price,
-                        total_price=quantity * unit_price
+                        unit_price=unit_price
                     )
                     
                     # Mettre à jour le stock (peut devenir négatif)
@@ -1488,6 +1489,73 @@ class SaleViewSet(viewsets.ModelViewSet):
         
         # Mettre à jour le montant total de la vente
         sale.total_amount = total_amount
+        
+        # Gérer les différents modes de paiement
+        payment_method = sale.payment_method
+        
+        if payment_method == 'cash':
+            # Paiement liquide - calculer la monnaie si amount_given est fourni
+            amount_given = self.request.data.get('amount_given')
+            if amount_given:
+                try:
+                    amount_given = float(amount_given)
+                    sale.amount_given = amount_given
+                    sale.change_amount = CreditService.calculate_change_amount(total_amount, amount_given)
+                    sale.amount_paid = total_amount
+                    sale.payment_status = 'paid'
+                except (ValueError, TypeError):
+                    pass  # Garder les valeurs par défaut
+        
+        elif payment_method == 'sarali':
+            # Paiement Sarali - valider la référence
+            sarali_reference = self.request.data.get('sarali_reference')
+            if sarali_reference:
+                if CreditService.validate_sarali_reference(sarali_reference):
+                    sale.sarali_reference = sarali_reference
+                    sale.amount_paid = total_amount
+                    sale.payment_status = 'paid'
+                else:
+                    raise ValidationError({
+                        "sarali_reference": "Format de référence Sarali invalide"
+                    })
+            else:
+                raise ValidationError({
+                    "sarali_reference": "Référence Sarali requise pour ce mode de paiement"
+                })
+        
+        elif payment_method == 'credit':
+            # Paiement à crédit - vérifier le client et créer la transaction
+            if not sale.customer:
+                raise ValidationError({
+                    "customer": "Un client est requis pour les ventes à crédit"
+                })
+            
+            # Vérifier que le client est actif
+            if not sale.customer.is_active:
+                raise ValidationError({
+                    "customer": "Ce client n'est pas actif pour les ventes à crédit"
+                })
+            
+            # Créer la transaction de crédit
+            try:
+                CreditService.create_credit_sale(
+                    customer=sale.customer,
+                    sale=sale,
+                    amount=total_amount,
+                    user=self.request.user,
+                    site_configuration=user_site,
+                    notes=f"Vente à crédit #{sale.id}"
+                )
+                sale.amount_paid = 0  # Pas de paiement immédiat
+                sale.payment_status = 'pending'
+            except ValueError as e:
+                raise ValidationError({"detail": str(e)})
+        
+        else:
+            # Autres modes de paiement (card, mobile, transfer)
+            sale.amount_paid = total_amount
+            sale.payment_status = 'paid'
+        
         sale.save()
         
         return sale
@@ -2656,6 +2724,28 @@ class CatalogPDFAPIView(APIView):
             
             # Récupérer les produits
             user = request.user
+            
+            # Vérifier que l'utilisateur existe
+            if not user or not user.id:
+                return Response(
+                    {'error': 'Utilisateur invalide ou non authentifié'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            
+            # Vérifier que l'utilisateur existe vraiment dans la base de données
+            try:
+                # Utiliser directement request.user qui est déjà authentifié
+                if not hasattr(user, 'id') or not user.id:
+                    return Response(
+                        {'error': 'Utilisateur invalide ou non authentifié'},
+                        status=status.HTTP_401_UNAUTHORIZED
+                    )
+            except Exception as e:
+                return Response(
+                    {'error': f'Erreur de validation utilisateur: {str(e)}'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            
             user_site = get_user_site_configuration_api(user)
             
             if user.is_superuser:
@@ -3623,3 +3713,133 @@ class ProductCopyManagementAPIView(APIView):
                 
         except Exception as e:
             return Response({'error': str(e)}, status=500)
+
+
+class CustomerViewSet(viewsets.ModelViewSet):
+    """ViewSet pour la gestion des clients avec crédit"""
+    serializer_class = CustomerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['is_active']
+    search_fields = ['name', 'first_name', 'phone', 'email']
+    ordering_fields = ['name', 'credit_balance', 'created_at']
+    ordering = ['name']
+    
+    def get_queryset(self):
+        """Filtrer les clients par site de l'utilisateur"""
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        
+        if self.request.user.is_superuser:
+            # Superuser voit tout
+            return Customer.objects.all()
+        else:
+            # Utilisateur normal voit seulement son site
+            if not user_site:
+                return Customer.objects.none()
+            return Customer.objects.filter(site_configuration=user_site)
+    
+    def perform_create(self, serializer):
+        """Créer un client avec gestion du site"""
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        
+        if not user_site and not self.request.user.is_superuser:
+            raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
+        
+        serializer.save(site_configuration=user_site)
+    
+    @action(detail=True, methods=['get'])
+    def credit_history(self, request, pk=None):
+        """Récupérer l'historique des transactions de crédit d'un client"""
+        customer = self.get_object()
+        limit = request.query_params.get('limit', 20)
+        
+        try:
+            limit = int(limit)
+        except ValueError:
+            limit = 20
+            
+        transactions = CreditService.get_credit_history(customer, limit=limit)
+        serializer = CreditTransactionSerializer(transactions, many=True, context={'request': request})
+        
+        return Response({
+            'customer': CustomerSerializer(customer, context={'request': request}).data,
+            'transactions': serializer.data,
+            'total_count': customer.credit_transactions.count()
+        })
+    
+    @action(detail=True, methods=['post'])
+    def add_payment(self, request, pk=None):
+        """Enregistrer un paiement pour un client"""
+        customer = self.get_object()
+        amount = request.data.get('amount')
+        notes = request.data.get('notes', '')
+        
+        if not amount:
+            return Response({'error': 'Le montant est requis'}, status=400)
+        
+        try:
+            from decimal import Decimal
+            amount = Decimal(str(amount))
+            if amount <= 0:
+                return Response({'error': 'Le montant doit être positif'}, status=400)
+        except (ValueError, TypeError):
+            return Response({'error': 'Montant invalide'}, status=400)
+        
+        user_site = getattr(request.user, 'site_configuration', None)
+        
+        try:
+            transaction = CreditService.add_payment(
+                customer=customer,
+                amount=amount,
+                user=request.user,
+                site_configuration=user_site,
+                notes=notes
+            )
+            
+            # Retourner le client mis à jour
+            customer.refresh_from_db()
+            serializer = CustomerSerializer(customer, context={'request': request})
+            
+            return Response({
+                'success': True,
+                'message': f'Paiement de {amount} FCFA enregistré',
+                'customer': serializer.data,
+                'transaction': CreditTransactionSerializer(transaction, context={'request': request}).data
+            })
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+    
+    @action(detail=False, methods=['get'])
+    def with_debt(self, request):
+        """Récupérer les clients ayant une dette"""
+        user_site = getattr(request.user, 'site_configuration', None)
+        customers = CreditService.get_customers_with_debt(user_site)
+        serializer = CustomerSerializer(customers, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class CreditTransactionViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet en lecture seule pour les transactions de crédit"""
+    serializer_class = CreditTransactionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['type', 'customer']
+    search_fields = ['customer__name', 'customer__first_name', 'notes']
+    ordering_fields = ['transaction_date', 'amount']
+    ordering = ['-transaction_date']
+    
+    def get_queryset(self):
+        """Filtrer les transactions par site de l'utilisateur"""
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        
+        if self.request.user.is_superuser:
+            # Superuser voit tout
+            return CreditTransaction.objects.select_related('customer', 'sale', 'user').all()
+        else:
+            # Utilisateur normal voit seulement son site
+            if not user_site:
+                return CreditTransaction.objects.none()
+            return CreditTransaction.objects.filter(
+                site_configuration=user_site
+            ).select_related('customer', 'sale', 'user')

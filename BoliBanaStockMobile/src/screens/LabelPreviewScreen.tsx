@@ -226,12 +226,12 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background.secondary,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.colors.text.primary,
   },
   subtitleContainer: {
     backgroundColor: theme.colors.background.primary,
@@ -262,13 +262,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   selectionButton: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: theme.colors.background.secondary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
   },
   selectionButtonText: {
-    color: '#333',
+    color: theme.colors.text.primary,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
   },
   actionButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.primary[500],
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: theme.colors.neutral[300],
   },
   actionButtonText: {
     color: 'white',
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.primary[500],
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,

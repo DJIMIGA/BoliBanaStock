@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { PrintOptionsConfig } from '../components/PrintOptionsConfig';
+import { catalogService } from '../services/api';
 import theme from '../utils/theme';
 
 interface Product {
@@ -71,7 +72,6 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
   const generateCatalog = async () => {
     setGenerating(true);
     try {
-      // Simuler l'appel API
       const catalogData = {
         product_ids: selectedProducts,
         include_prices: includePrices,
@@ -80,28 +80,34 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
         include_images: includeImages,
       };
 
-      // Ici vous feriez l'appel API réel
-      // const response = await fetch('/api/v1/catalog/pdf/', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(catalogData)
-      // });
-
-      // Simulation du succès
-      setTimeout(() => {
-        setGenerating(false);
-        Alert.alert(
-          'Succès', 
-          `Catalogue PDF généré avec succès !\n${selectedProducts.length} produits sélectionnés`,
-          [
-            { text: 'OK', onPress: () => navigation.goBack() }
-          ]
-        );
-      }, 2000);
-
-    } catch (error) {
+      console.log('📄 Génération du catalogue...', catalogData);
+      
+      // Appel API réel pour générer le catalogue
+      const catalogResponse = await catalogService.generateCatalog(catalogData);
+      
       setGenerating(false);
-      Alert.alert('Erreur', 'Impossible de générer le catalogue PDF');
+      Alert.alert(
+        'Succès', 
+        `Catalogue généré avec succès !\n\n${catalogResponse.catalog.total_products} produits inclus\n${catalogResponse.catalog.total_pages} pages\n\nID du catalogue: ${catalogResponse.catalog.id}`,
+        [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]
+      );
+
+    } catch (error: any) {
+      setGenerating(false);
+      console.error('❌ Erreur lors de la génération du catalogue:', error);
+      
+      let errorMessage = 'Impossible de générer le catalogue PDF';
+      if (error.response?.status === 404) {
+        errorMessage = 'Service de génération de catalogue non disponible';
+      } else if (error.response?.status === 500) {
+        errorMessage = 'Erreur serveur lors de la génération';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Erreur', errorMessage);
     }
   };
 
@@ -214,12 +220,12 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background.secondary,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.colors.text.primary,
   },
   subtitleContainer: {
     backgroundColor: theme.colors.background.primary,
@@ -234,23 +240,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   selectionSummary: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: theme.colors.primary[50],
     padding: 12,
     borderRadius: 8,
     marginTop: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#2196f3',
+    borderLeftColor: theme.colors.primary[500],
   },
   selectionSummaryText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#1976d2',
+    color: theme.colors.primary[600],
     textAlign: 'center',
     marginBottom: 4,
   },
   selectionSummarySubtext: {
     fontSize: 12,
-    color: '#1565c0',
+    color: theme.colors.primary[700],
     textAlign: 'center',
   },
   errorContainer: {
@@ -273,7 +279,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   backButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: theme.colors.primary[500],
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
@@ -323,12 +329,12 @@ const styles = StyleSheet.create({
   actionButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#e9ecef',
+    backgroundColor: theme.colors.neutral[200],
     borderRadius: 6,
   },
   actionButtonText: {
     fontSize: 12,
-    color: '#495057',
+    color: theme.colors.text.tertiary,
     fontWeight: '500',
   },
   selectionCount: {
@@ -349,8 +355,8 @@ const styles = StyleSheet.create({
     minHeight: 60,
   },
   selectedProductCard: {
-    borderColor: '#007bff',
-    backgroundColor: '#f8f9ff',
+    borderColor: theme.colors.primary[500],
+    backgroundColor: theme.colors.primary[50],
   },
   productInfo: {
     flex: 1,
@@ -385,18 +391,18 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     fontSize: 18,
-    color: '#007bff',
+    color: theme.colors.primary[500],
     fontWeight: 'bold',
   },
   generateButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: theme.colors.primary[500],
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 20,
   },
   disabledButton: {
-    backgroundColor: '#6c757d',
+    backgroundColor: theme.colors.neutral[400],
   },
   generateButtonText: {
     color: 'white',

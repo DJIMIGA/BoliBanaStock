@@ -11,10 +11,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
-import { ContinuousBarcodeScanner } from '../components';
+import { 
+  ContinuousBarcodeScanner,
+  PaymentMethodModal,
+  CashPaymentModal,
+  SaraliPaymentModal,
+  CustomerSelectorModal,
+  CustomerFormModal
+} from '../components';
 import { useContinuousScanner } from '../hooks';
 import { useUserPermissions } from '../hooks/useUserPermissions';
-import { productService, saleService } from '../services/api';
+import { productService, saleService, customerService } from '../services/api';
 import { sanitizeBarcode, validateBarcode, areSimilarBarcodes, validateBarcodeQuality } from '../utils/barcodeUtils';
 
 const { width } = Dimensions.get('window');
@@ -24,6 +31,18 @@ export default function CashRegisterScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const scanner = useContinuousScanner('sales');
   const { userInfo, isSuperuser } = useUserPermissions();
+  
+  // États pour le nouveau workflow de paiement
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [cashPaymentModalVisible, setCashPaymentModalVisible] = useState(false);
+  const [saraliPaymentModalVisible, setSaraliPaymentModalVisible] = useState(false);
+  const [customerSelectorModalVisible, setCustomerSelectorModalVisible] = useState(false);
+  const [customerFormModalVisible, setCustomerFormModalVisible] = useState(false);
+  
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [amountGiven, setAmountGiven] = useState<number>(0);
+  const [changeAmount, setChangeAmount] = useState<number>(0);
+  const [saraliReference, setSaraliReference] = useState<string>('');
   // Anti-duplication local spécifique caisse
   const lastScanByBarcodeRef = useRef<Record<string, number>>({});
   const lastScanByProductIdRef = useRef<Record<string, number>>({});
@@ -205,17 +224,67 @@ export default function CashRegisterScreen({ navigation }: any) {
     setShowScanner(false);
   };
 
-  const handleValidateSale = async () => {
+  const handleValidateSale = () => {
     if (scanner.scanList.length === 0) {
       Alert.alert('Panier vide', 'Veuillez scanner au moins un produit');
       return;
     }
 
+    // Ouvrir la modal de sélection du mode de paiement
+    setPaymentModalVisible(true);
+  };
+
+  const handlePaymentMethodSelect = (method: 'cash' | 'credit' | 'sarali') => {
+    setPaymentModalVisible(false);
+    
+    switch (method) {
+      case 'cash':
+        setCashPaymentModalVisible(true);
+        break;
+      case 'credit':
+        setCustomerSelectorModalVisible(true);
+        break;
+      case 'sarali':
+        setSaraliPaymentModalVisible(true);
+        break;
+    }
+  };
+
+  const handleCashPaymentConfirm = (given: number, change: number) => {
+    setAmountGiven(given);
+    setChangeAmount(change);
+    setCashPaymentModalVisible(false);
+    processSale('cash');
+  };
+
+  const handleSaraliPaymentConfirm = (reference: string) => {
+    setSaraliReference(reference);
+    setSaraliPaymentModalVisible(false);
+    processSale('sarali');
+  };
+
+  const handleCustomerSelect = (customer: any) => {
+    setSelectedCustomer(customer);
+    setCustomerSelectorModalVisible(false);
+    processSale('credit');
+  };
+
+  const handleCustomerCreate = () => {
+    setCustomerFormModalVisible(true);
+  };
+
+  const handleCustomerCreated = (customer: any) => {
+    setSelectedCustomer(customer);
+    setCustomerFormModalVisible(false);
+    processSale('credit');
+  };
+
+  const processSale = async (paymentMethod: 'cash' | 'credit' | 'sarali') => {
     setLoading(true);
     try {
       // Préparer les données de la vente
-      const saleData = {
-        customer: null, // Pas de client spécifique pour les ventes en caisse
+      const saleData: any = {
+        customer: selectedCustomer?.id || null,
         notes: 'Vente via caisse mobile',
         items: scanner.scanList.map(item => ({
           product_id: parseInt(item.productId),
@@ -224,20 +293,41 @@ export default function CashRegisterScreen({ navigation }: any) {
           total_price: item.totalPrice
         })),
         total_amount: scanner.getTotalValue(),
-        payment_method: 'cash',
+        payment_method: paymentMethod,
         status: 'completed'
       };
+
+      // Ajouter les champs spécifiques selon le mode de paiement
+      if (paymentMethod === 'cash') {
+        saleData.amount_given = amountGiven;
+        saleData.change_amount = changeAmount;
+      } else if (paymentMethod === 'sarali') {
+        saleData.sarali_reference = saraliReference;
+      }
 
       // Appel API pour créer la vente
       const sale = await saleService.createSale(saleData);
       
+      // Message de succès adapté au mode de paiement
+      let successMessage = `Vente #${sale.id} enregistrée avec succès !\n\n${scanner.getTotalItems()} articles\nTotal: ${scanner.getTotalValue().toLocaleString()} FCFA`;
+      
+      if (paymentMethod === 'cash' && changeAmount > 0) {
+        successMessage += `\nMonnaie rendue: ${changeAmount.toLocaleString()} FCFA`;
+      } else if (paymentMethod === 'credit') {
+        successMessage += `\nClient: ${selectedCustomer.name} ${selectedCustomer.first_name || ''}`;
+        successMessage += `\nNouveau solde: ${selectedCustomer.credit_balance_formatted}`;
+      } else if (paymentMethod === 'sarali') {
+        successMessage += `\nRéférence Sarali: ${saraliReference}`;
+      }
+      
       Alert.alert(
         'Vente enregistrée',
-        `Vente #${sale.id} enregistrée avec succès !\n\n${scanner.getTotalItems()} articles\nTotal: ${scanner.getTotalValue().toLocaleString()} FCFA`,
+        successMessage,
         [
           {
             text: 'Nouvelle vente',
             onPress: () => {
+              resetPaymentState();
               scanner.clearList();
             }
           },
@@ -262,13 +352,20 @@ export default function CashRegisterScreen({ navigation }: any) {
       } else {
         Alert.alert(
           'Erreur d\'enregistrement',
-          error.response?.data?.message || 'Erreur lors de l\'enregistrement de la vente. Veuillez réessayer.',
+          error.response?.data?.detail || error.response?.data?.message || 'Erreur lors de l\'enregistrement de la vente. Veuillez réessayer.',
           [{ text: 'OK' }]
         );
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetPaymentState = () => {
+    setSelectedCustomer(null);
+    setAmountGiven(0);
+    setChangeAmount(0);
+    setSaraliReference('');
   };
 
   const removeItem = (itemId: string) => {
@@ -427,6 +524,41 @@ export default function CashRegisterScreen({ navigation }: any) {
         context="sales"
         title="Scanner de Caisse"
         showQuantityInput={true}
+      />
+
+      {/* Modales de paiement */}
+      <PaymentMethodModal
+        visible={paymentModalVisible}
+        onClose={() => setPaymentModalVisible(false)}
+        onSelectMethod={handlePaymentMethodSelect}
+        totalAmount={scanner.getTotalValue()}
+      />
+
+      <CashPaymentModal
+        visible={cashPaymentModalVisible}
+        onClose={() => setCashPaymentModalVisible(false)}
+        onConfirm={handleCashPaymentConfirm}
+        totalAmount={scanner.getTotalValue()}
+      />
+
+      <SaraliPaymentModal
+        visible={saraliPaymentModalVisible}
+        onClose={() => setSaraliPaymentModalVisible(false)}
+        onConfirm={handleSaraliPaymentConfirm}
+        totalAmount={scanner.getTotalValue()}
+      />
+
+      <CustomerSelectorModal
+        visible={customerSelectorModalVisible}
+        onClose={() => setCustomerSelectorModalVisible(false)}
+        onSelectCustomer={handleCustomerSelect}
+        onCreateCustomer={handleCustomerCreate}
+      />
+
+      <CustomerFormModal
+        visible={customerFormModalVisible}
+        onClose={() => setCustomerFormModalVisible(false)}
+        onCustomerCreated={handleCustomerCreated}
       />
     </SafeAreaView>
   );

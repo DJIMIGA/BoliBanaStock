@@ -16,5 +16,13 @@ export { default as ImageSelector } from './ImageSelector';
 export { default as NativeBarcode } from './NativeBarcode';
 export { default as KeyDebugger } from './KeyDebugger';
 export { default as BrandFilterField } from './BrandFilterField';
+export { default as CategorySelector } from './CategorySelector';
+
+// Composants de paiement et clients
+export { default as PaymentMethodModal } from './PaymentMethodModal';
+export { default as CashPaymentModal } from './CashPaymentModal';
+export { default as SaraliPaymentModal } from './SaraliPaymentModal';
+export { default as CustomerSelectorModal } from './CustomerSelectorModal';
+export { default as CustomerFormModal } from './CustomerFormModal';
 
 // Ajoutez ici d'autres composants si nécessaire

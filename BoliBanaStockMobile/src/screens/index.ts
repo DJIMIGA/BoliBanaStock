@@ -34,3 +34,5 @@ export { default as BrandsScreen } from './BrandsScreen';
 export { default as BrandsByRayonScreen } from './BrandsByRayonScreen';
 export { default as ProductCopyScreen } from './ProductCopyScreen';
 export { default as ProductCopyManagementScreen } from './ProductCopyManagementScreen';
+export { default as CustomerListScreen } from './CustomerListScreen';
+export { default as CustomerDetailScreen } from './CustomerDetailScreen';

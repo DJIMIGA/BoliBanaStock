@@ -1297,6 +1297,123 @@ export const saleService = {
   },
 };
 
+// Service pour les clients
+export const customerService = {
+  // Récupérer tous les clients
+  getCustomers: async (params?: any) => {
+    try {
+      const response = await api.get('/customers/', { params });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API clients:', error);
+      throw error;
+    }
+  },
+
+  // Récupérer un client spécifique
+  getCustomer: async (id: number) => {
+    try {
+      const response = await api.get(`/customers/${id}/`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API client:', error);
+      throw error;
+    }
+  },
+
+  // Créer un nouveau client
+  createCustomer: async (customerData: any) => {
+    try {
+      const response = await api.post('/customers/', customerData);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API création client:', error);
+      throw error;
+    }
+  },
+
+  // Mettre à jour un client
+  updateCustomer: async (id: number, customerData: any) => {
+    try {
+      const response = await api.put(`/customers/${id}/`, customerData);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API mise à jour client:', error);
+      throw error;
+    }
+  },
+
+  // Supprimer un client
+  deleteCustomer: async (id: number) => {
+    try {
+      const response = await api.delete(`/customers/${id}/`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API suppression client:', error);
+      throw error;
+    }
+  },
+
+  // Récupérer l'historique de crédit d'un client
+  getCreditHistory: async (id: number, limit?: number) => {
+    try {
+      const params = limit ? { limit } : {};
+      const response = await api.get(`/customers/${id}/credit_history/`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API historique crédit:', error);
+      throw error;
+    }
+  },
+
+  // Enregistrer un paiement pour un client
+  addPayment: async (id: number, paymentData: { amount: number; notes?: string }) => {
+    try {
+      const response = await api.post(`/customers/${id}/add_payment/`, paymentData);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API ajout paiement:', error);
+      throw error;
+    }
+  },
+
+  // Récupérer les clients avec dette
+  getCustomersWithDebt: async () => {
+    try {
+      const response = await api.get('/customers/with_debt/');
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API clients avec dette:', error);
+      throw error;
+    }
+  },
+};
+
+// Service pour les transactions de crédit
+export const creditTransactionService = {
+  // Récupérer toutes les transactions de crédit
+  getCreditTransactions: async (params?: any) => {
+    try {
+      const response = await api.get('/credit-transactions/', { params });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API transactions crédit:', error);
+      throw error;
+    }
+  },
+
+  // Récupérer une transaction de crédit spécifique
+  getCreditTransaction: async (id: number) => {
+    try {
+      const response = await api.get(`/credit-transactions/${id}/`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API transaction crédit:', error);
+      throw error;
+    }
+  },
+};
+
 // Services pour le dashboard
 export const dashboardService = {
   getStats: async () => {
@@ -1604,6 +1721,32 @@ const retryWithBackoff = async (fn: () => Promise<any>, maxRetries: number = 3, 
       const delay = baseDelay * Math.pow(2, attempt - 1);
       console.log(`⏳ Attente ${delay}ms avant la prochaine tentative...`);
       await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+};
+
+// Service pour la génération de catalogue
+export const catalogService = {
+  // Générer un catalogue (retourne les données du catalogue)
+  generateCatalog: async (catalogData: {
+    product_ids: number[];
+    include_prices: boolean;
+    include_stock: boolean;
+    include_descriptions: boolean;
+    include_images: boolean;
+  }) => {
+    try {
+      console.log('📄 Génération du catalogue...', catalogData);
+      
+      const response = await api.post('/catalog/pdf/', catalogData, {
+        timeout: 30000, // 30 secondes pour la génération
+      });
+      
+      console.log('✅ Catalogue généré avec succès');
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur lors de la génération du catalogue:', error);
+      throw error;
     }
   }
 };

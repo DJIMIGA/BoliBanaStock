@@ -285,7 +285,7 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
         >
           <View style={styles.rayonGroupHeaderLeft}>
             <Ionicons 
-              name={getRayonTypeIcon(rayonType)} 
+              name={getRayonTypeIcon(rayonType) as any} 
               size={24} 
               color="#4CAF50" 
             />

@@ -200,6 +200,8 @@ export type RootStackParamList = {
   BrandsByRayon: { rayon: Category };
   ProductCopy: undefined;
   ProductCopyManagement: undefined;
+  CustomerList: undefined;
+  CustomerDetail: { customerId: number };
 };
 
 // Types pour les états de chargement
