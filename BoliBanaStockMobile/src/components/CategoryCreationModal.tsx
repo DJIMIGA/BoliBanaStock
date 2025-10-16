@@ -21,6 +21,7 @@ interface CategoryCreationModalProps {
   visible: boolean;
   onClose: () => void;
   onCategoryCreated: (newCategory: any) => void;
+  userInfo?: any; // Informations de permissions de l'utilisateur
 }
 
 interface RayonType {
@@ -52,7 +53,12 @@ const CategoryCreationModal: React.FC<CategoryCreationModalProps> = ({
   visible,
   onClose,
   onCategoryCreated,
+  userInfo,
 }) => {
+  // Normaliser le niveau de permission (compat userInfo direct ou imbriqué)
+  const permissionLevel = (userInfo as any)?.permission_level ?? (userInfo as any)?.permissions?.permission_level;
+  const isSuperuser = permissionLevel === 'superuser';
+  const isGlobalSwitchDisabled = !isSuperuser;
   const [step, setStep] = useState<'type' | 'details'>('type');
   const [categoryType, setCategoryType] = useState<'rayon' | 'subcategory'>('rayon');
   const [rayonType, setRayonType] = useState<string>('');
@@ -63,6 +69,17 @@ const CategoryCreationModal: React.FC<CategoryCreationModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [loadingRayons, setLoadingRayons] = useState(false);
   const [parentCategories, setParentCategories] = useState<any[]>([]);
+
+  // Log des permissions pour le bouton isGlobal
+  useEffect(() => {
+    console.log('🔐 CategoryCreationModal - Permissions utilisateur:', {
+      userInfo: userInfo,
+      permissionLevel,
+      isSuperuser,
+      canCreateGlobal: isSuperuser
+    });
+    console.log('🔐 CategoryCreationModal - isGlobal switch disabled?', { isGlobalSwitchDisabled });
+  }, [userInfo]);
 
   useEffect(() => {
     if (visible) {
@@ -85,12 +102,21 @@ const CategoryCreationModal: React.FC<CategoryCreationModalProps> = ({
       const response = await categoryService.getRayons();
       console.log('📡 Réponse rayons:', response);
       
+      // Gérer les différents formats de réponse de l'API
+      let rayons = [];
       if (response.success && response.rayons) {
-        setParentCategories(response.rayons);
+        rayons = response.rayons;
+      } else if (response.results && Array.isArray(response.results)) {
+        rayons = response.results;
+      } else if (Array.isArray(response)) {
+        rayons = response;
       } else {
-        console.warn('⚠️ Aucun rayon trouvé dans la réponse');
-        setParentCategories([]);
+        console.warn('⚠️ Format de réponse rayons inattendu:', response);
+        rayons = [];
       }
+      
+      console.log('📦 Rayons chargés:', rayons.length, rayons.map(r => ({ id: r.id, name: r.name })));
+      setParentCategories(rayons);
     } catch (error) {
       console.error('❌ Erreur lors du chargement des rayons parents:', error);
       setParentCategories([]);
@@ -127,15 +153,18 @@ const CategoryCreationModal: React.FC<CategoryCreationModalProps> = ({
       const categoryData: any = {
         name: name.trim(),
         description: description.trim() || null,
-        is_global: isGlobal,
         is_rayon: categoryType === 'rayon',
       };
 
       if (categoryType === 'rayon') {
         categoryData.rayon_type = rayonType;
+        // Les rayons utilisent la valeur du switch (peuvent être globaux ou spécifiques au site)
+        categoryData.is_global = isGlobal;
       } else {
         categoryData.parent = parseInt(parentCategoryId);
         categoryData.rayon_type = parentCategories.find(p => p.id === parseInt(parentCategoryId))?.rayon_type;
+        // Les sous-catégories utilisent la valeur du switch
+        categoryData.is_global = isGlobal;
       }
 
       console.log('📤 Données envoyées:', categoryData);
@@ -405,10 +434,27 @@ const CategoryCreationModal: React.FC<CategoryCreationModalProps> = ({
 
               {/* Catégorie globale */}
               <View style={styles.switchContainer}>
-                <Text style={styles.switchLabel}>Catégorie globale</Text>
+                <View style={styles.switchLabelContainer}>
+                  <Text style={styles.switchLabel}>Catégorie globale</Text>
+                  <Text style={styles.switchDescription}>
+                    {userInfo?.permissions?.permission_level === 'superuser' 
+                      ? 'Une catégorie globale est visible par tous les sites'
+                      : 'Seuls les superutilisateurs peuvent créer des catégories globales'
+                    }
+                  </Text>
+                </View>
                 <Switch
                   value={isGlobal}
-                  onValueChange={setIsGlobal}
+                  onValueChange={(value) => {
+                    console.log('🔐 CategoryCreationModal - Switch isGlobal changé:', {
+                      newValue: value,
+                      permissionLevel,
+                      isSuperuser,
+                      disabled: isGlobalSwitchDisabled
+                    });
+                    setIsGlobal(value);
+                  }}
+                  disabled={isGlobalSwitchDisabled}
                   trackColor={{ false: theme.colors.neutral[300], true: theme.colors.primary[500] }}
                   thumbColor={isGlobal ? 'white' : theme.colors.text.secondary}
                 />
@@ -641,10 +687,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 24,
   },
+  switchLabelContainer: {
+    flex: 1,
+    marginRight: 16,
+  },
   switchLabel: {
     fontSize: 18,
     fontWeight: '700',
     color: theme.colors.primary[500],
+  },
+  switchDescription: {
+    fontSize: 12,
+    color: theme.colors.text.tertiary,
+    marginTop: 4,
   },
   nextButton: {
     backgroundColor: theme.colors.primary[500],

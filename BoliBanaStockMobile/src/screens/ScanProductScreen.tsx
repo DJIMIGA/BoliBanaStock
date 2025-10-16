@@ -1,20 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  TextInput,
   ActivityIndicator,
-  Alert,
   SafeAreaView,
+  Vibration,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../store';
 import { theme } from '../utils/theme';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types';
@@ -29,118 +26,121 @@ const ScanProductScreen: React.FC = () => {
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [lastScanTime, setLastScanTime] = useState<number>(0);
+  const [lastScannedCode, setLastScannedCode] = useState<string>('');
+  const [scannerBlocked, setScannerBlocked] = useState(false);
   
-  // États pour la recherche unifiée simplifiée
-  const [searchValue, setSearchValue] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [showSearchResults, setShowSearchResults] = useState(false);
 
   useEffect(() => {
     // Les permissions sont gérées par le composant BarcodeScanner
     setHasPermission(true);
   }, []);
 
+  // Fonctions pour les vibrations
+  const playSuccessSound = () => {
+    // Vibration de succès : courte et douce
+    Vibration.vibrate([0, 100, 50, 100]);
+  };
+
+  const playErrorSound = () => {
+    // Vibration d'erreur : plus longue et répétée
+    Vibration.vibrate([0, 200, 100, 200]);
+  };
+
   const handleBarCodeScanned = async (barcode: string) => {
-    if (scanned) return; // Éviter les scans multiples
+    const currentTime = Date.now();
     
+    // Protection absolue : si déjà en cours de traitement ou scanner bloqué, ignorer
+    if (scanned || loading || scannerBlocked) {
+      return;
+    }
+    
+    // Protection contre les scans trop rapides (minimum 3 secondes entre scans)
+    if (currentTime - lastScanTime < 3000) {
+      return;
+    }
+    
+    // Protection contre le même code-barres scanné plusieurs fois
+    if (barcode === lastScannedCode && currentTime - lastScanTime < 10000) {
+      return;
+    }
+    
+    // Bloquer le scanner immédiatement
+    setScannerBlocked(true);
     setScanned(true);
+    setLoading(true);
+    setLastScanTime(currentTime);
+    setLastScannedCode(barcode);
     setShowScanner(false);
     
     // Traiter le code-barres scanné (peut être CUG, EAN, ou autre)
     await processBarcode(barcode);
+    
+    // Débloquer le scanner après 5 secondes
+    setTimeout(() => {
+      setScannerBlocked(false);
+    }, 5000);
   };
 
   const processBarcode = async (barcode: string) => {
     if (!barcode.trim()) {
-      Alert.alert('Erreur', 'Code invalide');
       return;
     }
 
-    setLoading(true);
     try {
       // Utiliser l'API de scan qui gère automatiquement CUG, EAN, etc.
       const response = await productService.scanProduct(barcode.trim());
+      
+      // Vibration de succès
+      playSuccessSound();
+      
+      // Log du produit scanné
+      console.log('🔍 SCAN RAPIDE - Produit trouvé:', {
+        barcode,
+        productId: response.id,
+        name: response.name,
+        cug: response.cug,
+        price: response.selling_price,
+        stock: response.quantity,
+        timestamp: new Date().toISOString()
+      });
       
       // Navigation directe vers le détail du produit
       navigation.navigate('ProductDetail', { productId: response.id });
       
     } catch (error: any) {
-      console.error('❌ Erreur scan:', error);
-      Alert.alert(
-        'Produit non trouvé',
-        error.response?.data?.message || 'Ce produit n\'existe pas dans la base de données. Voulez-vous l\'ajouter ?',
-        [
-          {
-            text: 'Annuler',
-            style: 'cancel',
-            onPress: () => setScanned(false)
-          },
-          {
-            text: 'Ajouter',
-            onPress: () => {
-              setScanned(false);
-              navigation.navigate('AddProduct', { barcode: barcode.trim() });
-            }
-          }
-        ]
-      );
+      // Vibration d'erreur
+      playErrorSound();
+      
+      // Log du produit non trouvé
+      console.log('❌ SCAN RAPIDE - Produit non trouvé:', {
+        barcode,
+        error: error.response?.data?.message || 'Produit non trouvé',
+        timestamp: new Date().toISOString()
+      });
+      
+      // Navigation directe vers l'ajout de produit sans modal
+      navigation.navigate('AddProduct', { barcode: barcode.trim() });
     } finally {
       setLoading(false);
     }
   };
 
-  // Fonction de recherche unifiée simplifiée
-  const handleSearch = async () => {
-    if (!searchValue.trim()) {
-      Alert.alert('Erreur', 'Veuillez saisir une valeur de recherche');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Utiliser la recherche unifiée qui gère automatiquement CUG, EAN et nom
-      const response = await productService.unifiedSearch(searchValue.trim());
-      
-      if (response && Array.isArray(response)) {
-        // Résultats multiples
-        setSearchResults(response);
-        setShowSearchResults(true);
-      } else if (response && response.id) {
-        // Un seul produit trouvé
-        navigation.navigate('ProductDetail', { productId: response.id });
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Erreur recherche:', error);
-      Alert.alert(
-        'Aucun résultat',
-        error.response?.data?.message || 'Aucun produit trouvé avec ces critères',
-        [
-          {
-            text: 'OK',
-            style: 'cancel',
-          }
-        ]
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleProductSelect = (product: any) => {
-    setShowSearchResults(false);
-    setSearchValue('');
-    navigation.navigate('ProductDetail', { productId: product.id });
-  };
 
   const startScanning = () => {
     setScanned(false);
+    setLastScanTime(0); // Reset du timer
+    setLastScannedCode(''); // Reset du dernier code scanné
+    setScannerBlocked(false); // Reset du blocage
     setShowScanner(true);
   };
 
   const stopScanning = () => {
     setShowScanner(false);
     setScanned(false);
+    setLastScanTime(0); // Reset du timer
+    setLastScannedCode(''); // Reset du dernier code scanné
+    setScannerBlocked(false); // Reset du blocage
   };
 
   if (hasPermission === null) {
@@ -193,6 +193,9 @@ const ScanProductScreen: React.FC = () => {
           {/* Section Scanner */}
           <View style={styles.scannerSection}>
             <Text style={styles.sectionTitle}>Scanner Code-barres</Text>
+            <Text style={styles.scannerSubtitle}>
+              Scannez un code-barres pour trouver rapidement un produit
+            </Text>
             
             <TouchableOpacity
               style={styles.scanButton}
@@ -202,69 +205,6 @@ const ScanProductScreen: React.FC = () => {
               <Text style={styles.scanButtonText}>📷 Scanner Code-barres</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Section Recherche unifiée */}
-          <View style={styles.searchSection}>
-            <Text style={styles.sectionTitle}>Recherche rapide</Text>
-            <Text style={styles.searchSubtitle}>
-              Entrez un CUG, EAN, nom de produit ou code-barres
-            </Text>
-            
-            <View style={styles.searchInputContainer}>
-              <Ionicons name="search-outline" size={20} color={theme.colors.text.secondary} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="CUG, EAN, nom ou code-barres..."
-                value={searchValue}
-                onChangeText={setSearchValue}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="search"
-                onSubmitEditing={handleSearch}
-              />
-              <TouchableOpacity
-                style={styles.searchButton}
-                onPress={handleSearch}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color={theme.colors.text.inverse} />
-                ) : (
-                  <Ionicons name="search" size={20} color={theme.colors.text.inverse} />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Résultats de recherche */}
-          {showSearchResults && searchResults.length > 0 && (
-            <View style={styles.resultsSection}>
-              <Text style={styles.sectionTitle}>
-                Résultats ({searchResults.length})
-              </Text>
-              {searchResults.map((product, index) => (
-                <TouchableOpacity
-                  key={product.id}
-                  style={styles.resultItem}
-                  onPress={() => handleProductSelect(product)}
-                >
-                  <View style={styles.resultItemContent}>
-                    <Text style={styles.resultItemName}>{product.name}</Text>
-                    <Text style={styles.resultItemCUG}>CUG: {product.cug}</Text>
-                    {product.barcodes && product.barcodes.length > 0 && (
-                      <Text style={styles.resultItemEAN}>
-                        EAN: {product.barcodes.find((b: any) => b.is_primary)?.ean || product.barcodes[0].ean}
-                      </Text>
-                    )}
-                    <Text style={styles.resultItemStock}>
-                      Stock: {product.quantity} unités
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
 
           {/* Résultats */}
           {loading && (
@@ -278,10 +218,13 @@ const ScanProductScreen: React.FC = () => {
           <View style={styles.instructionsSection}>
             <Text style={styles.instructionsTitle}>💡 Comment utiliser ?</Text>
             <Text style={styles.instructionsText}>
-              • <Text style={styles.instructionsBold}>Scanner :</Text> Scannez un code-barres, CUG ou EAN avec la caméra
+              • <Text style={styles.instructionsBold}>Scanner :</Text> Appuyez sur le bouton pour activer la caméra
             </Text>
             <Text style={styles.instructionsText}>
-              • <Text style={styles.instructionsBold}>Recherche :</Text> Tapez directement un CUG, EAN, nom ou code-barres
+              • <Text style={styles.instructionsBold}>Positionner :</Text> Centrez le code-barres dans le cadre de scan
+            </Text>
+            <Text style={styles.instructionsText}>
+              • <Text style={styles.instructionsBold}>Automatique :</Text> Le produit sera trouvé et affiché automatiquement
             </Text>
           </View>
         </View>
@@ -355,7 +298,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     marginBottom: 16,
   },
-  searchSubtitle: {
+  scannerSubtitle: {
     fontSize: 14,
     color: theme.colors.text.secondary,
     marginBottom: 16,
@@ -531,77 +474,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  searchSection: {
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    marginBottom: 15,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    fontSize: 16,
-    color: theme.colors.text.primary,
-  },
-  searchButton: {
-    padding: 10,
-  },
-  resultsSection: {
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  resultItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.neutral[200],
-  },
-  resultItemContent: {
-    flex: 1,
-  },
-  resultItemName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
-    marginBottom: 2,
-  },
-  resultItemCUG: {
-    fontSize: 14,
-    color: theme.colors.text.secondary,
-    marginBottom: 2,
-  },
-  resultItemEAN: {
-    fontSize: 14,
-    color: theme.colors.text.secondary,
-    marginBottom: 2,
-  },
-  resultItemStock: {
-    fontSize: 14,
-    color: theme.colors.text.tertiary,
   },
   instructionsTitle: {
     fontSize: 18,

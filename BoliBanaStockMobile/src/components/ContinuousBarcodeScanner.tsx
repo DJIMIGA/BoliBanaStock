@@ -88,6 +88,9 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
   const [selectedItem, setSelectedItem] = useState<ScannedItem | null>(null);
   const [tempQuantity, setTempQuantity] = useState('1');
   const cameraRef = useRef<CameraView>(null);
+  const lastScanByCodeRef = useRef<Record<string, number>>({});
+  const lastLengthRef = useRef<number>(0);
+  const cooldownMs = 1500; // 1.5s par présentation
 
   useEffect(() => {
     if (visible) {
@@ -109,6 +112,24 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
   };
 
   const handleBarCodeScanned = (scanResult: BarcodeScanningResult) => {
+    const code = String(scanResult.data || '').trim();
+    if (!code) return;
+
+    // Debounce par code pour éviter les scans continus tant que le code reste dans le cadre
+    const now = Date.now();
+    const last = lastScanByCodeRef.current[code] || 0;
+    if (now - last < cooldownMs) {
+      return; // ignorer tant que le cooldown n'est pas écoulé
+    }
+    lastScanByCodeRef.current[code] = now;
+
+    // Anti-bruit: ignore si la longueur fluctue brusquement de ±1 en < cooldown
+    if (lastLengthRef.current && Math.abs(code.length - lastLengthRef.current) === 1) {
+      lastLengthRef.current = code.length;
+      return;
+    }
+    lastLengthRef.current = code.length;
+
     // Vibration pour confirmer le scan
     if (Platform.OS === 'ios') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -116,7 +137,7 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
     
-    onScan(scanResult.data);
+    onScan(code);
     
     // Pas de blocage pour le mode continu - scan immédiat
     // Le composant parent gère la logique métier
@@ -195,6 +216,9 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
         onBarcodeScanned={handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: ['ean13', 'ean8', 'upc_a', 'code128', 'code39'],
+          // Optimisations pour petits codes-barres
+          enableAutoFocus: true,
+          enableTorch: false, // L'utilisateur peut activer si nécessaire
         }}
       />
       
@@ -218,13 +242,15 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
         )}
       </View>
 
-      {/* Indicateur de panier professionnel */}
+      {/* Indicateur de panier simplifié */}
       <View style={styles.scanIndicator}>
         <View style={styles.indicatorBadge}>
           <Ionicons name={getContextIcon()} size={14} color={getContextColor()} />
           {scanList.length > 0 && (
             <View style={styles.itemCountBadge}>
-              <Text style={styles.itemCountText}>{scanList.length}</Text>
+              <Text style={styles.itemCountText}>
+                {scanList.reduce((total, item) => total + item.quantity, 0)}
+              </Text>
             </View>
           )}
         </View>
@@ -337,10 +363,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '50%',
     left: '50%',
-    width: width * 0.35, // Augmenté à 35% pour s'adapter à la caméra plus grande
-    height: width * 0.22, // Augmenté à 22% pour s'adapter à la caméra plus grande
-    marginLeft: -(width * 0.175),
-    marginTop: -(width * 0.11),
+    width: width * 0.45, // Augmenté à 45% pour faciliter la visée des petits codes
+    height: width * 0.28, // Augmenté à 28% pour faciliter la visée des petits codes
+    marginLeft: -(width * 0.225),
+    marginTop: -(width * 0.14),
     justifyContent: 'center',
     alignItems: 'center',
   },

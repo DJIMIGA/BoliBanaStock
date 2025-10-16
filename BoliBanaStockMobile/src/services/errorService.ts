@@ -302,6 +302,12 @@ class ErrorService {
    * Détermine si l'erreur doit être affichée à l'utilisateur
    */
   private shouldShowToUser(error: AppError): boolean {
+    // Ne pas afficher les erreurs marquées pour être ignorées par le système global
+    if ((error.originalError as any)?._skipGlobalErrorHandler || 
+        (error.originalError as any)?._handledLocally) {
+      return false;
+    }
+    
     // Ne pas afficher les erreurs de session expirée (gérées automatiquement)
     if (error.type === ErrorType.SESSION_EXPIRED) {
       return false;

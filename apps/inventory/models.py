@@ -473,7 +473,7 @@ class Product(models.Model):
 
 class Barcode(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='barcodes', verbose_name="Produit")
-    ean = models.CharField(max_length=50, unique=True, verbose_name="Code-barres")
+    ean = models.CharField(max_length=50, verbose_name="Code-barres")  # ✅ Supprimé unique=True
     is_primary = models.BooleanField(default=False, verbose_name="Code-barres principal")
     notes = models.TextField(blank=True, null=True, verbose_name="Notes")
     added_at = models.DateTimeField(auto_now_add=True, verbose_name="Date d'ajout")
@@ -483,6 +483,8 @@ class Barcode(models.Model):
         verbose_name = "Code-barres"
         verbose_name_plural = "Codes-barres"
         ordering = ['-is_primary', '-added_at']
+        # ✅ Contrainte d'unicité par site : un EAN unique par site
+        # Note: La contrainte sera gérée dans la méthode clean() car unique_together ne supporte pas les relations indirectes
 
     def __str__(self):
         return f"{self.ean} - {self.product.name}"
@@ -490,16 +492,23 @@ class Barcode(models.Model):
     def clean(self):
         from django.core.exceptions import ValidationError
         
-        # Vérifier que le code-barres n'existe pas déjà dans un autre produit
-        if self.pk:  # Si c'est une modification
-            existing_barcode = Barcode.objects.filter(ean=self.ean).exclude(pk=self.pk).first()
-        else:  # Si c'est une création
-            existing_barcode = Barcode.objects.filter(ean=self.ean).first()
-        
-        if existing_barcode:
-            raise ValidationError({
-                'ean': f'Ce code-barres "{self.ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id})'
-            })
+        # ✅ Vérifier que le code-barres n'existe pas déjà dans un autre produit DU MÊME SITE
+        if self.product and self.product.site_configuration:
+            if self.pk:  # Si c'est une modification
+                existing_barcode = Barcode.objects.filter(
+                    ean=self.ean,
+                    product__site_configuration=self.product.site_configuration
+                ).exclude(pk=self.pk).first()
+            else:  # Si c'est une création
+                existing_barcode = Barcode.objects.filter(
+                    ean=self.ean,
+                    product__site_configuration=self.product.site_configuration
+                ).first()
+            
+            if existing_barcode:
+                raise ValidationError({
+                    'ean': f'Ce code-barres "{self.ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id}) sur le site "{self.product.site_configuration.site_name}"'
+                })
         
         # Cette vérification est redondante car nous avons déjà vérifié dans le modèle Barcode
         # Le code-barres est stocké dans le modèle Barcode, pas directement dans Product

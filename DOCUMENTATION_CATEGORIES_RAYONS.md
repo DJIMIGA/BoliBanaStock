@@ -103,11 +103,30 @@ if not self.is_rayon and self.rayon_type:
     self.rayon_type = None
 ```
 
-### 2. Contraintes de Cohérence
-- **Rayons globaux** : `is_global=True`, `is_rayon=True`, `rayon_type` obligatoire, `site_configuration=NULL`
-- **Catégories globales** : `is_global=True`, `is_rayon=False`, `rayon_type=NULL`, `site_configuration=NULL`
-- **Catégories site** : `is_global=False`, `is_rayon=False`, `rayon_type=NULL`, `site_configuration` obligatoire
-- **Rayons site** : `is_global=False`, `is_rayon=True`, `rayon_type` obligatoire, `site_configuration` obligatoire
+### 2. Validation `parent`
+```python
+# Si c'est un rayon principal, il ne peut pas avoir de parent
+if is_rayon and parent:
+    raise ValidationError("Un rayon principal ne peut pas avoir de catégorie parente.")
+
+# Si ce n'est pas un rayon principal ET ce n'est pas une catégorie globale, il doit avoir un parent
+# Les catégories globales personnalisées (is_global=True, is_rayon=False) peuvent exister sans parent
+if not is_rayon and not is_global and not parent:
+    raise ValidationError("Une sous-catégorie doit avoir une catégorie parente.")
+```
+
+### 3. Contraintes de Cohérence
+- **Rayons globaux** : `is_global=True`, `is_rayon=True`, `rayon_type` obligatoire, `parent=NULL`, `site_configuration=NULL`
+- **Catégories globales** : `is_global=True`, `is_rayon=False`, `rayon_type=NULL`, `parent=NULL`, `site_configuration=NULL`
+- **Catégories site** : `is_global=False`, `is_rayon=False`, `rayon_type=NULL`, `parent` obligatoire, `site_configuration` obligatoire
+- **Rayons site** : `is_global=False`, `is_rayon=True`, `rayon_type` obligatoire, `parent=NULL`, `site_configuration` obligatoire
+
+### 4. Règles de Parent
+- **Rayons** (`is_rayon=True`) : Ne peuvent jamais avoir de parent
+- **Catégories globales** (`is_global=True`) : Peuvent exister sans parent
+- **Catégories spécifiques au site** (`is_global=False`, `is_rayon=False`) : Doivent avoir un parent (rayon)
+
+> 📋 **Note** : Pour plus de détails sur la correction de validation implémentée, voir [CATEGORY_VALIDATION_FIX.md](./CATEGORY_VALIDATION_FIX.md)
 
 ## 🏪 Classification des Rayons de Supermarché
 

@@ -33,6 +33,8 @@ from apps.inventory.utils import generate_ean13_from_cug
 from apps.sales.models import Sale, SaleItem
 from apps.core.views import ConfigurationUpdateView, ParametreListView, ParametreUpdateView
 from django.http import JsonResponse
+from django.core.files.base import ContentFile
+import os
 import json
 from django.http import Http404
 from apps.inventory.printing.pdf import render_label_batch_pdf
@@ -208,7 +210,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     # Support explicite du multipart pour upload d'images
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['category', 'brand', 'is_active', 'quantity']  # ✅ Ajout de 'quantity'
+    filterset_fields = ['category', 'brand', 'is_active', 'quantity', 'site_configuration']  # ✅ Ajout de 'site_configuration'
     search_fields = ['name', 'cug', 'description']
     ordering_fields = ['name', 'selling_price', 'quantity', 'created_at']
     ordering = ['-updated_at']
@@ -242,6 +244,29 @@ class ProductViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
+
+    def retrieve(self, request, *args, **kwargs):
+        """Récupérer un produit avec logs détaillés sur l'image"""
+        instance = self.get_object()
+        
+        # ✅ Logs détaillés sur l'image
+        print(f"🔍 DÉTAIL PRODUIT: {instance.name} (ID: {instance.id})")
+        print(f"   CUG: {instance.cug}")
+        print(f"   Site: {instance.site_configuration.site_name if instance.site_configuration else 'Aucun'}")
+        print(f"   Image field: {instance.image}")
+        if instance.image:
+            try:
+                print(f"   Image URL directe: {instance.image.url}")
+                # Tester l'URL via le serializer
+                serializer = self.get_serializer(instance)
+                image_url_from_serializer = serializer.data.get('image_url')
+                print(f"   Image URL via serializer: {image_url_from_serializer}")
+            except Exception as e:
+                print(f"   ❌ Erreur URL image: {e}")
+        else:
+            print("   ❌ Aucune image")
+        
+        return super().retrieve(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
         """Créer un produit avec gestion améliorée des images"""
@@ -362,25 +387,51 @@ class ProductViewSet(viewsets.ModelViewSet):
         if serializer.is_valid():
             code = serializer.validated_data['code']
             
-            # Debug: afficher les informations de l'utilisateur
-            print(f"🔍 Scan demandé pour le code: {code}")
-            print(f"👤 Utilisateur: {request.user.username}")
-            print(f"🏢 Site configuré: {getattr(request.user, 'site_configuration', 'Aucun')}")
             
             # Filtrer par site de l'utilisateur
             user_site = getattr(request.user, 'site_configuration', None)
             
             if request.user.is_superuser:
                 # Superuser peut scanner tous les produits
-                print("🔑 Superuser - recherche globale")
                 # 1. Chercher par CUG (champ qui existe encore)
                 product = Product.objects.filter(cug=code).first()
-                print(f"🔍 Recherche par CUG: {'✅ Trouvé' if product else '❌ Non trouvé'}")
                 
                 # 2. Si pas trouvé, chercher dans le modèle Barcode lié
                 if not product:
                     product = Product.objects.filter(barcodes__ean=code).first()
-                    print(f"🔍 Recherche modèle Barcode lié: {'✅ Trouvé' if product else '❌ Non trouvé'}")
+
+                # 3. Heuristiques supplémentaires pour codes variables (POS/caisses)
+                if not product:
+                    normalized_candidates = set()
+                    raw = str(code).strip()
+                    normalized_candidates.add(raw)
+
+                    # Zero-pad jusqu'à 13 caractères (EAN-13)
+                    if len(raw) < 13:
+                        normalized_candidates.add(raw.zfill(13))
+
+                    # Retirer les préfixes magasin/poids/prix courants (20/21/22)
+                    for prefix in ("20", "21", "22"):
+                        if raw.startswith(prefix) and len(raw) > 2:
+                            normalized_candidates.add(raw[2:])
+                            if len(raw[2:]) < 13:
+                                normalized_candidates.add(raw[2:].zfill(13))
+
+                    # Correspondance par suffixe (les caisses utilisent parfois les 8 derniers chiffres)
+                    suffix_lengths = (8, 7, 6)
+                    for n in suffix_lengths:
+                        if len(raw) > n:
+                            normalized_candidates.add(raw[-n:])
+                            normalized_candidates.add(raw[-n:].zfill(13))
+
+                    # Rechercher dans barcodes puis dans l'EAN généré
+                    from django.db.models import Q
+                    candidate_query = Q()
+                    for cand in normalized_candidates:
+                        candidate_query |= Q(barcodes__ean=cand) | Q(generated_ean=cand)
+                    potential = Product.objects.filter(candidate_query).first()
+                    if potential:
+                        product = potential
                 
             else:
                 # Utilisateur normal ne peut scanner que ses produits
@@ -394,13 +445,11 @@ class ProductViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 
-                print(f"🏢 Recherche dans le site: {user_site}")
                 # 1. Chercher par CUG (champ qui existe encore)
                 product = Product.objects.filter(
                     site_configuration=user_site,
                     cug=code
                 ).first()
-                print(f"🔍 Recherche par CUG: {'✅ Trouvé' if product else '❌ Non trouvé'}")
                 
                 # 2. Si pas trouvé, chercher dans le modèle Barcode lié
                 if not product:
@@ -408,13 +457,51 @@ class ProductViewSet(viewsets.ModelViewSet):
                         site_configuration=user_site,
                         barcodes__ean=code
                     ).first()
-                    print(f"🔍 Recherche modèle Barcode lié: {'✅ Trouvé' if product else '❌ Non trouvé'}")
+
+                # 3. Heuristiques supplémentaires pour codes variables (POS/caisses)
+                if not product:
+                    normalized_candidates = set()
+                    raw = str(code).strip()
+                    normalized_candidates.add(raw)
+
+                    # Zero-pad jusqu'à 13 caractères (EAN-13)
+                    if len(raw) < 13:
+                        normalized_candidates.add(raw.zfill(13))
+
+                    # Retirer les préfixes magasin/poids/prix courants (20/21/22)
+                    for prefix in ("20", "21", "22"):
+                        if raw.startswith(prefix) and len(raw) > 2:
+                            normalized_candidates.add(raw[2:])
+                            if len(raw[2:]) < 13:
+                                normalized_candidates.add(raw[2:].zfill(13))
+
+                    # Correspondance par suffixe (les caisses utilisent parfois les 8 derniers chiffres)
+                    suffix_lengths = (8, 7, 6)
+                    for n in suffix_lengths:
+                        if len(raw) > n:
+                            normalized_candidates.add(raw[-n:])
+                            normalized_candidates.add(raw[-n:].zfill(13))
+
+                    from django.db.models import Q
+                    candidate_query = Q(site_configuration=user_site)
+                    barcode_conditions = Q()
+                    for cand in normalized_candidates:
+                        barcode_conditions |= (Q(barcodes__ean=cand) | Q(generated_ean=cand) | Q(cug=cand))
+                    candidate_query &= barcode_conditions
+                    potential = Product.objects.filter(candidate_query).first()
+                    if not potential:
+                        # Tentative par suffixe sur barcodes/généré (endswith)
+                        ends_conditions = Q()
+                        for cand in normalized_candidates:
+                            ends_conditions |= Q(barcodes__ean__endswith=cand) | Q(generated_ean__endswith=cand)
+                        suffix_query = Q(site_configuration=user_site) & ends_conditions
+                        potential = Product.objects.filter(suffix_query).first()
+                    if potential:
+                        product = potential
             
             if product:
-                print(f"✅ Produit trouvé: {product.name}")
                 return Response(ProductSerializer(product).data)
             else:
-                print(f"❌ Produit non trouvé pour le code: {code}")
                 # Vérifier si le produit existe ailleurs (pour les utilisateurs non-superuser)
                 if not request.user.is_superuser:
                     global_product = Product.objects.filter(cug=code).first()
@@ -442,13 +529,18 @@ class ProductViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
         
-        print(f"❌ Erreur de validation: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def perform_create(self, serializer):
         """Assigner automatiquement le site de l'utilisateur lors de la création"""
         if self.request.user.is_superuser:
-            serializer.save()
+            # Les superusers créent des produits pour le site principal
+            from apps.core.models import Configuration
+            main_site = Configuration.objects.order_by('id').first()
+            if main_site:
+                serializer.save(site_configuration=main_site)
+            else:
+                serializer.save()
             return
         user_site = getattr(self.request.user, 'site_configuration', None)
         if not user_site:
@@ -771,12 +863,24 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Vérifier que le code-barres n'est pas déjà utilisé par un autre produit
-        existing_barcode = Barcode.objects.filter(ean=ean).exclude(product=product).first()
-        if existing_barcode:
-            return Response({
-                'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id})'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # ✅ Vérifier que le code-barres n'est pas déjà utilisé par un autre produit DU MÊME SITE
+        user_site = getattr(request.user, 'site_configuration', None)
+        if user_site:
+            existing_barcode = Barcode.objects.filter(
+                ean=ean,
+                product__site_configuration=user_site
+            ).exclude(product=product).first()
+            if existing_barcode:
+                return Response({
+                    'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id}) sur le site "{user_site.site_name}"'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Fallback pour utilisateurs sans site (comme mobile)
+            existing_barcode = Barcode.objects.filter(ean=ean).exclude(product=product).first()
+            if existing_barcode:
+                return Response({
+                    'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id})'
+                }, status=status.HTTP_400_BAD_REQUEST)
         
         # Cette vérification est redondante car nous avons déjà vérifié dans le modèle Barcode
         # Le code-barres est stocké dans le modèle Barcode, pas directement dans Product
@@ -941,12 +1045,24 @@ class ProductViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Vérifier que le code-barres n'est pas déjà utilisé par un autre produit
-            existing_barcode = Barcode.objects.filter(ean=ean).exclude(product=product).first()
-            if existing_barcode:
-                return Response({
-                    'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id})'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # ✅ Vérifier que le code-barres n'est pas déjà utilisé par un autre produit DU MÊME SITE
+            user_site = getattr(request.user, 'site_configuration', None)
+            if user_site:
+                existing_barcode = Barcode.objects.filter(
+                    ean=ean,
+                    product__site_configuration=user_site
+                ).exclude(product=product).first()
+                if existing_barcode:
+                    return Response({
+                        'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id}) sur le site "{user_site.site_name}"'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # Fallback pour utilisateurs sans site (comme mobile)
+                existing_barcode = Barcode.objects.filter(ean=ean).exclude(product=product).first()
+                if existing_barcode:
+                    return Response({
+                        'error': f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}" (ID: {existing_barcode.product.id})'
+                    }, status=status.HTTP_400_BAD_REQUEST)
             
             # Note: Le modèle Product n'a pas de champ 'ean' direct
             # Les codes-barres sont gérés via la relation barcodes
@@ -985,21 +1101,31 @@ class CategoryViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Filtrer les catégories par site de l'utilisateur en utilisant le service centralisé"""
+        print(f"🔍 CategoryViewSet.get_queryset - Utilisateur: {self.request.user.username}")
+        print(f"🔍 CategoryViewSet.get_queryset - Site utilisateur: {getattr(self.request.user, 'site_configuration', None)}")
+        
         # Utiliser le service centralisé pour obtenir les catégories accessibles
         queryset = PermissionService.get_user_accessible_resources(self.request.user, Category).select_related('parent')
+        
+        print(f"🔍 CategoryViewSet.get_queryset - Queryset initial: {queryset.count()} catégories")
         
         # Gérer les paramètres de filtrage du mobile
         site_only = self.request.GET.get('site_only', '').lower() == 'true'
         global_only = self.request.GET.get('global_only', '').lower() == 'true'
         
+        print(f"🔍 CategoryViewSet.get_queryset - Filtres: site_only={site_only}, global_only={global_only}")
+        
         # Appliquer les filtres supplémentaires
         if site_only:
             # Retourner seulement les rayons (is_rayon=True)
             queryset = queryset.filter(is_rayon=True)
+            print(f"🔍 CategoryViewSet.get_queryset - Après filtre site_only: {queryset.count()} rayons")
         elif global_only:
             # Retourner seulement les catégories globales
             queryset = queryset.filter(is_global=True)
+            print(f"🔍 CategoryViewSet.get_queryset - Après filtre global_only: {queryset.count()} catégories globales")
         
+        print(f"🔍 CategoryViewSet.get_queryset - Queryset final: {queryset.count()} catégories")
         return queryset
     
     def perform_create(self, serializer):
@@ -1011,19 +1137,40 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if not can_user_create_category_quick(user, site_config):
             raise ValidationError({"detail": "Vous n'avez pas les permissions pour créer cette catégorie"})
         
-        # Tous les utilisateurs créent pour leur site par défaut
-        user_site = getattr(user, 'site_configuration', None)
-        if not user_site:
-            raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
-        
         # Superutilisateur peut créer des catégories globales ou pour un site spécifique
-        if user.is_superuser and site_config is not None:
-            # Superuser a explicitement spécifié un site
-            serializer.save(site_configuration=site_config)
+        if user.is_superuser:
+            if not site_config:
+                # Catégorie globale - accessible à tous les sites
+                serializer.save(site_configuration=None)
+            else:
+                serializer.save(site_configuration=site_config)
         else:
-            # Tous les autres cas : assigner au site de l'utilisateur
+            # Utilisateur normal crée pour son site uniquement
+            user_site = getattr(user, 'site_configuration', None)
+            if not user_site:
+                raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
             serializer.save(site_configuration=user_site)
     
+    def retrieve(self, request, *args, **kwargs):
+        """Récupérer une catégorie spécifique avec logs de débogage"""
+        instance = self.get_object()
+        print(f"🔍 CategoryViewSet.retrieve - Catégorie ID {instance.id}: {instance.name}")
+        print(f"🔍 CategoryViewSet.retrieve - Données catégorie: {{")
+        print(f"            'id': {instance.id},")
+        print(f"            'name': '{instance.name}',")
+        print(f"            'is_global': {instance.is_global},")
+        print(f"            'is_rayon': {instance.is_rayon},")
+        print(f"            'parent': {instance.parent_id},")
+        print(f"            'level': {instance.level},")
+        print(f"            'rayon_type': '{instance.rayon_type}',")
+        print(f"            'created_at': '{instance.created_at}',")
+        print(f"            'updated_at': '{instance.updated_at}'")
+        print(f"        }}")
+        
+        serializer = self.get_serializer(instance)
+        print(f"🔍 CategoryViewSet.retrieve - Données sérialisées: {serializer.data}")
+        return Response(serializer.data)
+
     def perform_update(self, serializer):
         """Mettre à jour une catégorie avec gestion du site en utilisant le service centralisé"""
         user = self.request.user
@@ -1258,7 +1405,7 @@ class SaleViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Filtrer les ventes par site de l'utilisateur"""
-        user_site = self.request.user.site_configuration
+        user_site = getattr(self.request.user, 'site_configuration', None)
         
         if self.request.user.is_superuser:
             # Superuser voit tout
@@ -1273,7 +1420,7 @@ class SaleViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Créer une vente avec gestion automatique du stock"""
-        user_site = self.request.user.site_configuration
+        user_site = getattr(self.request.user, 'site_configuration', None)
         
         if not user_site and not self.request.user.is_superuser:
             raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
@@ -1289,7 +1436,7 @@ class SaleViewSet(viewsets.ModelViewSet):
         total_amount = 0
         
         for item_data in items_data:
-            product_id = item_data.get('product')
+            product_id = item_data.get('product_id') or item_data.get('product')
             quantity = item_data.get('quantity', 0)
             unit_price = item_data.get('unit_price', 0)
             
@@ -1559,6 +1706,46 @@ class ConfigurationAPIView(APIView):
                 'error': 'Erreur lors de la mise à jour de la configuration',
                 'details': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SitesAPIView(APIView):
+    """API pour récupérer la liste des sites (pour les superusers)"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer la liste des sites"""
+        try:
+            if not request.user.is_superuser:
+                return Response({
+                    'success': False,
+                    'error': 'Accès non autorisé'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            sites = Configuration.objects.all().order_by('site_name')
+            sites_data = []
+            for site in sites:
+                sites_data.append({
+                    'id': site.id,
+                    'site_name': site.site_name,
+                    'nom_societe': site.nom_societe,
+                    'adresse': site.adresse,
+                    'telephone': site.telephone,
+                    'email': site.email,
+                    'devise': site.devise,
+                    'created_at': site.created_at.isoformat() if site.created_at else None,
+                })
+            
+            return Response({
+                'success': True,
+                'sites': sites_data,
+                'count': len(sites_data)
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class ParametresAPIView(APIView):
     """Vue API pour les paramètres basée sur la vue existante"""
@@ -2790,16 +2977,33 @@ class GetRayonsView(APIView):
     
     def get(self, request):
         try:
-            # Récupérer tous les rayons principaux
-            rayons = Category.objects.filter(
+            print(f"🔍 GetRayonsView.get - Utilisateur: {request.user.username}")
+            print(f"🔍 GetRayonsView.get - Site utilisateur: {getattr(request.user, 'site_configuration', None)}")
+            
+            # Utiliser le service centralisé pour obtenir les rayons accessibles
+            from apps.core.services import PermissionService
+            rayons_queryset = PermissionService.get_user_accessible_resources(request.user, Category)
+            
+            print(f"🔍 GetRayonsView.get - Queryset initial: {rayons_queryset.count()} catégories")
+            
+            # Récupérer tous les rayons principaux avec filtrage par site
+            rayons = rayons_queryset.filter(
                 is_active=True,
                 is_rayon=True,
                 level=0
             ).order_by('rayon_type', 'order', 'name')
             
-            # Sérialiser les rayons
+            print(f"🔍 GetRayonsView.get - Rayons trouvés: {rayons.count()}")
+            for rayon in rayons:
+                print(f"🔍 GetRayonsView.get - Rayon: ID={rayon.id}, Name={rayon.name}, is_rayon={rayon.is_rayon}, level={rayon.level}")
+            
+            # Sérialiser les rayons avec permissions
             rayons_data = []
             for rayon in rayons:
+                # Calculer les permissions pour chaque rayon
+                can_edit = PermissionService.can_user_manage_category(request.user, rayon)
+                can_delete = PermissionService.can_user_delete_category(request.user, rayon)
+                
                 rayons_data.append({
                     'id': rayon.id,
                     'name': rayon.name,
@@ -2807,7 +3011,10 @@ class GetRayonsView(APIView):
                     'rayon_type': rayon.rayon_type,
                     'rayon_type_display': dict(Category.RAYON_TYPE_CHOICES).get(rayon.rayon_type, ''),
                     'order': rayon.order,
-                    'subcategories_count': rayon.children.filter(is_active=True).count()
+                    'subcategories_count': rayon.children.filter(is_active=True).count(),
+                    'site_configuration': rayon.site_configuration.id if rayon.site_configuration else None,
+                    'can_edit': can_edit,
+                    'can_delete': can_delete
                 })
             
             return Response({
@@ -2833,28 +3040,25 @@ class GetSubcategoriesMobileView(APIView):
             return Response({'error': 'ID du rayon manquant'}, status=400)
         
         try:
-            # Récupérer le rayon principal
-            rayon = Category.objects.get(id=rayon_id, level=0, is_rayon=True)
+            # Utiliser le service centralisé pour obtenir les rayons accessibles
+            from apps.core.services import PermissionService
+            rayons_queryset = PermissionService.get_user_accessible_resources(request.user, Category)
             
-            # Récupérer les sous-catégories
-            subcategories = Category.objects.filter(
+            # Récupérer le rayon principal avec filtrage par site
+            rayon = rayons_queryset.get(id=rayon_id, level=0, is_rayon=True)
+            
+            # Récupérer les sous-catégories avec filtrage par site
+            subcategories_queryset = PermissionService.get_user_accessible_resources(request.user, Category)
+            subcategories = subcategories_queryset.filter(
                 parent=rayon,
                 level=1,
                 is_active=True
             ).order_by('order', 'name')
             
-            # Sérialiser les sous-catégories
-            subcategories_data = []
-            for subcat in subcategories:
-                subcategories_data.append({
-                    'id': subcat.id,
-                    'name': subcat.name,
-                    'description': subcat.description or '',
-                    'rayon_type': subcat.rayon_type,
-                    'parent_id': subcat.parent.id,
-                    'parent_name': subcat.parent.name,
-                    'order': subcat.order
-                })
+            # Sérialiser les sous-catégories avec le serializer complet
+            from .serializers import CategorySerializer
+            serializer = CategorySerializer(subcategories, many=True, context={'request': request})
+            subcategories_data = serializer.data
             
             return Response({
                 'success': True,
@@ -2952,8 +3156,9 @@ class ProductCopyAPIView(APIView):
             if not current_site:
                 return Response({'error': 'Aucune configuration de site trouvée'}, status=400)
             
-            # Récupérer les produits du site principal (première configuration)
-            main_site = Configuration.objects.first()
+            # Récupérer les produits du site principal (supposé être la première configuration créée)
+            # Utiliser un ordering explicite pour éviter qu'un .first() non ordonné retourne le site courant
+            main_site = Configuration.objects.order_by('id').first()
             
             if not main_site or main_site == current_site:
                 return Response({'error': 'Aucun site principal disponible pour la copie'}, status=400)
@@ -3015,7 +3220,7 @@ class ProductCopyAPIView(APIView):
                         'id': product.brand.id,
                         'name': product.brand.name
                     } if product.brand else None,
-                    'image_url': product.image_url,
+                    'image_url': product.image.url if product.image else None,
                     'is_active': product.is_active,
                     'created_at': product.created_at.isoformat(),
                     'updated_at': product.updated_at.isoformat()
@@ -3038,12 +3243,14 @@ class ProductCopyAPIView(APIView):
         """Copie des produits sélectionnés"""
         try:
             product_ids = request.data.get('products', [])
+            single_copy = request.data.get('single_copy', False)  # Nouveau paramètre pour copie unitaire
             
             if not product_ids:
                 return Response({'error': 'Aucun produit sélectionné pour la copie'}, status=400)
             
             current_site = request.user.site_configuration
-            main_site = Configuration.objects.first()
+            # Sélection explicite du site principal (plus ancien id)
+            main_site = Configuration.objects.order_by('id').first()
             
             if not current_site or not main_site:
                 return Response({'error': 'Configuration de site invalide'}, status=400)
@@ -3067,37 +3274,128 @@ class ProductCopyAPIView(APIView):
                     ).exists():
                         continue
                     
-                    # Créer une copie du produit
-                    copied_product = Product.objects.create(
-                        name=original_product.name,
-                        cug=original_product.cug,
-                        description=original_product.description,
-                        selling_price=original_product.selling_price,
-                        purchase_price=original_product.purchase_price,
-                        quantity=0,  # Commencer avec 0 en stock
-                        alert_threshold=original_product.alert_threshold,
-                        category=original_product.category,
-                        brand=original_product.brand,
-                        image_url=original_product.image_url,
-                        site_configuration=current_site,
-                        is_active=True
-                    )
+                    # Créer une copie du produit avec un CUG unique (contrainte globale)
+                    # Laisser le slug vide pour bénéficier de la génération/ajustement auto dans Product.save()
+                    from django.db import IntegrityError
+                    max_attempts = 3
+                    last_err = None
+                    copied_product = None
+                    for _ in range(max_attempts):
+                        try:
+                            copied_product = Product.objects.create(
+                                name=original_product.name,
+                                cug=Product.generate_unique_cug(),
+                                description=original_product.description,
+                                selling_price=original_product.selling_price,
+                                purchase_price=original_product.purchase_price,
+                                quantity=0,  # Commencer avec 0 en stock
+                                alert_threshold=original_product.alert_threshold,
+                                category=original_product.category,
+                                brand=original_product.brand,
+                                # ✅ Référence directement l'image d'origine pour conserver l'URL
+                                image=original_product.image,
+                                site_configuration=current_site,
+                                is_active=True
+                            )
+                            break
+                        except IntegrityError as ie:
+                            # En cas de collision rare, retenter avec un nouveau CUG
+                            last_err = ie
+                            continue
+                    if copied_product is None:
+                        raise last_err or Exception('Impossible de créer la copie du produit (CUG/slug)')
+                    
+                    # ✅ Conserver l'URL d'image d'origine (référence au même fichier)
+                    if original_product.image:
+                        print(f"🖼️ Image référencée pour le produit copié: {copied_product.image}")
+                    else:
+                        print("🖼️ Aucun fichier image à référencer pour le produit original")
+
+                    # ✅ Copier les codes-barres du produit original
+                    original_barcodes = original_product.barcodes.all()
+                    print(f"🔍 PRODUIT ORIGINAL: {original_product.name} (ID: {original_product.id})")
+                    print(f"   CUG: {original_product.cug}")
+                    print(f"   Generated EAN: {original_product.generated_ean}")
+                    print(f"   Image: {original_product.image}")
+                    print(f"   Image URL: {original_product.image.url if original_product.image else 'Aucune'}")
+                    print(f"   Site: {original_product.site_configuration.site_name if original_product.site_configuration else 'Aucun'}")
+                    print(f"   Codes-barres manuels ({original_barcodes.count()}):")
+                    for barcode in original_barcodes:
+                        print(f"     - {barcode.ean} {'(principal)' if barcode.is_primary else ''} - Notes: {barcode.notes or 'Aucune'}")
+                    
+                    copied_barcodes_count = 0
+                    for original_barcode in original_barcodes:
+                        try:
+                            Barcode.objects.create(
+                                product=copied_product,
+                                ean=original_barcode.ean,
+                                notes=original_barcode.notes,
+                                is_primary=original_barcode.is_primary
+                            )
+                            copied_barcodes_count += 1
+                            print(f"   ✅ Code-barres copié: {original_barcode.ean}")
+                        except Exception as e:
+                            # En cas d'erreur (EAN déjà utilisé), continuer sans ce code-barres
+                            print(f"   ❌ Impossible de copier le code-barres {original_barcode.ean}: {e}")
+                            continue
+                    
+                    print(f"🔍 PRODUIT COPIÉ: {copied_product.name} (ID: {copied_product.id})")
+                    print(f"   CUG: {copied_product.cug}")
+                    print(f"   Generated EAN: {copied_product.generated_ean}")
+                    print(f"   Image: {copied_product.image}")
+                    print(f"   Image URL: {copied_product.image.url if copied_product.image else 'Aucune'}")
+                    print(f"   Site: {copied_product.site_configuration.site_name if copied_product.site_configuration else 'Aucun'}")
+                    print(f"   Codes-barres copiés: {copied_barcodes_count}/{original_barcodes.count()}")
+                    
+                    # Vérifier les codes-barres finaux
+                    final_barcodes = copied_product.barcodes.all()
+                    print(f"   Codes-barres finaux dans la DB ({final_barcodes.count()}):")
+                    for barcode in final_barcodes:
+                        print(f"     - {barcode.ean} {'(principal)' if barcode.is_primary else ''} - Notes: {barcode.notes or 'Aucune'}")
                     
                     # Créer l'enregistrement de copie
                     ProductCopy.objects.create(
                         original_product=original_product,
                         copied_product=copied_product,
                         source_site=main_site,
-                        destination_site=current_site,
-                        copied_by=request.user
+                        destination_site=current_site
                     )
                     
                     copied_count += 1
+
+                    # Si copie unitaire, retourner immédiatement les détails
+                    if single_copy:
+                        return Response({
+                            'success': True,
+                            'copied_count': copied_count,
+                            'errors': [],
+                            'message': f'{copied_count} produit(s) copié(s) avec succès',
+                            'copied_product': {
+                                'id': copied_product.id,
+                                'name': copied_product.name,
+                                'cug': copied_product.cug,
+                                'selling_price': float(copied_product.selling_price),
+                                'purchase_price': float(copied_product.purchase_price),
+                                'quantity': copied_product.quantity,
+                                'image_url': request.build_absolute_uri(copied_product.image.url) if copied_product.image else None,
+                                'category': {
+                                    'id': copied_product.category.id,
+                                    'name': copied_product.category.name
+                                } if copied_product.category else None,
+                                'brand': {
+                                    'id': copied_product.brand.id,
+                                    'name': copied_product.brand.name
+                                } if copied_product.brand else None,
+                            },
+                            'redirect_to_edit': True
+                        })
                     
                 except Product.DoesNotExist:
                     errors.append(f'Produit ID {product_id} non trouvé')
                 except Exception as e:
                     errors.append(f'Erreur lors de la copie du produit ID {product_id}: {str(e)}')
+            
+            # Si copie unitaire et aucune réponse immédiate (sécurité), ne rien faire ici
             
             return Response({
                 'success': True,
@@ -3108,6 +3406,7 @@ class ProductCopyAPIView(APIView):
             
         except Exception as e:
             return Response({'error': str(e)}, status=500)
+    
 
 
 class ProductCopyManagementAPIView(APIView):
@@ -3170,7 +3469,7 @@ class ProductCopyManagementAPIView(APIView):
                         'cug': copy.original_product.cug,
                         'selling_price': float(copy.original_product.selling_price),
                         'quantity': copy.original_product.quantity,
-                        'image_url': copy.original_product.image_url,
+                        'image_url': request.build_absolute_uri(copy.original_product.image.url) if copy.original_product.image else None,
                         'category': {
                             'id': copy.original_product.category.id,
                             'name': copy.original_product.category.name
@@ -3187,17 +3486,14 @@ class ProductCopyManagementAPIView(APIView):
                         'selling_price': float(copy.copied_product.selling_price),
                         'quantity': copy.copied_product.quantity,
                         'is_active': copy.copied_product.is_active,
-                        'image_url': copy.copied_product.image_url,
+                        'image_url': request.build_absolute_uri(copy.copied_product.image.url) if copy.copied_product.image else None,
                     },
                     'source_site': {
                         'id': copy.source_site.id,
                         'name': copy.source_site.site_name
                     },
                     'copied_at': copy.copied_at.isoformat(),
-                    'copied_by': {
-                        'id': copy.copied_by.id,
-                        'username': copy.copied_by.username
-                    }
+                    # removed copied_by to avoid missing field errors
                 })
             
             return Response({
@@ -3242,6 +3538,57 @@ class ProductCopyManagementAPIView(APIView):
                 copied.image_url = original.image_url
                 copied.save()
                 
+                # ✅ Synchroniser les codes-barres
+                print(f"🔄 SYNCHRONISATION - Produit original: {original.name} (ID: {original.id})")
+                print(f"   CUG original: {original.cug}")
+                print(f"   Generated EAN original: {original.generated_ean}")
+                print(f"   Image original: {original.image}")
+                print(f"   Image URL original: {original.image.url if original.image else 'Aucune'}")
+                print(f"   Site original: {original.site_configuration.site_name if original.site_configuration else 'Aucun'}")
+                
+                # Supprimer les codes-barres existants du produit copié
+                old_barcodes = copied.barcodes.all()
+                print(f"   Codes-barres existants à supprimer ({old_barcodes.count()}):")
+                for barcode in old_barcodes:
+                    print(f"     - {barcode.ean} {'(principal)' if barcode.is_primary else ''}")
+                copied.barcodes.all().delete()
+                
+                # Copier les codes-barres de l'original
+                original_barcodes = original.barcodes.all()
+                print(f"   Codes-barres originaux à copier ({original_barcodes.count()}):")
+                for barcode in original_barcodes:
+                    print(f"     - {barcode.ean} {'(principal)' if barcode.is_primary else ''} - Notes: {barcode.notes or 'Aucune'}")
+                
+                synced_barcodes_count = 0
+                for original_barcode in original_barcodes:
+                    try:
+                        Barcode.objects.create(
+                            product=copied,
+                            ean=original_barcode.ean,
+                            notes=original_barcode.notes,
+                            is_primary=original_barcode.is_primary
+                        )
+                        synced_barcodes_count += 1
+                        print(f"   ✅ Code-barres synchronisé: {original_barcode.ean}")
+                    except Exception as e:
+                        # En cas d'erreur (EAN déjà utilisé), continuer sans ce code-barres
+                        print(f"   ❌ Impossible de synchroniser le code-barres {original_barcode.ean}: {e}")
+                        continue
+                
+                print(f"🔄 SYNCHRONISATION - Produit copié: {copied.name} (ID: {copied.id})")
+                print(f"   CUG copié: {copied.cug}")
+                print(f"   Generated EAN copié: {copied.generated_ean}")
+                print(f"   Image copié: {copied.image}")
+                print(f"   Image URL copié: {copied.image.url if copied.image else 'Aucune'}")
+                print(f"   Site copié: {copied.site_configuration.site_name if copied.site_configuration else 'Aucun'}")
+                print(f"   Codes-barres synchronisés: {synced_barcodes_count}/{original_barcodes.count()}")
+                
+                # Vérifier les codes-barres finaux
+                final_barcodes = copied.barcodes.all()
+                print(f"   Codes-barres finaux après sync ({final_barcodes.count()}):")
+                for barcode in final_barcodes:
+                    print(f"     - {barcode.ean} {'(principal)' if barcode.is_primary else ''} - Notes: {barcode.notes or 'Aucune'}")
+                
                 return Response({
                     'success': True,
                     'message': 'Produit synchronisé avec succès'
@@ -3274,90 +3621,5 @@ class ProductCopyManagementAPIView(APIView):
             else:
                 return Response({'error': 'Action non reconnue'}, status=400)
                 
-        except Exception as e:
-            return Response({'error': str(e)}, status=500)
-
-
-# Vue de debug temporaire pour tester les rayons sur Railway
-class DebugRayonView(APIView):
-    """Vue de debug temporaire pour tester la visibilité des rayons"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        try:
-            from apps.inventory.models import Category
-            from apps.core.services import PermissionService
-            from django.test import RequestFactory
-            from api.views import CategoryViewSet
-            
-            user = request.user
-            result = {
-                'user': {
-                    'username': user.username,
-                    'is_superuser': user.is_superuser,
-                    'site_configuration_id': getattr(user, 'site_configuration_id', None)
-                }
-            }
-            
-            # Test 1: Rayon "Franchement" directement
-            franchement = Category.objects.filter(name="Franchement").first()
-            if franchement:
-                result['franchement_direct'] = {
-                    'found': True,
-                    'id': franchement.id,
-                    'name': franchement.name,
-                    'is_rayon': franchement.is_rayon,
-                    'site_configuration_id': franchement.site_configuration_id,
-                    'is_active': franchement.is_active
-                }
-            else:
-                result['franchement_direct'] = {'found': False}
-            
-            # Test 2: Service centralisé
-            categories = PermissionService.get_user_accessible_resources(user, Category)
-            rayons = categories.filter(is_rayon=True)
-            franchement_service = rayons.filter(name="Franchement").first()
-            
-            result['service_centralise'] = {
-                'categories_accessibles': categories.count(),
-                'rayons_accessibles': rayons.count(),
-                'franchement_found': franchement_service is not None,
-                'franchement_id': franchement_service.id if franchement_service else None
-            }
-            
-            # Test 3: API ViewSet
-            factory = RequestFactory()
-            api_request = factory.get('/api/categories/?site_only=true')
-            api_request.user = user
-            
-            viewset = CategoryViewSet()
-            viewset.request = api_request
-            queryset = viewset.get_queryset()
-            rayons_api = queryset.filter(is_rayon=True)
-            franchement_api = rayons_api.filter(name="Franchement").first()
-            
-            result['api_viewset'] = {
-                'queryset_count': queryset.count(),
-                'rayons_count': rayons_api.count(),
-                'franchement_found': franchement_api is not None,
-                'franchement_id': franchement_api.id if franchement_api else None
-            }
-            
-            # Test 4: Tous les rayons
-            all_rayons = Category.objects.filter(is_rayon=True)
-            rayons_global = all_rayons.filter(site_configuration__isnull=True)
-            
-            user_site = getattr(user, 'site_configuration', None)
-            rayons_site = all_rayons.filter(site_configuration=user_site) if user_site else []
-            
-            result['tous_rayons'] = {
-                'total': all_rayons.count(),
-                'globaux': rayons_global.count(),
-                'site_utilisateur': rayons_site.count() if user_site else 0,
-                'site_name': user_site.site_name if user_site else None
-            }
-            
-            return Response(result)
-            
         except Exception as e:
             return Response({'error': str(e)}, status=500)

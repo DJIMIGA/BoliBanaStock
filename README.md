@@ -9,6 +9,17 @@ Application de gestion de stock pour BoliBana.
 - Notifications de stock bas
 - Interface moderne avec Tailwind CSS
 
+## 📚 Documentation
+
+### Documentation Technique
+- [**Système de Catégories et Rayons**](./DOCUMENTATION_CATEGORIES_RAYONS.md) - Architecture complète du système de catégories
+- [**Correction de Validation des Catégories**](./CATEGORY_VALIDATION_FIX.md) - Documentation de la correction du bug de validation
+- [**Correction des Catégories Niveau 0**](./LEVEL_0_CATEGORIES_FIX.md) - Documentation de la correction des catégories globales personnalisées
+- [**Guide de Création Mobile**](./MOBILE_CATEGORY_CREATION_GUIDE.md) - Guide pour la création de catégories via mobile
+
+### Documentation API
+- [**API Documentation**](./api/README.md) - Documentation complète de l'API REST
+
 ## Architecture et Organisation
 
 ### Structure du Projet

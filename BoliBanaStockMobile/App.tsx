@@ -10,7 +10,7 @@ import { useSelector } from 'react-redux';
 import { store } from './src/store';
 import { checkAuthStatus, logout } from './src/store/slices/authSlice';
 import { RootState } from './src/store';
-import { AuthWrapper, ErrorBoundary, GlobalSessionNotification } from './src/components';
+import { AuthWrapper, ErrorBoundary, GlobalSessionNotification, LoadingScreen } from './src/components';
 // import { SessionProvider } from './src/contexts/SessionContext'; // Supprimé - approche Redux simplifiée
 import {
   LoginScreen,
@@ -132,12 +132,17 @@ const MainTabs = () => (
 );
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const { isAuthenticated, loading } = useSelector((state: RootState) => state.auth);
 
   useEffect(() => {
     // Vérifier l'état d'authentification au démarrage
     store.dispatch(checkAuthStatus());
   }, []);
+
+  // Afficher l'écran de chargement pendant la vérification de la session
+  if (loading) {
+    return <LoadingScreen message="Vérification de la session..." />;
+  }
 
   return (
     <NavigationContainer>

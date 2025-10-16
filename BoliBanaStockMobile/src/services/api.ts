@@ -66,8 +66,57 @@ api.interceptors.request.use(
 
 // Intercepteur pour gérer les erreurs d'authentification et réseau
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log des réponses réussies pour debug
+    console.log('✅ API Response Success', {
+      url: response.config?.url,
+      method: response.config?.method,
+      status: response.status,
+      timestamp: new Date().toISOString()
+    });
+    return response;
+  },
   async (error) => {
+    // Ne pas logger les erreurs gérées localement
+    const isHandledLocally = error._handledLocally || 
+                            (error.config?.url?.includes('/categories/') && 
+                             error.config?.method === 'delete');
+    
+    if (!isHandledLocally) {
+      console.error('❌ API Response Error', {
+        url: error.config?.url,
+        method: error.config?.method,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.message,
+        code: error.code,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Gestion des erreurs réseau
+    if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
+      console.error('🌐 Network Error détectée', {
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullUrl: `${error.config?.baseURL}${error.config?.url}`,
+        online: navigator.onLine,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Enrichir l'erreur avec des informations réseau
+      const networkError = {
+        ...error,
+        networkInfo: {
+          online: navigator.onLine,
+          connectionType: (navigator as any).connection?.effectiveType || 'Unknown',
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      return Promise.reject(networkError);
+    }
     
     if (error.response?.status === 401) {
       // Vérifier si c'est une erreur de connexion initiale ou une session expirée
@@ -80,21 +129,25 @@ api.interceptors.response.use(
       }
       
       // Erreur 401 sur d'autres endpoints = session expirée
+      console.log('🔑 Session expirée détectée, tentative de refresh token...');
       
       // Token expiré, essayer de le rafraîchir
       const refreshToken = await AsyncStorage.getItem('refresh_token');
       if (refreshToken) {
         try {
+          console.log('🔄 Tentative de refresh token...');
           const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
             refresh: refreshToken,
           });
           
           await AsyncStorage.setItem('access_token', response.data.access);
+          console.log('✅ Token rafraîchi avec succès');
           
           // Retenter la requête originale
           error.config.headers.Authorization = `Bearer ${response.data.access}`;
           return api.request(error.config);
         } catch (refreshError: any) {
+          console.error('❌ Échec du refresh token', refreshError);
           // Échec du refresh, déconnexion
           await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
           
@@ -104,7 +157,7 @@ api.interceptors.response.use(
           }
         }
       } else {
-        
+        console.log('❌ Pas de refresh token disponible');
         // Pas de refresh token, déconnexion forcée
         await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
         
@@ -123,6 +176,17 @@ api.interceptors.response.use(
       // Retourner une réponse vide pour éviter l'affichage d'erreur
       return Promise.resolve({ data: null });
     }
+    
+    // Gestion des autres erreurs HTTP
+    if (error.response?.status >= 500) {
+      console.error('🚨 Erreur serveur', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        url: error.config?.url
+      });
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -256,6 +320,18 @@ export const authService = {
   },
 };
 
+// Service pour les sites
+export const siteService = {
+  getSites: async () => {
+    try {
+      const response = await api.get('/sites/');
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+};
+
 // Services pour les produits
 export const productService = {
   getProducts: async (params?: any) => {
@@ -270,8 +346,17 @@ export const productService = {
   getProduct: async (id: number) => {
     try {
       const response = await api.get(`/products/${id}/`);
-      return response.data;
+      const productData = response.data;
+      
+      // ✅ Logs détaillés sur l'image côté mobile
+      console.log(`🔍 MOBILE - Détail produit: ${productData.name} (ID: ${productData.id})`);
+      console.log(`   CUG: ${productData.cug}`);
+      console.log(`   Image URL reçue: ${productData.image_url || 'Aucune'}`);
+      console.log(`   Données complètes:`, JSON.stringify(productData, null, 2));
+      
+      return productData;
     } catch (error: any) {
+      console.error('❌ MOBILE - Erreur getProduct:', error);
       throw error;
     }
   },
@@ -772,24 +857,30 @@ export const categoryService = {
   // Nouvelles API pour la sélection hiérarchisée
   getRayons: async () => {
     try {
+      console.log('🔄 categoryService.getRayons - Début');
       const response = await api.get('/rayons/');
       const data = response.data;
-      // S'assurer que les rayons sont un tableau
-      if (data.rayons && Array.isArray(data.rayons)) {
-        return { results: data.rayons };
+      console.log('📡 categoryService.getRayons - Réponse brute:', data);
+      
+      // Gérer les différents formats de réponse de l'API backend
+      if (data.success && data.rayons && Array.isArray(data.rayons)) {
+        console.log('✅ categoryService.getRayons - Format success.rayons:', data.rayons.length);
+        return { success: true, rayons: data.rayons, results: data.rayons };
       } else if (data.results && Array.isArray(data.results)) {
-        return data;
+        console.log('✅ categoryService.getRayons - Format results:', data.results.length);
+        return { success: true, results: data.results, rayons: data.results };
       } else if (Array.isArray(data)) {
-        return { results: data };
+        console.log('✅ categoryService.getRayons - Format array:', data.length);
+        return { success: true, results: data, rayons: data };
       } else {
-        console.warn('Format de données rayons inattendu:', data);
-        return { results: [] };
+        console.warn('⚠️ categoryService.getRayons - Format inattendu:', data);
+        return { success: false, results: [], rayons: [] };
       }
     } catch (error: any) {
-      console.error('❌ Erreur API rayons:', error.response?.data || error.message);
+      console.error('❌ categoryService.getRayons - Erreur:', error.response?.data || error.message);
       console.error('📊 Status:', error.response?.status);
-      // Retourner un tableau vide en cas d'erreur
-      return { results: [] };
+      // Retourner un format cohérent en cas d'erreur
+      return { success: false, results: [], rayons: [] };
     }
   },
 
@@ -836,14 +927,109 @@ export const categoryService = {
     name: string; 
     description?: string;
     is_global?: boolean;
-    parent?: number;
+    parent?: number | null;
+    rayon_type?: string;
   }) => {
     try {
-      const response = await api.put(`/categories/${id}/`, categoryData);
+      console.log('🔧 categoryService.updateCategory - Début', {
+        categoryId: id,
+        categoryData,
+        timestamp: new Date().toISOString(),
+        apiBaseUrl: API_BASE_URL,
+        fullUrl: `${API_BASE_URL}/categories/${id}/`
+      });
+
+      // Vérifier la connectivité réseau
+      console.log('🌐 Vérification de la connectivité réseau', {
+        online: navigator.onLine,
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString()
+      });
+
+      // Vérifier le token d'authentification
+      const token = await AsyncStorage.getItem('access_token');
+      console.log('🔑 Token d\'authentification', {
+        hasToken: !!token,
+        tokenLength: token?.length || 0,
+        tokenPrefix: token?.substring(0, 20) + '...' || 'Aucun'
+      });
+
+      console.log('📡 Envoi de la requête PUT...', {
+        url: `/categories/${id}/`,
+        method: 'PUT',
+        data: categoryData,
+        headers: {
+          'Authorization': token ? `Bearer ${token.substring(0, 20)}...` : 'Aucun',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Utiliser la logique de retry pour les erreurs réseau
+      const response = await retryWithBackoff(async () => {
+        return await api.put(`/categories/${id}/`, categoryData);
+      });
+      
+      console.log('✅ categoryService.updateCategory - Succès', {
+        categoryId: id,
+        responseStatus: response.status,
+        responseData: response.data,
+        timestamp: new Date().toISOString()
+      });
+
       return response.data;
     } catch (error: any) {
-      console.error('❌ Erreur API mise à jour catégorie:', error.response?.data || error.message);
-      throw error;
+      console.error('❌ categoryService.updateCategory - Erreur détaillée', {
+        categoryId: id,
+        categoryData,
+        error: {
+          message: error?.message,
+          code: error?.code,
+          name: error?.name,
+          stack: error?.stack?.split('\n').slice(0, 5), // Premières 5 lignes du stack
+          response: {
+            status: error?.response?.status,
+            statusText: error?.response?.statusText,
+            data: error?.response?.data,
+            headers: error?.response?.headers
+          },
+          config: {
+            url: error?.config?.url,
+            method: error?.config?.method,
+            baseURL: error?.config?.baseURL,
+            timeout: error?.config?.timeout,
+            headers: error?.config?.headers
+          }
+        },
+        networkInfo: {
+          online: navigator.onLine,
+          connectionType: (navigator as any).connection?.effectiveType || 'Unknown',
+          userAgent: navigator.userAgent
+        },
+        timestamp: new Date().toISOString()
+      });
+
+      // Log spécifique pour les erreurs 400
+      if (error?.response?.status === 400) {
+        console.error('🚨 Erreur 400 - Détails du serveur:', {
+          serverResponse: error?.response?.data,
+          sentData: categoryData,
+          categoryId: id
+        });
+      }
+
+      // Enrichir l'erreur avec des informations supplémentaires
+      const enrichedError = {
+        ...error,
+        categoryId: id,
+        categoryData,
+        timestamp: new Date().toISOString(),
+        networkInfo: {
+          online: navigator.onLine,
+          userAgent: navigator.userAgent
+        }
+      };
+
+      throw enrichedError;
     }
   },
   
@@ -852,8 +1038,27 @@ export const categoryService = {
       const response = await api.delete(`/categories/${id}/`);
       return response.data;
     } catch (error: any) {
-      console.error('❌ Erreur API suppression catégorie:', error.response?.data || error.message);
-      throw error;
+      // Log minimal en développement seulement
+      if (__DEV__) {
+        console.error('❌ Erreur API suppression catégorie:', error.response?.data || error.message);
+      }
+      
+      // Enrichir l'erreur avec des informations structurées
+      const enrichedError = {
+        ...error,
+        categoryId: id,
+        timestamp: new Date().toISOString(),
+        // S'assurer que le message d'erreur est accessible
+        message: error?.response?.data?.error || 
+                error?.response?.data?.detail || 
+                error?.response?.data?.message || 
+                error?.message || 
+                'Erreur inconnue lors de la suppression',
+        // Marquer cette erreur pour qu'elle ne soit pas affichée automatiquement par le système global
+        _skipGlobalErrorHandler: true
+      };
+      
+      throw enrichedError;
     }
   }
 };
@@ -1207,25 +1412,46 @@ export const profileService = {
 // Service pour la copie de produits entre sites
 export const productCopyService = {
   // Récupérer les produits disponibles pour la copie
-  getAvailableProductsForCopy: async (search?: string, page?: number, categoryId?: number) => {
+  getAvailableProductsForCopy: async (search?: string, page?: number, categoryId?: number, pageSize?: number) => {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (page) params.append('page', page.toString());
       if (categoryId) params.append('category', categoryId.toString());
+      if (pageSize) params.append('page_size', pageSize.toString());
       
-      const response = await api.get(`/inventory/copy/?${params.toString()}`);
+      const fullUrl = `/inventory/copy/?${params.toString()}`;
+      console.log('📡 productCopyService.getAvailableProductsForCopy →', fullUrl);
+      const response = await api.get(fullUrl);
+      console.log('✅ productCopyService.getAvailableProductsForCopy status:', response.status);
+      return response.data;
+    } catch (error) {
+      const status = (error as any)?.response?.status;
+      const data = (error as any)?.response?.data;
+      console.error('❌ productCopyService.getAvailableProductsForCopy - Erreur', { status, data });
+      throw error;
+    }
+  },
+
+  // Copier des produits
+  copyProducts: async (productIds: number[], singleCopy: boolean = false) => {
+    try {
+      const response = await api.post('/inventory/copy/', {
+        products: productIds,
+        single_copy: singleCopy
+      });
       return response.data;
     } catch (error) {
       throw error;
     }
   },
 
-  // Copier des produits
-  copyProducts: async (productIds: number[]) => {
+  // Copier un seul produit et retourner ses détails pour édition
+  copySingleProduct: async (productId: number) => {
     try {
       const response = await api.post('/inventory/copy/', {
-        products: productIds
+        products: [productId],
+        single_copy: true
       });
       return response.data;
     } catch (error) {
@@ -1247,6 +1473,7 @@ export const productCopyService = {
       throw error;
     }
   },
+
 
   // Synchroniser un produit copié
   syncProduct: async (copyId: number) => {
@@ -1355,6 +1582,29 @@ export const testConnectivity = async () => {
       code: 'RAILWAY_UNREACHABLE',
       status: 0 
     };
+  }
+};
+
+// Fonction de retry avec backoff exponentiel
+const retryWithBackoff = async (fn: () => Promise<any>, maxRetries: number = 3, baseDelay: number = 1000) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔄 Tentative ${attempt}/${maxRetries}...`);
+      return await fn();
+    } catch (error: any) {
+      const isNetworkError = error.code === 'NETWORK_ERROR' || 
+                            error.message?.includes('Network Error') ||
+                            error.code === 'ECONNABORTED';
+      
+      if (!isNetworkError || attempt === maxRetries) {
+        console.log(`❌ Échec définitif après ${attempt} tentatives`);
+        throw error;
+      }
+      
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      console.log(`⏳ Attente ${delay}ms avant la prochaine tentative...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
 };
 

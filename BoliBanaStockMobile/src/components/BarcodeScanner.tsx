@@ -62,11 +62,15 @@ interface BarcodeScannerProps {
 const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visible }) => {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
+  const [scannerDisabled, setScannerDisabled] = useState(false);
   const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
     if (visible) {
       getCameraPermissions();
+      // Réinitialiser le scanner quand il devient visible
+      setScanned(false);
+      setScannerDisabled(false);
     }
   }, [visible]);
 
@@ -83,17 +87,28 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visibl
   };
 
   const handleBarCodeScanned = (scanResult: BarcodeScanningResult) => {
-    if (scanned) return;
+    // Protection absolue : si déjà scanné ou scanner désactivé, ignorer complètement
+    if (scanned || scannerDisabled) return;
+    
+    // Désactiver immédiatement le scanner
     setScanned(true);
+    setScannerDisabled(true);
+    
+    // Envoyer le code scanné
     onScan(scanResult.data);
+    
+    // Fermer le scanner immédiatement
+    onClose();
+    
+    // Garder le scanner désactivé pendant 3 secondes
     setTimeout(() => {
-      setScanned(false);
-      onClose();
-    }, 1000);
+      setScannerDisabled(false);
+    }, 3000);
   };
 
   const resetScanner = () => {
     setScanned(false);
+    setScannerDisabled(false);
   };
 
   if (!visible) return null;
@@ -127,7 +142,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visibl
         ref={cameraRef}
         style={StyleSheet.absoluteFillObject}
         facing="back"
-        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+        onBarcodeScanned={scanned || scannerDisabled ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: ['ean13', 'ean8', 'upc_a', 'code128', 'code39', 'qr'],
         }}

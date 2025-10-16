@@ -82,12 +82,16 @@ const InventoryScannerScreen: React.FC = () => {
 
         addToScanList(barcode, inventoryProduct);
         
-        // Afficher une confirmation
-        Alert.alert(
-          'Produit scanné',
-          `${product.name}\nCUG: ${product.cug}\nStock actuel: ${product.quantity}`,
-          [{ text: 'OK' }]
-        );
+        // Log du produit scanné
+        console.log('📦 INVENTAIRE - Produit scanné:', {
+          barcode,
+          name: product.name,
+          cug: product.cug,
+          stock: product.quantity,
+          category: product.category_name,
+          brand: product.brand_name,
+          timestamp: new Date().toISOString()
+        });
       }
     } catch (error: any) {
       console.error('❌ Erreur lors du scan:', error);

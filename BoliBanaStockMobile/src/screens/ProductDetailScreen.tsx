@@ -104,8 +104,16 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       setError(null);
       setLoading(true);
       const data = await productService.getProduct(productId);
+      
+      // ✅ Logs détaillés sur l'image dans ProductDetailScreen
+      console.log(`🔍 MOBILE - ProductDetailScreen - Produit chargé: ${data.name}`);
+      console.log(`   Image URL: ${data.image_url || 'Aucune'}`);
+      console.log(`   Image field: ${data.image || 'Aucune'}`);
+      console.log(`   Barcodes: ${data.barcodes?.length || 0} codes-barres`);
+      
       setProduct(data);
     } catch (e: any) {
+      console.error('❌ MOBILE - Erreur loadProduct:', e);
       setError("Impossible de charger le produit");
     } finally {
       setLoading(false);

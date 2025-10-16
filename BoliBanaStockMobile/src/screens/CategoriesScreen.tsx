@@ -28,9 +28,9 @@ interface CategoriesScreenProps {
   navigation: any;
 }
 
-const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
+const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }): React.JSX.Element => {
   const { user } = useSelector((state: RootState) => state.auth);
-  const { canEditCategory, canDeleteCategory, canCreateCategory } = useUserPermissions();
+  const { canEditCategory, canDeleteCategory, canCreateCategory, userInfo } = useUserPermissions();
   const [isStaffEffective, setIsStaffEffective] = useState<boolean>(!!user?.is_staff);
 
   // Toujours se baser sur le user Redux (source de vérité), évite le cache périmé
@@ -40,17 +40,23 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [rayons, setRayons] = useState<Category[]>([]);
   const [customCategories, setCustomCategories] = useState<Category[]>([]);
+  const [globalCustomCategories, setGlobalCustomCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newCategoryModalVisible, setNewCategoryModalVisible] = useState(false);
   const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
   const [selectedCategoryForEdit, setSelectedCategoryForEdit] = useState<Category | null>(null);
-  const [activeTab, setActiveTab] = useState<'rayons' | 'custom'>('rayons');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [selectedRayon, setSelectedRayon] = useState<Category | null>(null);
+  const [rayonSubcategories, setRayonSubcategories] = useState<Category[]>([]);
+  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
 
   useEffect(() => {
-    loadCategories();
-  }, []);
+    // Attendre que userInfo soit chargé avant de charger les catégories
+    if (userInfo) {
+      loadCategories();
+    }
+  }, [userInfo]);
 
   const handleNewCategoryCreated = (newCategory: any) => {
     // Ajouter la nouvelle catégorie à la liste appropriée
@@ -64,9 +70,23 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
     setNewCategoryModalVisible(false);
   };
 
-  const handleEditCategory = (category: Category) => {
-    setSelectedCategoryForEdit(category);
-    setEditCategoryModalVisible(true);
+  const handleEditCategory = async (category: Category) => {
+    try {
+      console.log('🔍 handleEditCategory - Récupération des données complètes pour:', category.id);
+      
+      // Récupérer les données complètes de la catégorie depuis l'API
+      const fullCategoryData = await categoryService.getCategory(category.id);
+      
+      console.log('🔍 handleEditCategory - Données complètes récupérées:', fullCategoryData);
+      
+      setSelectedCategoryForEdit(fullCategoryData);
+      setEditCategoryModalVisible(true);
+    } catch (error) {
+      console.error('❌ Erreur récupération données catégorie:', error);
+      // En cas d'erreur, utiliser les données partielles
+      setSelectedCategoryForEdit(category);
+      setEditCategoryModalVisible(true);
+    }
   };
 
   const handleCategoryUpdated = (updatedCategory: Category) => {
@@ -87,9 +107,50 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
     );
   };
 
+  // Charger les sous-catégories d'un rayon
+  const loadRayonSubcategories = async (rayon: Category) => {
+    setLoadingSubcategories(true);
+    try {
+      
+      const response = await categoryService.getSubcategories(rayon.id);
+      
+      
+      if (response.success && response.subcategories) {
+        console.log('🔍 Sous-catégories chargées (subcategories):', response.subcategories.length, response.subcategories.map((cat: any) => ({ id: cat.id, name: cat.name, is_global: cat.is_global, level: cat.level })));
+        setRayonSubcategories(response.subcategories);
+      } else if (response.results && Array.isArray(response.results)) {
+        console.log('🔍 Sous-catégories chargées (results):', response.results.length, response.results.map((cat: any) => ({ id: cat.id, name: cat.name, is_global: cat.is_global, level: cat.level })));
+        setRayonSubcategories(response.results);
+      } else {
+        console.log('🔍 Aucune sous-catégorie trouvée');
+        setRayonSubcategories([]);
+      }
+    } catch (error) {
+      
+      setRayonSubcategories([]);
+    } finally {
+      setLoadingSubcategories(false);
+    }
+  };
+
+  // Gérer la sélection d'un rayon
+  const handleRayonSelect = (rayon: Category) => {
+    setSelectedRayon(rayon);
+    loadRayonSubcategories(rayon);
+  };
+
+  // Retourner à la liste des rayons
+  const handleBackToRayons = () => {
+    setSelectedRayon(null);
+    setRayonSubcategories([]);
+  };
+
   const loadCategories = async () => {
     try {
       setLoading(true);
+      
+      // Debug: Vérifier que userInfo est chargé
+      
       
       // Charger les catégories avec filtrage par site
       const response = await categoryService.getCategories({ site_only: true });
@@ -108,48 +169,82 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
       } else if (response && Array.isArray(response.data)) {
         allCategories = response.data;
       } else {
-        console.error('❌ Format de réponse API inattendu:', typeof response, response);
+        
         throw new Error('Format de données invalide - structure de réponse API inattendue');
       }
       
       
       setCategories(allCategories);
       
-      // Séparer les rayons et les catégories personnalisées
-      const rayonsList = allCategories.filter((cat: any) => cat.is_rayon);
+      // Déterminer le niveau de permissions de l'utilisateur
+      const isSuperuser = userInfo?.permissions?.permission_level === 'superuser';
+      const userSiteId = userInfo?.user?.site_configuration_id;
       
-      // Filtrer les catégories personnalisées par site (filtrage côté client)
-      // Les rayons sont globaux, les catégories personnalisées doivent être filtrées par site
-      const customList = allCategories.filter((cat: any) => {
-        if (cat.is_rayon) return false; // Exclure les rayons
+      console.log('🔐 Permissions utilisateur:', {
+        isSuperuser,
+        userSiteId,
+        permissionLevel: userInfo?.permissions?.permission_level
+      });
+
+      // Filtrer les rayons selon les permissions
+      const rayonsList = allCategories.filter((cat: any) => {
+        if (!cat.is_rayon) return false;
         
-        // Filtrer les catégories personnalisées :
-        // 1. Catégories globales (is_global = true) - visibles par tous
-        // 2. Catégories du site de l'utilisateur connecté
-        // 3. Catégories sans site_configuration (créées avant l'implémentation multisite)
-        if (cat.is_global === true) {
-          return true; // Catégories globales visibles par tous
-        }
+        // Superutilisateur: tout voir
+        if (isSuperuser) return true;
         
-        // Pour les catégories spécifiques à un site, vérifier si elles appartiennent au site de l'utilisateur
-        // Note: Cette logique dépend de la structure de données du backend
-        // Si l'utilisateur a un site_id, filtrer par site_configuration
-        if (user?.id && cat.site_configuration) {
-          // Ici, vous devriez comparer cat.site_configuration avec le site de l'utilisateur
-          // Pour l'instant, on affiche toutes les catégories non-globales
+        // Tous les utilisateurs voient les rayons globaux
+        if (cat.is_global === true || cat.site_configuration === null) {
           return true;
         }
         
-        // Catégories sans site_configuration (anciennes catégories)
-        return cat.site_configuration === null || cat.site_configuration === undefined;
+        // Les utilisateurs voient aussi les rayons de leur site
+        if (cat.site_configuration === userSiteId) {
+          return true;
+        }
+        
+        return false;
+      });
+      
+      // Filtrer les sous-catégories selon les permissions
+      const subcategoriesList = allCategories.filter((cat: any) => {
+        const isSubcategory = (cat.level === 1 && !cat.is_rayon) || (cat.parent_name && !cat.is_rayon);
+        if (!isSubcategory) return false;
+        
+        // Superutilisateur: tout voir
+        if (isSubuser) return true;
+        
+        // Tous les utilisateurs voient les sous-catégories globales
+        if (cat.is_global === true || cat.site_configuration === null) {
+          return true;
+        }
+        
+        // Les utilisateurs voient aussi les sous-catégories de leur site
+        if (cat.site_configuration === userSiteId) {
+          return true;
+        }
+        
+        return false;
+      });
+
+      // Filtrer les catégories globales personnalisées - TOUS LES UTILISATEURS PEUVENT LES VOIR
+      const globalCustomList = allCategories.filter((cat: any) => {
+        const isGlobalCustomCategory = cat.level === 0 && cat.is_global === true && cat.is_rayon === false;
+        return isGlobalCustomCategory;
       });
       
       setRayons(rayonsList);
-      setCustomCategories(customList);
+      setCustomCategories(subcategoriesList);
+      setGlobalCustomCategories(globalCustomList);
+      
+      // Debug: Afficher les informations sur les catégories
+      console.log('🔍 Sous-catégories filtrées:', subcategoriesList.length);
+      console.log('🔍 Catégories globales personnalisées filtrées:', globalCustomList.length);
+      
       
       
     } catch (error) {
-      console.error('Erreur lors du chargement des catégories:', error);
+      
       
       // Vérifier si c'est une erreur d'authentification
       if ((error as any).response?.status === 401) {
@@ -183,7 +278,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           setRayons(rayonsList);
           setCustomCategories([]); // Pas de catégories personnalisées en cas d'erreur
         } catch (globalError) {
-          console.error('❌ Impossible de charger les rayons globaux:', globalError);
+          
           setCategories([]);
           setRayons([]);
           setCustomCategories([]);
@@ -247,7 +342,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
     
     // Vérifier que rayons est un tableau valide
     if (!Array.isArray(rayons)) {
-      console.warn('⚠️ rayons n\'est pas un tableau dans groupRayonsByType:', rayons);
+        
       return grouped;
     }
     
@@ -260,12 +355,13 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         }
         grouped[type].push(rayon);
       } else {
-        console.warn('⚠️ rayon invalide dans groupRayonsByType:', rayon);
+        
       }
     });
     
     return grouped;
   };
+
 
   // Obtenir l'icône pour le type de rayon
   const getRayonTypeIcon = (rayonType: string) => {
@@ -310,7 +406,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         categoryName: category.name 
       });
     } catch (error) {
-      console.error('Erreur navigation vers produits:', error);
+      
       Alert.alert('Erreur', 'Impossible d\'afficher les produits de ce rayon');
     }
   };
@@ -333,12 +429,12 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         );
       }
     } catch (error) {
-      console.error('Erreur chargement sous-catégories:', error);
+      
       Alert.alert('Erreur', 'Impossible de charger les sous-catégories');
     }
   };
 
-  const editCategory = (category: Category) => {
+  const editCategory = async (category: Category) => {
     // Vérifier les permissions de modification
     if (!canEditCategory(category)) {
       Alert.alert(
@@ -349,15 +445,8 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
       return;
     }
 
-    // Vérifier si c'est un rayon (action directe)
-    if ((category as any).is_rayon) {
-      // Action directe : voir les produits du rayon
-      viewRayonProducts(category);
-      return;
-    }
-
-    // Pour les catégories personnalisées, ouvrir le modal de modification
-    handleEditCategory(category);
+    // Ouvrir le modal de modification pour toutes les catégories (rayons et sous-catégories)
+    await handleEditCategory(category);
   };
 
   const deleteCategory = (category: Category) => {
@@ -371,13 +460,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
       return;
     }
 
-    // Vérifier si c'est un rayon (action directe)
-    if ((category as any).is_rayon) {
-      // Action directe : voir les sous-catégories
-      viewRayonSubcategories(category);
-      return;
-    }
-
+    // Confirmation simple de suppression
     Alert.alert(
       'Confirmer la suppression',
       `Êtes-vous sûr de vouloir supprimer la catégorie "${category.name}" ?`,
@@ -391,9 +474,43 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
               await categoryService.deleteCategory(category.id);
               Alert.alert('Succès', 'Catégorie supprimée avec succès');
               loadCategories();
-            } catch (error) {
-              console.error('Erreur lors de la suppression:', error);
-              Alert.alert('Erreur', 'Impossible de supprimer la catégorie');
+            } catch (error: any) {
+              // Empêcher la propagation de l'erreur au système global
+              error._handledLocally = true;
+              
+              // Log minimal en développement seulement
+              if (__DEV__) {
+                console.error('❌ Erreur suppression catégorie:', error.message || 'Erreur inconnue');
+              }
+              
+              // Extraire le message d'erreur de manière intelligente
+              let errorMessage = 'Impossible de supprimer la catégorie';
+              
+              if (error?.response?.data?.error) {
+                // Message d'erreur structuré de l'API
+                errorMessage = error.response.data.error;
+              } else if (error?.response?.data?.detail) {
+                // Message d'erreur avec champ 'detail'
+                errorMessage = error.response.data.detail;
+              } else if (error?.response?.data?.message) {
+                // Message d'erreur avec champ 'message'
+                errorMessage = error.response.data.message;
+              } else if (error?.message) {
+                // Message d'erreur générique
+                errorMessage = error.message;
+              }
+              
+              // Nettoyer le message d'erreur pour l'affichage
+              if (typeof errorMessage === 'string') {
+                // Remplacer les caractères d'échappement JSON par des espaces
+                errorMessage = errorMessage.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+              }
+              
+              Alert.alert(
+                'Erreur de suppression', 
+                errorMessage,
+                [{ text: 'OK' }]
+              );
             }
           },
         },
@@ -401,46 +518,36 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
     );
   };
 
-  // Rendu d'un rayon
-  const renderRayonItem = ({ item }: { item: Category }) => (
-    <View style={[styles.categoryItem, styles.rayonItem]}>
-      <View style={styles.categoryInfo}>
-        <View style={styles.rayonHeader}>
+  // Rendu d'un rayon (version ultra-compacte)
+  const renderRayonItem = ({ item }: { item: Category }) => {
+    // Vérifier si le rayon appartient au site de l'utilisateur
+    const isUserSite = userInfo?.site_configuration_id && 
+                      (item as any).site_configuration === userInfo.site_configuration_id;
+    
+    return (
+      <View style={[styles.categoryItem, styles.rayonItem, styles.ultraCompactItem]}>
+        <View style={styles.ultraCompactInfo}>
           <Ionicons 
             name={getRayonTypeIcon((item as any).rayon_type) as any} 
-            size={20} 
+            size={16} 
             color="#4CAF50" 
           />
-          <Text style={styles.categoryName}>{item.name}</Text>
+          <Text style={styles.ultraCompactName}>{item.name}</Text>
+          {isUserSite && (
+            <Ionicons 
+              name="home" 
+              size={14} 
+              color="#4CAF50" 
+              style={styles.siteIndicator}
+            />
+          )}
         </View>
-        {item.description && (
-          <Text style={styles.categoryDescription}>{item.description}</Text>
-        )}
-        <Text style={styles.rayonType}>
-          Type: {getRayonTypeName((item as any).rayon_type)}
-        </Text>
-      </View>
-      <View style={styles.categoryActions}>
+      <View style={styles.ultraCompactActions}>
         <TouchableOpacity
-          style={[styles.actionButton, styles.infoButton]}
-          onPress={() => {
-            Alert.alert(
-              'Détails du rayon',
-              `Rayon: ${item.name}\nType: ${getRayonTypeName((item as any).rayon_type)}\n${item.description ? `Description: ${item.description}` : ''}`,
-              [
-                { text: 'Voir les marques', onPress: () => navigation.navigate('BrandsByRayon', { rayon: item }) },
-                { text: 'OK' }
-              ]
-            );
-          }}
+          style={[styles.ultraCompactButton, styles.subcategoriesButton]}
+          onPress={() => handleRayonSelect(item)}
         >
-          <Ionicons name="information-circle" size={20} color="#2196F3" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.brandsButton]}
-          onPress={() => navigation.navigate('BrandsByRayon', { rayon: item })}
-        >
-          <Ionicons name="business" size={20} color="#4CAF50" />
+          <Ionicons name="folder-open" size={18} color="#FF9800" />
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -474,63 +581,110 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         </TouchableOpacity>
       </View>
     </View>
-  );
+    );
+  };
 
-  // Rendu d'une catégorie personnalisée
-  const renderCustomCategoryItem = ({ item }: { item: Category }) => (
-    <View style={styles.categoryItem}>
-      <View style={styles.categoryInfo}>
-        <Text style={styles.categoryName}>{item.name}</Text>
-        {item.description && (
-          <Text style={styles.categoryDescription}>{item.description}</Text>
-        )}
-        {item.parent_name && (
-          <View style={styles.parentInfo}>
-            <Ionicons name="storefront-outline" size={16} color="#4CAF50" />
-            <Text style={styles.parentText}>
-              Rayon parent: {item.parent_name}
-              {item.parent_rayon_type && ` (${getRayonTypeName(item.parent_rayon_type)})`}
+  // Rendu d'une sous-catégorie
+  const renderCustomCategoryItem = ({ item }: { item: Category }) => {
+    const isSubcategory = item.level === 1;
+    
+    // Debug: Log des données de la catégorie avec toutes les propriétés
+    console.log(`📱 Rendu catégorie ${item.id} (renderCustomCategoryItem):`, {
+      id: item.id,
+      name: item.name,
+      slug: item.slug,
+      level: item.level,
+      is_rayon: item.is_rayon,
+      is_global: item.is_global,
+      parent: item.parent,
+      parent_name: item.parent_name,
+      parent_rayon_type: item.parent_rayon_type,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+      site_configuration: item.site_configuration,
+      rayon_type: item.rayon_type,
+      description: item.description,
+      order: item.order,
+      is_active: item.is_active,
+      source: 'renderCustomCategoryItem'
+    });
+    
+    return (
+      <View style={[styles.categoryItem, isSubcategory && styles.subcategoryItem]}>
+        <View style={styles.categoryInfo}>
+          <View style={styles.categoryHeader}>
+            {isSubcategory && (
+              <View style={styles.levelIndicator}>
+                <Ionicons name="arrow-forward" size={12} color="#666" />
+              </View>
+            )}
+            <Text style={[styles.categoryName, isSubcategory && styles.subcategoryName]}>
+              {item.name}
             </Text>
+            {isSubcategory && (
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelBadgeText}>Sous-catégorie</Text>
+              </View>
+            )}
           </View>
-        )}
-        <Text style={styles.categoryDate}>
-          Créée le {new Date(item.created_at).toLocaleDateString()}
-        </Text>
+          
+          {item.description && (
+            <Text style={styles.categoryDescription}>{item.description}</Text>
+          )}
+          
+          {item.parent_name && (
+            <View style={styles.parentInfo}>
+              <Ionicons 
+                name="storefront-outline" 
+                size={16} 
+                color="#4CAF50" 
+              />
+              <Text style={styles.parentText}>
+                Rayon parent: {item.parent_name}
+                {item.parent_rayon_type && ` (${getRayonTypeName(item.parent_rayon_type)})`}
+              </Text>
+            </View>
+          )}
+          
+          <Text style={styles.categoryDate}>
+            Créée le {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Date inconnue'}
+          </Text>
+        </View>
+        <View style={styles.categoryActions}>
+          <TouchableOpacity
+            style={[
+              styles.actionButton, 
+              styles.editButton,
+              !canEditCategory(item) && styles.disabledButton
+            ]}
+            onPress={() => editCategory(item)}
+            disabled={!canEditCategory(item)}
+          >
+            <Ionicons 
+              name="pencil" 
+              size={20} 
+              color={canEditCategory(item) ? "#FF9800" : "#ccc"} 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.actionButton, 
+              styles.deleteButton,
+              !canDeleteCategory(item) && styles.disabledButton
+            ]}
+            onPress={() => deleteCategory(item)}
+            disabled={!canDeleteCategory(item)}
+          >
+            <Ionicons 
+              name="trash" 
+              size={20} 
+              color={canDeleteCategory(item) ? "#F44336" : "#ccc"} 
+            />
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.categoryActions}>
-        <TouchableOpacity
-          style={[
-            styles.actionButton, 
-            styles.editButton,
-            !canEditCategory(item) && styles.disabledButton
-          ]}
-          onPress={() => editCategory(item)}
-          disabled={!canEditCategory(item)}
-        >
-          <Ionicons 
-            name="pencil" 
-            size={20} 
-            color={canEditCategory(item) ? "#FF9800" : "#ccc"} 
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.actionButton, 
-            styles.deleteButton,
-            !canDeleteCategory(item) && styles.disabledButton
-          ]}
-          onPress={() => deleteCategory(item)}
-          disabled={!canDeleteCategory(item)}
-        >
-          <Ionicons 
-            name="trash" 
-            size={20} 
-            color={canDeleteCategory(item) ? "#F44336" : "#ccc"} 
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   // Rendu d'un groupe de rayons par type
   const renderRayonGroup = (rayonType: string, rayons: Category[]) => {
@@ -573,6 +727,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
   );
   };
 
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -606,35 +761,6 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Onglets */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'rayons' && styles.activeTab]}
-          onPress={() => setActiveTab('rayons')}
-        >
-          <Ionicons 
-            name="storefront-outline" 
-            size={20} 
-            color={activeTab === 'rayons' ? '#4CAF50' : '#666'} 
-          />
-          <Text style={[styles.tabText, activeTab === 'rayons' && styles.activeTabText]}>
-            Rayons ({rayons.length})
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'custom' && styles.activeTab]}
-          onPress={() => setActiveTab('custom')}
-        >
-          <Ionicons 
-            name="folder-outline" 
-            size={20} 
-            color={activeTab === 'custom' ? "#4CAF50" : "#666"} 
-          />
-          <Text style={[styles.tabText, activeTab === 'custom' && styles.activeTabText]}>
-            Mes Catégories
-          </Text>
-        </TouchableOpacity>
-      </View>
 
       {/* Contenu */}
       <ScrollView
@@ -643,52 +769,85 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {activeTab === 'rayons' ? (
-          /* Affichage des rayons groupés par type */
-          <View style={styles.rayonsContainer}>
-            {Object.entries(groupRayonsByType()).map(([rayonType, rayons]) =>
-              renderRayonGroup(rayonType, rayons)
-            )}
-            {rayons.length === 0 && (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="storefront-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyText}>Aucun rayon trouvé</Text>
-                <Text style={styles.emptySubtext}>
-                  Les rayons de supermarché seront chargés automatiquement
+        {/* Affichage des rayons avec sous-catégories groupées par type */}
+        <View style={styles.rayonsContainer}>
+          {selectedRayon ? (
+            /* Affichage des sous-catégories du rayon sélectionné */
+            <View>
+              {/* Header avec bouton retour */}
+              <View style={styles.subcategoriesHeader}>
+                <TouchableOpacity 
+                  style={styles.backButton}
+                  onPress={handleBackToRayons}
+                >
+                  <Ionicons name="arrow-back" size={20} color="#4CAF50" />
+                  <Text style={styles.backButtonText}>Retour aux rayons</Text>
+                </TouchableOpacity>
+                <Text style={styles.subcategoriesTitle}>
+                  Sous-catégories de "{selectedRayon?.name}"
                 </Text>
               </View>
-            )}
-          </View>
-        ) : (
-          /* Affichage des catégories personnalisées */
-          <View style={styles.customCategoriesContainer}>
-            {customCategories.length > 0 ? (
-              <FlatList
-                data={customCategories}
-                renderItem={renderCustomCategoryItem}
-                keyExtractor={(item) => item.id.toString()}
-                scrollEnabled={false}
-              />
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="folder-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyText}>Aucune catégorie personnalisée</Text>
-                <Text style={styles.emptySubtext}>
-                  Créez votre première catégorie personnalisée
-                </Text>
-                {canCreateCategory() && (
-                  <TouchableOpacity
-                    style={styles.createButton}
-                    onPress={() => setNewCategoryModalVisible(true)}
-                  >
-                    <Ionicons name="add" size={20} color="#fff" />
-                    <Text style={styles.createButtonText}>Créer une catégorie</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-          </View>
-        )}
+
+              {/* Liste des sous-catégories */}
+              {loadingSubcategories ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#4CAF50" />
+                  <Text style={styles.loadingText}>Chargement des sous-catégories...</Text>
+                </View>
+              ) : rayonSubcategories.length > 0 ? (
+                <FlatList
+                  data={rayonSubcategories}
+                  renderItem={renderCustomCategoryItem}
+                  keyExtractor={(item) => item.id.toString()}
+                  scrollEnabled={false}
+                  showsVerticalScrollIndicator={false}
+                />
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="folder-outline" size={64} color="#ccc" />
+                  <Text style={styles.emptyText}>Aucune sous-catégorie</Text>
+                  <Text style={styles.emptySubtext}>
+                    Ce rayon n'a pas encore de sous-catégories
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            /* Affichage des rayons groupés par type avec sous-catégories */
+            <View>
+              {Object.entries(groupRayonsByType()).map(([rayonType, rayons]) =>
+                renderRayonGroup(rayonType, rayons)
+              )}
+              {rayons.length === 0 && (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="storefront-outline" size={64} color="#ccc" />
+                  <Text style={styles.emptyText}>Aucun rayon trouvé</Text>
+                  <Text style={styles.emptySubtext}>
+                    Les rayons de supermarché seront chargés automatiquement
+                  </Text>
+                </View>
+              )}
+
+              {/* Section des catégories globales personnalisées */}
+              {globalCustomCategories.length > 0 && (
+                <View style={styles.globalCustomSection}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="globe-outline" size={24} color="#4CAF50" />
+                    <Text style={styles.sectionTitle}>Catégories globales</Text>
+                    <Text style={styles.sectionCount}>({globalCustomCategories.length})</Text>
+                  </View>
+                  <FlatList
+                    data={globalCustomCategories}
+                    renderItem={renderCustomCategoryItem}
+                    keyExtractor={(item) => item.id.toString()}
+                    scrollEnabled={false}
+                    showsVerticalScrollIndicator={false}
+                  />
+                </View>
+              )}
+            </View>
+          )}
+        </View>
       </ScrollView>
 
 
@@ -697,6 +856,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         visible={newCategoryModalVisible}
         onClose={() => setNewCategoryModalVisible(false)}
         onCategoryCreated={handleNewCategoryCreated}
+        userInfo={userInfo}
       />
 
       {/* Modal de modification de catégorie */}
@@ -708,6 +868,7 @@ const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
         }}
         onCategoryUpdated={handleCategoryUpdated}
         category={selectedCategoryForEdit}
+        userInfo={userInfo}
       />
 
     </SafeAreaView>
@@ -924,9 +1085,6 @@ const styles = StyleSheet.create({
   infoButton: {
     backgroundColor: '#e3f2fd',
   },
-  brandsButton: {
-    backgroundColor: '#e8f5e8',
-  },
   // Styles pour l'affichage du rayon parent
   parentInfo: {
     flexDirection: 'row',
@@ -954,7 +1112,9 @@ const styles = StyleSheet.create({
   },
   // Styles pour les catégories personnalisées
   customCategoriesContainer: {
+    flex: 1,
     padding: 16,
+    backgroundColor: '#f5f5f5',
   },
   createButton: {
     flexDirection: 'row',
@@ -971,6 +1131,139 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Styles pour les sous-catégories
+  subcategoryItem: {
+    backgroundColor: '#f8f9fa',
+    borderLeftWidth: 3,
+    borderLeftColor: '#4CAF50',
+    marginLeft: 16,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  levelIndicator: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subcategoryName: {
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  levelBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  levelBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  // Styles pour la navigation hiérarchique
+  subcategoriesButton: {
+    backgroundColor: '#fff3e0',
+  },
+  subcategoriesHeader: {
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+  },
+  backButtonText: {
+    color: '#4CAF50',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  subcategoriesTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  // Styles pour les cartes ultra-compactes
+  ultraCompactItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 4,
+    minHeight: 44,
+  },
+  ultraCompactInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  ultraCompactName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#333',
+    flex: 1,
+  },
+  siteIndicator: {
+    marginLeft: 4,
+  },
+  ultraCompactActions: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  ultraCompactButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Styles pour la section des catégories globales
+  globalCustomSection: {
+    marginTop: 24,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+    flex: 1,
+  },
+  sectionCount: {
+    fontSize: 14,
+    color: '#666',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,9 @@ import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { ContinuousBarcodeScanner } from '../components';
 import { useContinuousScanner } from '../hooks';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 import { productService, saleService } from '../services/api';
+import { sanitizeBarcode, validateBarcode, areSimilarBarcodes, validateBarcodeQuality } from '../utils/barcodeUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -21,19 +23,107 @@ export default function CashRegisterScreen({ navigation }: any) {
   const [showScanner, setShowScanner] = useState(false);
   const [loading, setLoading] = useState(false);
   const scanner = useContinuousScanner('sales');
+  const { userInfo, isSuperuser } = useUserPermissions();
+  // Anti-duplication local spécifique caisse
+  const lastScanByBarcodeRef = useRef<Record<string, number>>({});
+  const lastScanByProductIdRef = useRef<Record<string, number>>({});
+  const lastGlobalScanRef = useRef<number>(0);
+  const scanLockRef = useRef<Set<string>>(new Set());
+  // Cache des codes similaires pour éviter les scans de codes corrompus
+  const similarCodesCacheRef = useRef<Record<string, { productId: string; timestamp: number }>>({});
 
-  const handleScan = async (barcode: string) => {
+  const normalize = (code: string) => String(code || '').trim();
+
+  const handleScan = async (rawBarcode: string) => {
+    const { sanitized, isNumeric, length } = sanitizeBarcode(rawBarcode);
+    const barcode = normalize(sanitized);
     if (!barcode.trim()) {
       Alert.alert('Erreur', 'Code-barres invalide');
       return;
     }
+    // En caisse, on exige un code strictement numérique (pour éviter bruit caméra)
+    if (!isNumeric) {
+      Alert.alert('Code non supporté', 'Le code scanné contient des caractères non numériques.');
+      return;
+    }
+
+    // Valider la qualité du code-barres
+    const qualityCheck = validateBarcodeQuality(barcode);
+    if (!qualityCheck.isValid) {
+      // Afficher un avertissement mais continuer (pas bloquant)
+      if (qualityCheck.warnings.length > 0) {
+        Alert.alert(
+          'Code-barres détecté',
+          `Code scanné: ${barcode}\n\nAvertissement: ${qualityCheck.warnings[0]}\n\nContinuer quand même ?`,
+          [
+            { text: 'Annuler', style: 'cancel' },
+            { text: 'Continuer', onPress: () => {} } // Continue le traitement
+          ]
+        );
+      }
+    }
+
+    // Vérifier si ce code est similaire à un code récemment scanné avec succès
+    const cacheTimeout = 30000; // 30 secondes
+    for (const [cachedCode, cacheData] of Object.entries(similarCodesCacheRef.current)) {
+      if (Date.now() - cacheData.timestamp < cacheTimeout && areSimilarBarcodes(barcode, cachedCode)) {
+        
+        // Trouver le produit dans la liste de scan et incrémenter sa quantité
+        const existingItem = scanner.scanList.find(item => item.productId === cacheData.productId);
+        if (existingItem) {
+          scanner.updateQuantity(existingItem.id, existingItem.quantity + 1);
+          return;
+        }
+      }
+    }
+
+    // Anti-rafale global: 1500ms entre deux scans quel que soit le code
+    const nowGlobal = Date.now();
+    if (nowGlobal - lastGlobalScanRef.current < 1500) {
+      return;
+    }
+
+    // Anti-rafale local: 1200ms entre 2 mêmes codes
+    const last = lastScanByBarcodeRef.current[barcode] || 0;
+    if (nowGlobal - last < 1200) {
+      return;
+    }
+
+    // Verrou par code pour empêcher les scans parallèles identiques
+    if (scanLockRef.current.has(barcode)) {
+      return;
+    }
+    scanLockRef.current.add(barcode);
+    lastScanByBarcodeRef.current[barcode] = nowGlobal;
+
 
     setLoading(true);
     try {
       // Appel API réel pour scanner le produit
-      const product = await productService.scanProduct(barcode.trim());
+      const product = await productService.scanProduct(barcode);
       
       if (product) {
+        // Vérifier cohérence du site côté client si possible
+        const userSiteId = userInfo?.site_configuration ?? null;
+        const productSiteId = (product as any)?.site_configuration ?? null;
+        if (!isSuperuser && userSiteId && productSiteId && userSiteId !== productSiteId) {
+          Alert.alert(
+            'Produit hors site',
+            `Ce produit appartient au site ${productSiteId}, différent de votre site.`
+          );
+          return;
+        }
+
+        // Marquer le dernier scan global immédiatement pour éviter un second déclenchement rapproché
+        lastGlobalScanRef.current = Date.now();
+        // Vérifier aussi par productId pour éviter les codes différents du même produit
+        const productId = product.id.toString();
+        const lastByProductId = lastScanByProductIdRef.current[productId] || 0;
+        if (Date.now() - lastByProductId < 3000) {
+          return;
+        }
+        lastScanByProductIdRef.current[productId] = Date.now();
+        
         // Créer un objet produit pour la liste de scan
         const scannedProduct = {
           id: product.id.toString(),
@@ -51,14 +141,22 @@ export default function CashRegisterScreen({ navigation }: any) {
           brand: product.brand_name || 'Non définie'
         };
         
+        // Fusion directe locale via le hook (déduplication forte côté hook déjà active)
         scanner.addToScanList(barcode, scannedProduct);
         
-        // Afficher une confirmation
-        Alert.alert(
-          'Produit scanné',
-          `${product.name}\nPrix: ${product.selling_price} FCFA\nStock: ${product.quantity}`,
-          [{ text: 'OK' }]
-        );
+        // Mettre en cache ce code pour détecter les codes similaires futurs
+        similarCodesCacheRef.current[barcode] = {
+          productId: product.id.toString(),
+          timestamp: Date.now()
+        };
+        
+        // Nettoyer le cache des entrées expirées
+        for (const [cachedCode, cacheData] of Object.entries(similarCodesCacheRef.current)) {
+          if (Date.now() - cacheData.timestamp > 30000) {
+            delete similarCodesCacheRef.current[cachedCode];
+          }
+        }
+        
       }
     } catch (error: any) {
       console.error('❌ Erreur lors du scan:', error);
@@ -96,6 +194,10 @@ export default function CashRegisterScreen({ navigation }: any) {
       }
     } finally {
       setLoading(false);
+      // Libérer le verrou après un court délai pour éviter une rafale immédiate
+      setTimeout(() => {
+        scanLockRef.current.delete(barcode);
+      }, 300);
     }
   };
 
@@ -113,7 +215,7 @@ export default function CashRegisterScreen({ navigation }: any) {
     try {
       // Préparer les données de la vente
       const saleData = {
-        customer_name: 'Client en cours',
+        customer: null, // Pas de client spécifique pour les ventes en caisse
         notes: 'Vente via caisse mobile',
         items: scanner.scanList.map(item => ({
           product_id: parseInt(item.productId),
@@ -122,7 +224,8 @@ export default function CashRegisterScreen({ navigation }: any) {
           total_price: item.totalPrice
         })),
         total_amount: scanner.getTotalValue(),
-        payment_method: 'cash'
+        payment_method: 'cash',
+        status: 'completed'
       };
 
       // Appel API pour créer la vente
@@ -263,6 +366,7 @@ export default function CashRegisterScreen({ navigation }: any) {
                     <Text style={styles.articleName} numberOfLines={2}>
                       {item.productName}
                     </Text>
+                    <Text style={styles.productIdDebug}>ID: {item.productId}</Text>
                     <Text style={styles.articleBarcode}>{item.barcode}</Text>
                   </View>
                   
@@ -484,6 +588,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.colors.text.secondary,
     fontFamily: 'monospace',
+  },
+  productIdDebug: {
+    fontSize: 10,
+    color: theme.colors.text.tertiary,
+    marginBottom: 2,
   },
   articleActions: {
     flexDirection: 'row',

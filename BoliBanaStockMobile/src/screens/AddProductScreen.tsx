@@ -63,6 +63,7 @@ export default function AddProductScreen({ navigation, route }: any) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [originalImageUrl, setOriginalImageUrl] = useState<string | undefined>(undefined);
   
   // Hook personnalisé pour la gestion des images
   const { selectedImage, isProcessing, showImageOptions } = useImageManager();
@@ -78,7 +79,7 @@ export default function AddProductScreen({ navigation, route }: any) {
     description: '',
     purchase_price: '',
     selling_price: '',
-    quantity: '',
+    quantity: '0',
     alert_threshold: '5',
     category_id: '',
     brand_id: '',
@@ -114,6 +115,12 @@ export default function AddProductScreen({ navigation, route }: any) {
       try {
         const p = await productService.getProduct(editId);
         
+        // ✅ Logs détaillés sur l'image dans AddProductScreen (copie)
+        console.log(`🔍 MOBILE - AddProductScreen - Produit pour édition: ${p?.name}`);
+        console.log(`   Image URL: ${p?.image_url || 'Aucune'}`);
+        console.log(`   Image field: ${p?.image || 'Aucune'}`);
+        console.log(`   Barcodes: ${p?.barcodes?.length || 0} codes-barres`);
+        
         setForm({
           name: p?.name || '',
           cug: p?.cug || '',
@@ -124,10 +131,12 @@ export default function AddProductScreen({ navigation, route }: any) {
           alert_threshold: p?.alert_threshold ? String(p.alert_threshold) : '5',
           category_id: p?.category?.id ? String(p.category.id) : '',
           brand_id: p?.brand?.id ? String(p.brand.id) : '',
-          image: p?.image_url ? { uri: p.image_url, type: 'image/jpeg', fileName: 'existing_image.jpg' } : undefined,
+          // Ne pas pré-remplir l'image existante pour éviter un ré-upload qui change l'URL
+          image: undefined,
           barcodes: p?.barcodes || [],
           is_active: p?.is_active ?? true,
         });
+        setOriginalImageUrl(p?.image_url || undefined);
         
 
       } catch (e) {
@@ -250,8 +259,12 @@ export default function AddProductScreen({ navigation, route }: any) {
       return false;
     }
 
-    if (!form.quantity || parseInt(form.quantity) < 0) {
-      Alert.alert('Erreur', 'La quantité doit être positive');
+    // Si le champ est vide, utiliser 0 par défaut
+    const quantityValue = form.quantity || '0';
+    const quantityNumber = parseInt(quantityValue);
+    
+    if (isNaN(quantityNumber)) {
+      Alert.alert('Erreur', 'La quantité doit être un nombre valide');
       return false;
     }
 
@@ -280,12 +293,13 @@ export default function AddProductScreen({ navigation, route }: any) {
         description: form.description.trim(),
         purchase_price: parseInt(form.purchase_price),
         selling_price: parseInt(form.selling_price),
-        quantity: parseInt(form.quantity),
+        quantity: parseInt(form.quantity || '0'),
         alert_threshold: parseInt(form.alert_threshold),
         category: form.category_id ? parseInt(form.category_id) : null,
         brand: form.brand_id ? parseInt(form.brand_id) : null,
         is_active: form.is_active,
       };
+      
 
       if (form.cug.trim()) {
         productData.cug = form.cug.trim();
@@ -520,16 +534,18 @@ export default function AddProductScreen({ navigation, route }: any) {
                   <Ionicons name="camera-outline" size={20} color={theme.colors.primary[500]} />
                 )}
                 <Text style={styles.imagePickerText}>
-                  {isProcessing ? 'Traitement...' : (form.image ? 'Changer l\'image' : 'Ajouter une image')}
+                {isProcessing ? 'Traitement...' : ((form.image || originalImageUrl) ? 'Changer l\'image' : 'Ajouter une image')}
                 </Text>
               </TouchableOpacity>
-              {form.image ? (
-                <Image source={{ uri: form.image.uri }} style={styles.imagePreview} />
-              ) : (
-                <View style={styles.imagePlaceholderSmall}>
-                  <Ionicons name="image" size={20} color={theme.colors.neutral[400]} />
-                </View>
-              )}
+            {form.image ? (
+              <Image source={{ uri: form.image.uri }} style={styles.imagePreview} />
+            ) : originalImageUrl ? (
+              <Image source={{ uri: originalImageUrl }} style={styles.imagePreview} />
+            ) : (
+              <View style={styles.imagePlaceholderSmall}>
+                <Ionicons name="image" size={20} color={theme.colors.neutral[400]} />
+              </View>
+            )}
             </View>
 
             <View style={styles.switchRow}>
@@ -646,6 +662,9 @@ export default function AddProductScreen({ navigation, route }: any) {
               keyboardType="numeric"
               required
             />
+            <Text style={styles.helpText}>
+              💡 Quantité négative = commande en attente (backorder)
+            </Text>
 
             <FormField
               label="Seuil d'alerte"

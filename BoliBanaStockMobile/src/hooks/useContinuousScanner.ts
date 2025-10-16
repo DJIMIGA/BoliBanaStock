@@ -21,7 +21,7 @@
  * } = useContinuousScanner('inventory');
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { Alert } from 'react-native';
 import { ScannedItem } from '../components/ContinuousBarcodeScanner';
 
@@ -43,54 +43,129 @@ interface UseContinuousScannerReturn {
 
 export const useContinuousScanner = (context: ScannerContext): UseContinuousScannerReturn => {
   const [scanList, setScanList] = useState<ScannedItem[]>([]);
+  // Dernier scan par code-barres pour anti-rafale
+  const lastScanTimeByBarcodeRef = useRef<Record<string, number>>({});
+  // Verrou par code-barres pour éviter les collisions concurrentes
+  const barcodeLocksRef = useRef<Set<string>>(new Set());
 
-  // Ajouter un produit à la liste
-  const addToScanList = useCallback((barcode: string, productData: Partial<ScannedItem>) => {
-    // Vérifier si le produit existe déjà
-    const existingItemIndex = scanList.findIndex(item => item.barcode === barcode);
-    
-    if (existingItemIndex !== -1) {
-      // Produit déjà présent, augmenter la quantité
-      setScanList(prevList => {
-        const newList = [...prevList];
-        newList[existingItemIndex] = {
-          ...newList[existingItemIndex],
-          quantity: newList[existingItemIndex].quantity + 1,
-          scannedAt: new Date()
+  const normalizeBarcode = (raw: string): string => {
+    if (!raw) return '';
+    const trimmed = String(raw).trim();
+    // Suppression des espaces et normalisation simple; laisser le padding côté serveur
+    return trimmed;
+  };
+
+  // Ajouter un produit à la liste (anti-rafale + déduplication forte)
+  const addToScanList = useCallback((incomingBarcode: string, productData: Partial<ScannedItem>) => {
+    const barcode = normalizeBarcode(incomingBarcode);
+    if (!barcode) return;
+
+    // Contrainte stricte en mode vente (caisse): empêcher tout ajout sans données réelles
+    if (context === 'sales') {
+      const hasValidId = !!productData.productId && String(productData.productId).trim().length > 0;
+      const hasName = !!productData.productName && String(productData.productName).trim().length > 0;
+      const hasValidPrice = typeof productData.unitPrice === 'number' && (productData.unitPrice as number) > 0;
+      if (!hasValidId || !hasName || !hasValidPrice) {
+        console.warn('🚫 SCANNER (sales) - Données insuffisantes, ajout ignoré:', {
+          barcode,
+          productId: productData.productId,
+          productName: productData.productName,
+          unitPrice: productData.unitPrice,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+    }
+
+    // Anti-rafale par code-barres (2s)
+    const now = Date.now();
+    const last = lastScanTimeByBarcodeRef.current[barcode] || 0;
+    if (now - last < 2000) {
+      // Si un item existe déjà, on incrémente sa quantité; sinon on ignore ce duplicate très rapproché
+      setScanList(prev => {
+        const index = prev.findIndex(item => item.barcode === barcode || (!!productData.productId && item.productId === productData.productId));
+        if (index === -1) return prev; // ignore duplicate si pas encore en liste
+        const updated = [...prev];
+        const item = updated[index];
+        updated[index] = {
+          ...item,
+          quantity: item.quantity + 1,
+          totalPrice: (item.unitPrice || 0) * (item.quantity + 1),
+          scannedAt: new Date(),
         };
-        return newList;
+        console.log('🔄 SCANNER - Quantité augmentée (anti-rafale):', {
+          barcode,
+          productName: productData.productName || item.productName,
+          newQuantity: updated[index].quantity,
+          timestamp: new Date().toISOString(),
+        });
+        return updated;
       });
-      
-      Alert.alert(
-        'Produit déjà scanné',
-        `La quantité de "${productData.productName}" a été augmentée de 1.`,
-        [{ text: 'OK' }]
-      );
-    } else {
-      // Nouveau produit
+      return;
+    }
+
+    // Verrou concurrent par code
+    if (barcodeLocksRef.current.has(barcode)) return;
+    barcodeLocksRef.current.add(barcode);
+
+    setScanList(prev => {
+      // Déduplication par barcode OU productId si présent
+      const existingIndex = prev.findIndex(item => item.barcode === barcode || (!!productData.productId && item.productId === productData.productId));
+      if (existingIndex !== -1) {
+        const updated = [...prev];
+        const item = updated[existingIndex];
+        updated[existingIndex] = {
+          ...item,
+          quantity: item.quantity + 1,
+          totalPrice: (item.unitPrice || 0) * (item.quantity + 1),
+          scannedAt: new Date(),
+        };
+        console.log('🔄 SCANNER - Quantité augmentée:', {
+          barcode,
+          productName: productData.productName || item.productName,
+          newQuantity: updated[existingIndex].quantity,
+          timestamp: new Date().toISOString(),
+        });
+        return updated;
+      }
+
+      // Sinon, création d'une seule ligne
       const newItem: ScannedItem = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         productId: productData.productId || '',
         barcode,
-        productName: productData.productName || 'Produit inconnu',
+        // En caisse, n'accepte que les noms réels; sinon, autres contextes peuvent mettre une valeur par défaut
+        productName: context === 'sales' 
+          ? (productData.productName as string) 
+          : (productData.productName || 'Produit inconnu'),
         quantity: productData.quantity || 1,
-        unitPrice: productData.unitPrice || 0,
+        // En caisse, prix réel obligatoire (filtré plus haut)
+        unitPrice: context === 'sales' 
+          ? (productData.unitPrice as number) 
+          : (productData.unitPrice || 0),
         totalPrice: (productData.unitPrice || 0) * (productData.quantity || 1),
         scannedAt: new Date(),
         supplier: productData.supplier,
         site: productData.site,
-        notes: productData.notes
+        notes: productData.notes,
       };
-      
-      setScanList(prevList => [...prevList, newItem]);
-      
-      Alert.alert(
-        'Produit ajouté',
-        `${newItem.productName} ajouté à la liste.`,
-        [{ text: 'OK' }]
-      );
-    }
-  }, [scanList]);
+      console.log('➕ SCANNER - Nouveau produit ajouté:', {
+        barcode,
+        productName: newItem.productName,
+        quantity: newItem.quantity,
+        unitPrice: newItem.unitPrice,
+        totalPrice: newItem.totalPrice,
+        timestamp: new Date().toISOString(),
+      });
+      return [...prev, newItem];
+    });
+
+    // Mettre à jour le dernier scan et libérer le verrou après un court délai
+    lastScanTimeByBarcodeRef.current[barcode] = now;
+    setTimeout(() => {
+      barcodeLocksRef.current.delete(barcode);
+    }, 250);
+  }, []);
 
   // Mettre à jour la quantité d'un produit
   const updateQuantity = useCallback((itemId: string, newQuantity: number) => {

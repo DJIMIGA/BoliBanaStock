@@ -127,6 +127,12 @@ class ProductCreateView(SiteRequiredMixin, CreateView):
         # Assigner automatiquement le site de l'utilisateur
         if not self.request.user.is_superuser:
             form.instance.site_configuration = self.request.user.site_configuration
+        else:
+            # Les superusers créent des produits pour le site principal
+            from apps.core.models import Configuration
+            main_site = Configuration.objects.order_by('id').first()
+            if main_site:
+                form.instance.site_configuration = main_site
         
         # Générer un CUG unique si nécessaire
         if not form.instance.cug:

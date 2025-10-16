@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from apps.inventory.models import Product, Category, Brand, Transaction, Barcode, LabelTemplate, LabelBatch, LabelItem
-from apps.sales.models import Sale, SaleItem
+from apps.sales.models import Sale, SaleItem, Customer
 from apps.core.models import Configuration
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -63,44 +63,43 @@ class ProductSerializer(serializers.ModelSerializer):
         return None
     
     def get_image_url(self, obj):
-        """Retourne l'URL complète de l'image avec la nouvelle structure S3"""
-        if obj.image:
+        """Retourne l'URL complète de l'image.
+        - Si le produit est une copie, utiliser l'image de l'original
+        - Sinon, utiliser l'image du produit courant
+        """
+        image_field = getattr(obj, 'image', None)
+        # Tenter d'utiliser l'image de l'original si ProductCopy existe et lie ce produit
+        try:
+            from apps.inventory.models import ProductCopy
+            copy = ProductCopy.objects.select_related('original_product').filter(copied_product=obj).first()
+            if copy and getattr(copy.original_product, 'image', None):
+                image_field = copy.original_product.image
+        except Exception:
+            pass
+
+        if image_field:
             try:
-                # ✅ Retourner directement l'URL S3 si configuré
                 from django.conf import settings
                 if getattr(settings, 'AWS_S3_ENABLED', False):
-                    # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_id}/
-                    # L'URL est déjà correcte car obj.image.name utilise la nouvelle structure
                     region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
-                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{obj.image.name}"
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{image_field.name}"
                 else:
-                    # URL locale (fallback) - pour Railway sans S3
                     request = self.context.get('request')
-                    url = obj.image.url
-                    
-                    # Si on a une requête, construire l'URL absolue
+                    url = image_field.url
                     if request:
-                        # Vérifier si l'URL est déjà absolue
                         if url.startswith('http'):
                             return url
                         else:
                             return request.build_absolute_uri(url)
-                    else:
-                        # Fallback pour Railway: utiliser l'URL absolue configurée
-                        media_url = getattr(settings, 'MEDIA_URL', '/media/')
-                        if media_url.startswith('http'):
-                            # URL absolue déjà configurée (Railway)
-                            return f"{media_url.rstrip('/')}/{obj.image.name}"
-                        else:
-                            # URL relative, la convertir en absolue
-                            return f"https://web-production-e896b.up.railway.app{url}"
+                    media_url = getattr(settings, 'MEDIA_URL', '/media/')
+                    if media_url.startswith('http'):
+                        return f"{media_url.rstrip('/')}/{image_field.name}"
+                    return f"https://web-production-e896b.up.railway.app{url}"
             except (ValueError, AttributeError) as e:
-                # En cas d'erreur, essayer de retourner une URL de base
                 print(f"⚠️ Erreur dans get_image_url: {e}")
                 try:
-                    # Fallback: URL directe de l'image
-                    return obj.image.url
-                except:
+                    return image_field.url
+                except Exception:
                     return None
         return None
     
@@ -209,44 +208,42 @@ class ProductListSerializer(serializers.ModelSerializer):
         return 0
     
     def get_image_url(self, obj):
-        """Retourne l'URL complète de l'image avec la nouvelle structure S3"""
-        if obj.image:
+        """Retourne l'URL complète de l'image.
+        - Si le produit est une copie, utiliser l'image de l'original
+        - Sinon, utiliser l'image du produit courant
+        """
+        image_field = getattr(obj, 'image', None)
+        try:
+            from apps.inventory.models import ProductCopy
+            copy = ProductCopy.objects.select_related('original_product').filter(copied_product=obj).first()
+            if copy and getattr(copy.original_product, 'image', None):
+                image_field = copy.original_product.image
+        except Exception:
+            pass
+
+        if image_field:
             try:
-                # ✅ Retourner directement l'URL S3 si configuré
                 from django.conf import settings
                 if getattr(settings, 'AWS_S3_ENABLED', False):
-                    # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_ids}/
-                    # L'URL est déjà correcte car obj.image.name utilise la nouvelle structure
                     region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
-                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{obj.image.name}"
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{image_field.name}"
                 else:
-                    # URL locale (fallback) - pour Railway sans S3
                     request = self.context.get('request')
-                    url = obj.image.url
-                    
-                    # Si on a une requête, construire l'URL absolue
+                    url = image_field.url
                     if request:
-                        # Vérifier si l'URL est déjà absolue
                         if url.startswith('http'):
                             return url
                         else:
                             return request.build_absolute_uri(url)
-                    else:
-                        # Fallback pour Railway: utiliser l'URL absolue configurée
-                        media_url = getattr(settings, 'MEDIA_URL', '/media/')
-                        if media_url.startswith('http'):
-                            # URL absolue déjà configurée (Railway)
-                            return f"{media_url.rstrip('/')}/{obj.image.name}"
-                        else:
-                            # URL relative, la convertir en absolue
-                            return f"https://web-production-e896b.up.railway.app{url}"
+                    media_url = getattr(settings, 'MEDIA_URL', '/media/')
+                    if media_url.startswith('http'):
+                        return f"{media_url.rstrip('/')}/{image_field.name}"
+                    return f"https://web-production-e896b.up.railway.app{url}"
             except (ValueError, AttributeError) as e:
-                # En cas d'erreur, essayer de retourner une URL de base
                 print(f"⚠️ Erreur dans get_image_url: {e}")
                 try:
-                    # Fallback: URL directe de l'image
-                    return obj.image.url
-                except:
+                    return image_field.url
+                except Exception:
                     return None
         return None
     
@@ -310,9 +307,17 @@ class CategorySerializer(serializers.ModelSerializer):
     
     def validate(self, data):
         """Validation personnalisée pour les catégories"""
-        is_rayon = data.get('is_rayon', False)
-        rayon_type = data.get('rayon_type')
-        parent = data.get('parent')
+        # Debug log au début
+        print(f"🔍 Category validation START - data: {data}, instance: {self.instance.id if self.instance else 'None'}")
+        
+        # Pour les mises à jour partielles, récupérer les valeurs existantes si non fournies
+        is_rayon = data.get('is_rayon', self.instance.is_rayon if self.instance else False)
+        is_global = data.get('is_global', self.instance.is_global if self.instance else False)
+        rayon_type = data.get('rayon_type', self.instance.rayon_type if self.instance else None)
+        parent = data.get('parent', self.instance.parent if self.instance else None)
+        
+        # Debug log
+        print(f"🔍 Category validation - is_rayon: {is_rayon}, is_global: {is_global}, parent: {parent}, instance: {self.instance.id if self.instance else 'None'}")
         
         # Si c'est un rayon principal, le type de rayon est obligatoire
         if is_rayon and not rayon_type:
@@ -326,8 +331,11 @@ class CategorySerializer(serializers.ModelSerializer):
                 'parent': 'Un rayon principal ne peut pas avoir de catégorie parente.'
             })
         
-        # Si ce n'est pas un rayon principal, il doit avoir un parent
-        if not is_rayon and not parent:
+        # Si ce n'est pas un rayon principal ET ce n'est pas une catégorie globale, il doit avoir un parent
+        # Les catégories globales personnalisées (is_global=True, is_rayon=False) peuvent exister sans parent
+        # Les rayons (is_rayon=True) ne peuvent pas avoir de parent
+        if not is_rayon and not is_global and not parent:
+            print(f"❌ Validation failed - not is_rayon: {not is_rayon}, not is_global: {not is_global}, not parent: {not parent}")
             raise serializers.ValidationError({
                 'parent': 'Une sous-catégorie doit avoir une catégorie parente.'
             })
@@ -444,10 +452,21 @@ class SaleSerializer(serializers.ModelSerializer):
 
 class SaleCreateSerializer(serializers.ModelSerializer):
     """Serializer pour la création de ventes"""
+    items = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True,
+        required=False
+    )
+    customer = serializers.PrimaryKeyRelatedField(
+        queryset=Customer.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    
     class Meta:
         model = Sale
         fields = [
-            'customer', 'total_amount', 'payment_method', 'status', 'notes'
+            'customer', 'total_amount', 'payment_method', 'status', 'notes', 'items'
         ]
 
 

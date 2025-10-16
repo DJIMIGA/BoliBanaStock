@@ -7,15 +7,14 @@ from rest_framework import permissions
 
 from .views import (
     LoginView, LogoutView, DashboardView,
-    ConfigurationAPIView, ParametresAPIView, ConfigurationResetAPIView,
+    ConfigurationAPIView, SitesAPIView, ParametresAPIView, ConfigurationResetAPIView,
     UserProfileAPIView, UserInfoAPIView, UserPermissionsAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
     RefreshTokenView, ForceLogoutAllView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
     CatalogPDFAPIView, LabelPrintAPIView,
     collect_static_files, GetRayonsView, GetSubcategoriesMobileView,
-    ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView,
-    DebugRayonView
+    ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView
 )
 
 # Configuration Swagger
@@ -71,6 +70,7 @@ urlpatterns = [
     # Configuration et paramètres
     path('configuration/', ConfigurationAPIView.as_view(), name='api_configuration'),
     path('configuration/reset/', ConfigurationResetAPIView.as_view(), name='api_configuration_reset'),
+    path('sites/', SitesAPIView.as_view(), name='api_sites'),
     path('parametres/', ParametresAPIView.as_view(), name='api_parametres'),
     
     # Tableau de bord
@@ -93,9 +93,6 @@ urlpatterns = [
     
     # Marques par rayon
     path('brands/by-rayon/', BrandsByRayonAPIView.as_view(), name='api_brands_by_rayon'),
-    
-    # Debug temporaire
-    path('debug/rayon/', DebugRayonView.as_view(), name='api_debug_rayon'),
     
     # Administration - Collecte des fichiers statiques
     path('admin/collectstatic/', collect_static_files, name='api_collect_static'),

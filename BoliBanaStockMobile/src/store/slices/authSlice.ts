@@ -18,7 +18,7 @@ const initialState: AuthState = {
   user: null,
   tokens: null,
   isAuthenticated: false,
-  loading: false,
+  loading: true, // Commencer en mode chargement pour vérifier la session
   error: null,
   errorType: null,
   errorDetails: null,

@@ -297,6 +297,7 @@ class CategoryForm(forms.ModelForm):
         cleaned_data = super().clean()
         rayon_type = cleaned_data.get('rayon_type')
         is_rayon = cleaned_data.get('is_rayon')
+        is_global = cleaned_data.get('is_global')
         parent = cleaned_data.get('parent')
         
         # Si c'est un rayon principal, le type de rayon est obligatoire
@@ -311,8 +312,9 @@ class CategoryForm(forms.ModelForm):
                 'parent': 'Un rayon principal ne peut pas avoir de catégorie parente.'
             })
         
-        # Si ce n'est pas un rayon principal, il doit avoir un parent
-        if not is_rayon and not parent:
+        # Si ce n'est pas un rayon principal ET ce n'est pas une catégorie globale, il doit avoir un parent
+        # Les catégories globales personnalisées (is_global=True, is_rayon=False) peuvent exister sans parent
+        if not is_rayon and not is_global and not parent:
             raise forms.ValidationError({
                 'parent': 'Une sous-catégorie doit avoir une catégorie parente.'
             })

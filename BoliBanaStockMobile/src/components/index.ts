@@ -1,6 +1,7 @@
 // Export des composants
 export { AuthWrapper } from './AuthWrapper';
 export { SessionExpiredNotification } from './SessionExpiredNotification';
+export { default as LoadingScreen } from './LoadingScreen';
 export { ErrorNotification } from './ErrorNotification';
 export { GlobalSessionNotification } from './GlobalSessionNotification';
 export { default as ErrorBoundary } from './ErrorBoundary';

@@ -151,100 +151,73 @@ export const useUserPermissions = (): UserPermissionsHook => {
     if (loading || !userInfo) {
       return false;
     }
-    
-    // Utiliser les permissions du serveur si disponibles
+
+    const localRule = userInfo.is_superuser
+      ? true
+      : userInfo.site_configuration_id
+        ? brand.site_configuration === userInfo.site_configuration_id
+        : brand.site_configuration === null;
+
     if (brand.can_delete !== undefined) {
-      return brand.can_delete;
+      // Never grant more than local rules; server can only further restrict
+      return Boolean(brand.can_delete) && localRule;
     }
-    
-    // Fallback sur la logique locale
-    // Superuser peut supprimer toutes les marques
-    if (userInfo.is_superuser) {
-      return true;
-    }
-    
-    // Vérifier si la marque appartient au site de l'utilisateur
-    if (userInfo.site_configuration_id) {
-      return brand.site_configuration === userInfo.site_configuration_id;
-    }
-    
-    // Si pas de site configuré, permettre la suppression des marques globales
-    return brand.site_configuration === null;
+
+    return localRule;
   };
 
   const canEditBrand = (brand: any): boolean => {
     if (loading || !userInfo) {
       return false;
     }
-    
-    // Utiliser les permissions du serveur si disponibles
+
+    const localRule = userInfo.is_superuser
+      ? true
+      : userInfo.site_configuration_id
+        ? brand.site_configuration === userInfo.site_configuration_id
+        : brand.site_configuration === null;
+
     if (brand.can_edit !== undefined) {
-      return brand.can_edit;
+      return Boolean(brand.can_edit) && localRule;
     }
-    
-    // Fallback sur la logique locale
-    // Superuser peut modifier toutes les marques
-    if (userInfo.is_superuser) {
-      return true;
-    }
-    
-    // Vérifier si la marque appartient au site de l'utilisateur
-    if (userInfo.site_configuration_id) {
-      return brand.site_configuration === userInfo.site_configuration_id;
-    }
-    
-    // Si pas de site configuré, permettre la modification des marques globales
-    return brand.site_configuration === null;
+
+    return localRule;
   };
 
   const canDeleteCategory = (category: any): boolean => {
     if (loading || !userInfo) {
       return false;
     }
-    
-    // Utiliser les permissions du serveur si disponibles
+
+    const localRule = userInfo.is_superuser
+      ? true
+      : userInfo.site_configuration_id
+        ? category.site_configuration === userInfo.site_configuration_id
+        : category.site_configuration === null;
+
     if (category.can_delete !== undefined) {
-      return category.can_delete;
+      return Boolean(category.can_delete) && localRule;
     }
-    
-    // Fallback sur la logique locale
-    // Superuser peut supprimer toutes les catégories
-    if (userInfo.is_superuser) {
-      return true;
-    }
-    
-    // Vérifier si la catégorie appartient au site de l'utilisateur
-    if (userInfo.site_configuration_id) {
-      return category.site_configuration === userInfo.site_configuration_id;
-    }
-    
-    // Si pas de site configuré, permettre la suppression des catégories globales
-    return category.site_configuration === null;
+
+    return localRule;
   };
 
   const canEditCategory = (category: any): boolean => {
     if (loading || !userInfo) {
       return false;
     }
-    
-    // Utiliser les permissions du serveur si disponibles
+
+    const localRule = userInfo.is_superuser
+      ? true
+      : userInfo.site_configuration_id
+        ? category.site_configuration === userInfo.site_configuration_id
+        : category.site_configuration === null;
+
     if (category.can_edit !== undefined) {
-      return category.can_edit;
+      return Boolean(category.can_edit) && localRule;
     }
-    
-    // Fallback sur la logique locale
-    // Superuser peut modifier toutes les catégories
-    if (userInfo.is_superuser) {
-      return true;
-    }
-    
-    // Vérifier si la catégorie appartient au site de l'utilisateur
-    if (userInfo.site_configuration_id) {
-      return category.site_configuration === userInfo.site_configuration_id;
-    }
-    
-    // Si pas de site configuré, permettre la modification des catégories globales
-    return category.site_configuration === null;
+
+    return localRule;
   };
 
   const canCreateCategory = (): boolean => {
@@ -252,18 +225,8 @@ export const useUserPermissions = (): UserPermissionsHook => {
       return false;
     }
     
-    // Superuser peut créer toutes les catégories
-    if (userInfo.is_superuser) {
-      return true;
-    }
-    
-    // Administrateur de site peut créer des catégories
-    if (userInfo.is_staff || userInfo.can_manage_site) {
-      return true;
-    }
-    
-    // Utilisateur normal ne peut pas créer de catégories par défaut
-    return false;
+    // Seul le superuser peut créer des catégories
+    return Boolean(userInfo.is_superuser);
   };
 
   return {

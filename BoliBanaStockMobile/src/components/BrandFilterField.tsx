@@ -70,7 +70,8 @@ const BrandFilterField: React.FC<BrandFilterFieldProps> = ({
     try {
       setLoadingBrands(true);
       const response = await brandService.getBrandsByRayon(rayonId);
-      const brandsData = response.results || response;
+      // L'API renvoie un objet { rayon, brands, count }
+      const brandsData = response?.brands ?? response?.results ?? response;
       setFilteredBrands(Array.isArray(brandsData) ? brandsData : []);
     } catch (error) {
       console.error('Erreur lors du chargement des marques:', error);

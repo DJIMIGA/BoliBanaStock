@@ -248,3 +248,119 @@ export const cleanBarcode = (barcode: string): string => {
     .replace(/[^A-Za-z0-9\-\.\/\+\s]/g, '') // Garde seulement les caractères valides
     .trim();
 };
+
+/**
+ * Calcule la similarité entre deux codes-barres (distance de Levenshtein)
+ */
+export const calculateBarcodeSimilarity = (code1: string, code2: string): number => {
+  const len1 = code1.length;
+  const len2 = code2.length;
+  
+  if (len1 === 0) return len2;
+  if (len2 === 0) return len1;
+  
+  const matrix: number[][] = Array(len2 + 1).fill(null).map(() => Array(len1 + 1).fill(0));
+  
+  for (let i = 0; i <= len1; i++) matrix[0][i] = i;
+  for (let j = 0; j <= len2; j++) matrix[j][0] = j;
+  
+  for (let j = 1; j <= len2; j++) {
+    for (let i = 1; i <= len1; i++) {
+      const cost = code1[i - 1] === code2[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1,     // deletion
+        matrix[j - 1][i] + 1,     // insertion
+        matrix[j - 1][i - 1] + cost // substitution
+      );
+    }
+  }
+  
+  const distance = matrix[len2][len1];
+  const maxLen = Math.max(len1, len2);
+  return maxLen === 0 ? 1 : (maxLen - distance) / maxLen;
+};
+
+/**
+ * Détecte si deux codes sont probablement le même produit physique
+ */
+export const areSimilarBarcodes = (code1: string, code2: string, threshold: number = 0.85): boolean => {
+  if (code1 === code2) return true;
+  if (Math.abs(code1.length - code2.length) > 2) return false;
+  
+  const similarity = calculateBarcodeSimilarity(code1, code2);
+  return similarity >= threshold;
+};
+
+/**
+ * Détecte si un code-barres est suspect (trop court, caractères répétés, etc.)
+ */
+export const isSuspiciousBarcode = (code: string): { isSuspicious: boolean; reason?: string } => {
+  if (!code || code.length < 6) {
+    return { isSuspicious: true, reason: 'Code trop court (< 6 caractères)' };
+  }
+  
+  // Détecter les caractères répétés (ex: 1111111111111)
+  if (/(.)\1{4,}/.test(code)) {
+    return { isSuspicious: true, reason: 'Caractères répétés suspects' };
+  }
+  
+  // Détecter les codes avec trop de zéros consécutifs
+  if (/0{6,}/.test(code)) {
+    return { isSuspicious: true, reason: 'Trop de zéros consécutifs' };
+  }
+  
+  // Détecter les codes avec des patterns trop réguliers
+  if (/^(0123456789|1234567890|9876543210)$/.test(code)) {
+    return { isSuspicious: true, reason: 'Pattern séquentiel suspect' };
+  }
+  
+  return { isSuspicious: false };
+};
+
+/**
+ * Valide la qualité d'un code-barres pour le contexte caisse
+ */
+export const validateBarcodeQuality = (code: string): { isValid: boolean; warnings: string[] } => {
+  const warnings: string[] = [];
+  
+  // Vérifications de base
+  if (code.length < 8) {
+    warnings.push('Code très court - risque de lecture erronée');
+  }
+  
+  if (code.length > 15) {
+    warnings.push('Code très long - vérifiez la lecture');
+  }
+  
+  // Vérifier la diversité des caractères
+  const uniqueChars = new Set(code).size;
+  if (uniqueChars < 3) {
+    warnings.push('Code peu diversifié - risque de confusion');
+  }
+  
+  // Vérifier les codes suspects
+  const suspicious = isSuspiciousBarcode(code);
+  if (suspicious.isSuspicious) {
+    warnings.push(`Code suspect: ${suspicious.reason}`);
+  }
+  
+  return {
+    isValid: warnings.length === 0,
+    warnings
+  };
+};
+
+/**
+ * Sanitize fort pour usage caisse: retire espaces et caractères non numériques.
+ * Ne fait PAS de zero-padding (laisse au serveur). Retourne aussi des méta-infos.
+ */
+export const sanitizeBarcode = (raw: string): { sanitized: string; isNumeric: boolean; length: number } => {
+  const trimmed = String(raw || '').trim();
+  // supprimer tout sauf chiffres
+  const digitsOnly = trimmed.replace(/\D+/g, '');
+  return {
+    sanitized: digitsOnly,
+    isNumeric: digitsOnly.length > 0 && /^\d+$/.test(digitsOnly),
+    length: digitsOnly.length,
+  };
+};

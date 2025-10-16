@@ -15,11 +15,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { productService, categoryService } from '../services/api';
+import { productService, categoryService, siteService } from '../services/api';
 import ProductImage from '../components/ProductImage';
 import HierarchicalCategorySelector from '../components/HierarchicalCategorySelector';
 import CategorySelector from '../components/CategorySelector';
 import { Category } from '../types';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 
 
 interface Product {
@@ -44,6 +45,14 @@ export default function ProductsScreen({ navigation, route }: any) {
   const [filter, setFilter] = useState('all'); // all, low_stock, out_of_stock
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  
+  // ✅ Filtre par site pour les superusers
+  const [sites, setSites] = useState<any[]>([]);
+  const [selectedSite, setSelectedSite] = useState<number | null>(null);
+  const [siteModalVisible, setSiteModalVisible] = useState(false);
+  
+  // ✅ Hook pour les permissions utilisateur
+  const { userInfo, isSuperuser } = useUserPermissions();
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -80,6 +89,11 @@ export default function ProductsScreen({ navigation, route }: any) {
       // Filtre par marque
       if (brandFilter) {
         params.brand = brandFilter;
+      }
+      
+      // ✅ Filtre par site pour les superusers
+      if (isSuperuser && selectedSite) {
+        params.site_configuration = selectedSite;
       }
       
       console.log('🔧 ProductsScreen - Paramètres de filtrage:', params);
@@ -121,9 +135,27 @@ export default function ProductsScreen({ navigation, route }: any) {
     }
   };
 
+  // ✅ Charger les sites pour les superusers
+  const loadSites = async () => {
+    if (isSuperuser) {
+      try {
+        const response = await siteService.getSites();
+        if (response.success) {
+          setSites(response.sites || []);
+        }
+      } catch (error) {
+        console.error('❌ Erreur chargement sites:', error);
+      }
+    }
+  };
+
   useEffect(() => {
     loadProducts(1, false);
-  }, [filter, selectedCategory, brandFilter, categoryFilter]);
+  }, [filter, selectedCategory, brandFilter, categoryFilter, selectedSite]);
+
+  useEffect(() => {
+    loadSites();
+  }, [isSuperuser]);
 
 
   const filteredProducts = products.filter(product => {
@@ -186,6 +218,16 @@ export default function ProductsScreen({ navigation, route }: any) {
     setSelectedCategory(null);
   };
 
+  // ✅ Gestion des sites
+  const handleSiteSelect = (site: any) => {
+    setSelectedSite(site.id);
+    setSiteModalVisible(false);
+  };
+
+  const clearSiteFilter = () => {
+    setSelectedSite(null);
+  };
+
 
   const renderProduct = ({ item }: { item: Product }) => (
     <TouchableOpacity
@@ -208,6 +250,8 @@ export default function ProductsScreen({ navigation, route }: any) {
           <Text style={styles.productName} numberOfLines={2}>
             {item.name}
           </Text>
+          {/* DEBUG: Affichage de l'ID du produit */}
+          <Text style={styles.productIdDebug}>ID: {item.id}</Text>
           <Text style={styles.productCug}>CUG: {item.cug}</Text>
           <Text style={styles.productCategory}>
             {item.category_name} • {item.brand_name}
@@ -346,6 +390,30 @@ export default function ProductsScreen({ navigation, route }: any) {
         )}
       </View>
 
+      {/* ✅ Site Filter pour les superusers */}
+      {isSuperuser && (
+        <View style={styles.categoryFilterContainer}>
+          <TouchableOpacity 
+            style={styles.categoryFilterButton}
+            onPress={() => setSiteModalVisible(true)}
+          >
+            <Ionicons name="business-outline" size={16} color="#4CAF50" />
+            <Text style={styles.categoryFilterText}>
+              {selectedSite ? sites.find(s => s.id === selectedSite)?.site_name : 'Tous les sites'}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#666" />
+          </TouchableOpacity>
+          {selectedSite && (
+            <TouchableOpacity 
+              style={styles.clearCategoryButton}
+              onPress={clearSiteFilter}
+            >
+              <Ionicons name="close-circle" size={20} color="#F44336" />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* Filters */}
       <View style={styles.filtersContainer}>
         <FilterButton title="Tous" value="all" isActive={filter === 'all'} />
@@ -399,6 +467,50 @@ export default function ProductsScreen({ navigation, route }: any) {
           title="Sélectionner une catégorie"
         />
       </Modal>
+
+      {/* ✅ Site Selection Modal pour les superusers */}
+      {isSuperuser && (
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={siteModalVisible}
+          onRequestClose={() => setSiteModalVisible(false)}
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setSiteModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Sélectionner un site</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            
+            <ScrollView style={styles.modalContent}>
+              <TouchableOpacity
+                style={styles.siteOption}
+                onPress={() => handleSiteSelect(null)}
+              >
+                <Text style={styles.siteOptionText}>Tous les sites</Text>
+                {!selectedSite && <Ionicons name="checkmark" size={20} color="#4CAF50" />}
+              </TouchableOpacity>
+              
+              {sites.map((site) => (
+                <TouchableOpacity
+                  key={site.id}
+                  style={styles.siteOption}
+                  onPress={() => handleSiteSelect(site)}
+                >
+                  <View>
+                    <Text style={styles.siteOptionText}>{site.site_name}</Text>
+                    <Text style={styles.siteOptionSubtext}>{site.nom_societe}</Text>
+                  </View>
+                  {selectedSite === site.id && <Ionicons name="checkmark" size={20} color="#4CAF50" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -538,6 +650,11 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 2,
   },
+  productIdDebug: {
+    fontSize: 10,
+    color: '#999',
+    marginBottom: 2,
+  },
   productCategory: {
     fontSize: 12,
     color: '#999',
@@ -637,5 +754,49 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: '#666',
+  },
+  // ✅ Site Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  siteOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  siteOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  siteOptionSubtext: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
   },
 }); 
