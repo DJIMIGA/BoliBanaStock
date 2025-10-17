@@ -243,12 +243,6 @@ export default function DashboardScreen({ navigation }: any) {
               onPress={() => navigation.navigate('Labels')}
             />
             <ActionButton
-              title="Catalogues"
-              icon="document-outline"
-              color={actionColors.primary}
-              onPress={() => navigation.navigate('CatalogList')}
-            />
-            <ActionButton
               title="Paramètres"
               icon="settings-outline"
               color={theme.colors.neutral[500]}

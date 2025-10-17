@@ -36,4 +36,3 @@ export { default as ProductCopyScreen } from './ProductCopyScreen';
 export { default as ProductCopyManagementScreen } from './ProductCopyManagementScreen';
 export { default as CustomerListScreen } from './CustomerListScreen';
 export { default as CustomerDetailScreen } from './CustomerDetailScreen';
-export { default as CatalogListScreen } from './CatalogListScreen';

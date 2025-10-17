@@ -69,6 +69,24 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
     );
   }
 
+  const handleShareCatalog = (catalog: any) => {
+    console.log('📤 [CATALOG_SCREEN] Partage du catalogue:', catalog);
+    // TODO: Implémenter le partage natif
+    Alert.alert('Partage', 'Fonctionnalité de partage à implémenter');
+  };
+
+  const handleDownloadCatalog = (catalog: any) => {
+    console.log('💾 [CATALOG_SCREEN] Téléchargement du catalogue:', catalog);
+    // TODO: Implémenter le téléchargement PDF
+    Alert.alert('Téléchargement', 'Fonctionnalité de téléchargement à implémenter');
+  };
+
+  const handlePrintCatalog = (catalog: any) => {
+    console.log('🖨️ [CATALOG_SCREEN] Impression du catalogue:', catalog);
+    // TODO: Implémenter l'impression
+    Alert.alert('Impression', 'Fonctionnalité d\'impression à implémenter');
+  };
+
   const generateCatalog = async () => {
     console.log('🚀 [CATALOG_SCREEN] Début génération catalogue');
     console.log('🚀 [CATALOG_SCREEN] Produits sélectionnés:', selectedProducts);
@@ -103,11 +121,15 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
       
       console.log('🎉 [CATALOG_SCREEN] Affichage du message de succès:', successMessage);
       
+      // Afficher les options d'action après génération
       Alert.alert(
-        'Succès', 
-        successMessage,
+        'Catalogue généré !', 
+        `${catalogResponse.catalog.total_products} produits - ${catalogResponse.catalog.total_pages} pages`,
         [
-          { text: 'OK', onPress: () => navigation.goBack() }
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Partager', onPress: () => handleShareCatalog(catalogResponse.catalog) },
+          { text: 'Télécharger', onPress: () => handleDownloadCatalog(catalogResponse.catalog) },
+          { text: 'Imprimer', onPress: () => handlePrintCatalog(catalogResponse.catalog) },
         ]
       );
 
@@ -207,7 +229,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.generateButtonText}>
-              🖨️ Générer le Catalogue PDF
+              🚀 Générer et Partager
             </Text>
           )}
         </TouchableOpacity>

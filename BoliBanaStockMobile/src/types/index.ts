@@ -202,7 +202,6 @@ export type RootStackParamList = {
   ProductCopyManagement: undefined;
   CustomerList: undefined;
   CustomerDetail: { customerId: number };
-  CatalogList: undefined;
 };
 
 // Types pour les états de chargement
