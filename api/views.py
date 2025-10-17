@@ -2722,31 +2722,47 @@ class CatalogPDFAPIView(APIView):
             include_descriptions = request.data.get('include_descriptions', True)
             include_images = request.data.get('include_images', False)
             
-            # Récupérer les produits
+            # Récupérer et valider l'utilisateur
             user = request.user
             
-            # Vérifier que l'utilisateur existe
-            if not user or not user.id:
+            # Validation robuste de l'utilisateur
+            if not user or not hasattr(user, 'id') or not user.id:
                 return Response(
                     {'error': 'Utilisateur invalide ou non authentifié'},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             
-            # Vérifier que l'utilisateur existe vraiment dans la base de données
+            # Vérifier que l'utilisateur existe réellement dans la base de données core_user
             try:
-                # Utiliser directement request.user qui est déjà authentifié
-                if not hasattr(user, 'id') or not user.id:
+                from apps.core.models import User as CoreUser
+                # Vérifier que l'utilisateur est bien une instance de core.User
+                if not isinstance(user, CoreUser):
                     return Response(
-                        {'error': 'Utilisateur invalide ou non authentifié'},
+                        {'error': 'Type d\'utilisateur invalide - doit être core.User'},
                         status=status.HTTP_401_UNAUTHORIZED
                     )
+                
+                # Vérifier que l'utilisateur existe dans la base de données
+                if not CoreUser.objects.filter(id=user.id).exists():
+                    return Response(
+                        {'error': f'Utilisateur ID {user.id} non trouvé dans core_user'},
+                        status=status.HTTP_401_UNAUTHORIZED
+                    )
+                    
             except Exception as e:
                 return Response(
                     {'error': f'Erreur de validation utilisateur: {str(e)}'},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             
-            user_site = get_user_site_configuration_api(user)
+            # Récupérer la configuration du site de l'utilisateur
+            try:
+                user_site = get_user_site_configuration_api(user)
+            except Exception as e:
+                return Response(
+                    {'error': f'Erreur lors de la récupération de la configuration du site: {str(e)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             if user.is_superuser:
                 products = Product.objects.filter(id__in=product_ids).select_related('category', 'brand')
