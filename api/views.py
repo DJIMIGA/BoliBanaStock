@@ -2880,6 +2880,89 @@ class CatalogPDFAPIView(APIView):
             )
 
 
+class CatalogGenerationsAPIView(APIView):
+    """API pour récupérer la liste des catalogues générés"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer la liste des catalogues générés"""
+        try:
+            from apps.inventory.catalog_models import CatalogGeneration
+            from apps.core.models import User as CoreUser
+            
+            # Récupérer et valider l'utilisateur
+            user = request.user
+            
+            # Validation robuste de l'utilisateur
+            if not user or not hasattr(user, 'id') or not user.id:
+                return Response(
+                    {'error': 'Utilisateur invalide ou non authentifié'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            
+            # Récupérer l'utilisateur depuis la base de données core_user
+            try:
+                core_user = CoreUser.objects.get(id=user.id)
+            except CoreUser.DoesNotExist:
+                return Response(
+                    {'error': f'Utilisateur ID {user.id} non trouvé dans core_user'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            
+            # Récupérer la configuration du site de l'utilisateur
+            user_site = get_user_site_configuration_api(core_user)
+            
+            # Récupérer les catalogues générés
+            if core_user.is_superuser:
+                # Superuser peut voir tous les catalogues
+                catalogues = CatalogGeneration.objects.all().order_by('-created_at')
+            else:
+                # Utilisateur normal ne voit que ses catalogues ou ceux de son site
+                if user_site:
+                    catalogues = CatalogGeneration.objects.filter(
+                        site_configuration=user_site
+                    ).order_by('-created_at')
+                else:
+                    catalogues = CatalogGeneration.objects.filter(
+                        user=core_user
+                    ).order_by('-created_at')
+            
+            # Sérialiser les données
+            catalogues_data = []
+            for catalogue in catalogues:
+                catalogue_data = {
+                    'id': catalogue.id,
+                    'name': catalogue.name,
+                    'total_products': catalogue.total_products,
+                    'total_pages': catalogue.total_pages,
+                    'status': catalogue.status,
+                    'created_at': catalogue.created_at.isoformat(),
+                    'completed_at': catalogue.completed_at.isoformat() if catalogue.completed_at else None,
+                    'template': {
+                        'id': catalogue.template.id,
+                        'name': catalogue.template.name,
+                        'format': catalogue.template.format,
+                    } if catalogue.template else None,
+                    'user': {
+                        'id': catalogue.user.id,
+                        'username': catalogue.user.username,
+                    } if catalogue.user else None,
+                }
+                catalogues_data.append(catalogue_data)
+            
+            return Response({
+                'success': True,
+                'results': catalogues_data,
+                'count': len(catalogues_data)
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la récupération des catalogues: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 class LabelPrintAPIView(APIView):
     """API pour générer des étiquettes individuelles à coller"""
     permission_classes = [permissions.IsAuthenticated]

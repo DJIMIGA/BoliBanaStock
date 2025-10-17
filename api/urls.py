@@ -13,7 +13,7 @@ from .views import (
     CustomerViewSet, CreditTransactionViewSet,
     RefreshTokenView, ForceLogoutAllView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
-    CatalogPDFAPIView, LabelPrintAPIView,
+    CatalogPDFAPIView, CatalogGenerationsAPIView, LabelPrintAPIView,
     collect_static_files, GetRayonsView, GetSubcategoriesMobileView,
     ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView
 )
@@ -84,6 +84,7 @@ urlpatterns = [
     
     # Modes d'impression
     path('catalog/pdf/', CatalogPDFAPIView.as_view(), name='api_catalog_pdf'),
+    path('catalog/generations/', CatalogGenerationsAPIView.as_view(), name='api_catalog_generations'),
     path('labels/print/', LabelPrintAPIView.as_view(), name='api_label_print'),
     
     # Sélection hiérarchisée pour mobile

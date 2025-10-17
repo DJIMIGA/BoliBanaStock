@@ -1760,6 +1760,58 @@ export const catalogService = {
       console.error('❌ [CATALOG] Full error object:', error);
       throw error;
     }
+  },
+
+  // Récupérer la liste des catalogues générés
+  getCatalogs: async () => {
+    try {
+      console.log('📄 [CATALOG] Récupération de la liste des catalogues...');
+      
+      const response = await api.get('/catalog/generations/', {
+        timeout: 10000,
+      });
+      
+      console.log('✅ [CATALOG] Liste des catalogues récupérée');
+      console.log('✅ [CATALOG] Status:', response.status);
+      console.log('✅ [CATALOG] Response data:', JSON.stringify(response.data, null, 2));
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [CATALOG] Erreur lors de la récupération des catalogues:');
+      console.error('❌ [CATALOG] Error message:', error.message);
+      
+      if (error.response) {
+        console.error('❌ [CATALOG] Response status:', error.response.status);
+        console.error('❌ [CATALOG] Response data:', JSON.stringify(error.response.data, null, 2));
+      }
+      
+      throw error;
+    }
+  },
+
+  // Récupérer les détails d'un catalogue
+  getCatalogDetails: async (catalogId: number) => {
+    try {
+      console.log(`📄 [CATALOG] Récupération des détails du catalogue ${catalogId}...`);
+      
+      const response = await api.get(`/catalog/generations/${catalogId}/`, {
+        timeout: 10000,
+      });
+      
+      console.log('✅ [CATALOG] Détails du catalogue récupérés');
+      console.log('✅ [CATALOG] Status:', response.status);
+      console.log('✅ [CATALOG] Response data:', JSON.stringify(response.data, null, 2));
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [CATALOG] Erreur lors de la récupération des détails du catalogue:');
+      console.error('❌ [CATALOG] Error message:', error.message);
+      
+      if (error.response) {
+        console.error('❌ [CATALOG] Response status:', error.response.status);
+        console.error('❌ [CATALOG] Response data:', JSON.stringify(error.response.data, null, 2));
+      }
+      
+      throw error;
+    }
   }
 };
 

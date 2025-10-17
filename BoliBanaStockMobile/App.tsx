@@ -47,6 +47,7 @@ import {
   ProductCopyManagementScreen,
   CustomerListScreen,
   CustomerDetailScreen,
+  CatalogListScreen,
 } from './src/screens';
 import { RootStackParamList } from './src/types';
 import theme, { actionColors } from './src/utils/theme';
@@ -171,6 +172,7 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="ProductCopyManagement" component={ProductCopyManagementScreen} />
           <Stack.Screen name="CustomerList" component={CustomerListScreen} />
           <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
+          <Stack.Screen name="CatalogList" component={CatalogListScreen} />
           <Stack.Screen name="Transactions" component={TransactionsScreen} />
           <Stack.Screen name="Labels" component={LabelGeneratorScreen} />
         </>
