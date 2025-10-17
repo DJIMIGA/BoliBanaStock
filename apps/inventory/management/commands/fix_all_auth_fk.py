@@ -1,4 +1,4 @@
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.apps import apps
 
@@ -50,12 +50,12 @@ class Command(BaseCommand):
                         FROM pg_constraint
                         WHERE conrelid = '{table_name}'::regclass
                         AND confrelid = 'auth_user'::regclass
-                        AND conkey = (
+                        AND (
                             SELECT attnum 
                             FROM pg_attribute 
                             WHERE attrelid = '{table_name}'::regclass 
                             AND attname = '{column_name}'
-                        );
+                        ) = ANY (conkey)
                     """)
                     old_constraints = cursor.fetchall()
                     
@@ -132,12 +132,12 @@ class Command(BaseCommand):
                     FROM pg_constraint
                     WHERE conrelid = '{table_name}'::regclass
                     AND confrelid = 'auth_group'::regclass
-                    AND conkey = (
+                    AND (
                         SELECT attnum 
                         FROM pg_attribute 
                         WHERE attrelid = '{table_name}'::regclass 
                         AND attname = '{column_name}'
-                    );
+                    ) = ANY (conkey)
                 """)
                 old_constraints = cursor.fetchall()
                 
