@@ -37,9 +37,12 @@ const api = axios.create({
   },
 });
 
-// Intercepteur pour ajouter le token d'authentification
+// Intercepteur pour logger les requêtes
 api.interceptors.request.use(
   async (config) => {
+    console.log('🌐 [API_REQUEST]', config.method?.toUpperCase(), config.url);
+    console.log('🌐 [API_REQUEST] Headers:', config.headers);
+    console.log('🌐 [API_REQUEST] Data:', config.data);
     const token = await AsyncStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -68,12 +71,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     // Log des réponses réussies pour debug
-    console.log('✅ API Response Success', {
-      url: response.config?.url,
-      method: response.config?.method,
-      status: response.status,
-      timestamp: new Date().toISOString()
-    });
+    console.log('✅ [API_RESPONSE]', response.status, response.config?.url);
+    console.log('✅ [API_RESPONSE] Data:', response.data);
     return response;
   },
   async (error) => {
@@ -83,15 +82,8 @@ api.interceptors.response.use(
                              error.config?.method === 'delete');
     
     if (!isHandledLocally) {
-      console.error('❌ API Response Error', {
-        url: error.config?.url,
-        method: error.config?.method,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.message,
-        code: error.code,
-        timestamp: new Date().toISOString()
-      });
+      console.error('❌ [API_RESPONSE_ERROR]', error.config?.url, error.response?.status);
+      console.error('❌ [API_RESPONSE_ERROR] Data:', error.response?.data);
     }
 
     // Gestion des erreurs réseau
@@ -1736,16 +1728,36 @@ export const catalogService = {
     include_images: boolean;
   }) => {
     try {
-      console.log('📄 Génération du catalogue...', catalogData);
+      console.log('📄 [CATALOG] Début génération catalogue...');
+      console.log('📄 [CATALOG] Données envoyées:', JSON.stringify(catalogData, null, 2));
+      console.log('📄 [CATALOG] URL API:', api.defaults.baseURL + '/catalog/pdf/');
+      console.log('📄 [CATALOG] Headers:', api.defaults.headers);
       
       const response = await api.post('/catalog/pdf/', catalogData, {
         timeout: 30000, // 30 secondes pour la génération
       });
       
-      console.log('✅ Catalogue généré avec succès');
+      console.log('✅ [CATALOG] Catalogue généré avec succès');
+      console.log('✅ [CATALOG] Status:', response.status);
+      console.log('✅ [CATALOG] Response data:', JSON.stringify(response.data, null, 2));
       return response.data;
-    } catch (error) {
-      console.error('❌ Erreur lors de la génération du catalogue:', error);
+    } catch (error: any) {
+      console.error('❌ [CATALOG] Erreur lors de la génération du catalogue:');
+      console.error('❌ [CATALOG] Error type:', typeof error);
+      console.error('❌ [CATALOG] Error message:', error.message);
+      console.error('❌ [CATALOG] Error response:', error.response);
+      
+      if (error.response) {
+        console.error('❌ [CATALOG] Response status:', error.response.status);
+        console.error('❌ [CATALOG] Response data:', JSON.stringify(error.response.data, null, 2));
+        console.error('❌ [CATALOG] Response headers:', error.response.headers);
+      }
+      
+      if (error.request) {
+        console.error('❌ [CATALOG] Request config:', error.request);
+      }
+      
+      console.error('❌ [CATALOG] Full error object:', error);
       throw error;
     }
   }

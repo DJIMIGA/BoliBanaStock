@@ -2732,18 +2732,13 @@ class CatalogPDFAPIView(APIView):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             
-            # Vérifier que l'utilisateur existe réellement dans la base de données core_user
+            # Récupérer l'utilisateur depuis la base de données core_user
             try:
                 from apps.core.models import User as CoreUser
-                # Vérifier que l'utilisateur est bien une instance de core.User
-                if not isinstance(user, CoreUser):
-                    return Response(
-                        {'error': 'Type d\'utilisateur invalide - doit être core.User'},
-                        status=status.HTTP_401_UNAUTHORIZED
-                    )
-                
-                # Vérifier que l'utilisateur existe dans la base de données
-                if not CoreUser.objects.filter(id=user.id).exists():
+                # Récupérer l'utilisateur depuis la base de données
+                try:
+                    core_user = CoreUser.objects.get(id=user.id)
+                except CoreUser.DoesNotExist:
                     return Response(
                         {'error': f'Utilisateur ID {user.id} non trouvé dans core_user'},
                         status=status.HTTP_401_UNAUTHORIZED
@@ -2807,7 +2802,7 @@ class CatalogPDFAPIView(APIView):
                 name=f"Catalogue - {timezone.now().strftime('%Y-%m-%d %H:%M')}",
                 template=template,
                 site_configuration=user_site,
-                user=user,
+                user=core_user,
                 total_products=products.count(),
                 status='processing'
             )

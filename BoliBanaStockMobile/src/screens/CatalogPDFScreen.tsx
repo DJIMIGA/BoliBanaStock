@@ -70,6 +70,15 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
   }
 
   const generateCatalog = async () => {
+    console.log('🚀 [CATALOG_SCREEN] Début génération catalogue');
+    console.log('🚀 [CATALOG_SCREEN] Produits sélectionnés:', selectedProducts);
+    console.log('🚀 [CATALOG_SCREEN] Options:', {
+      includePrices,
+      includeStock,
+      includeDescriptions,
+      includeImages
+    });
+    
     setGenerating(true);
     try {
       const catalogData = {
@@ -80,15 +89,23 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
         include_images: includeImages,
       };
 
-      console.log('📄 Génération du catalogue...', catalogData);
+      console.log('📄 [CATALOG_SCREEN] Données préparées pour l\'API:', catalogData);
       
       // Appel API réel pour générer le catalogue
+      console.log('📡 [CATALOG_SCREEN] Appel du service catalogService...');
       const catalogResponse = await catalogService.generateCatalog(catalogData);
       
+      console.log('✅ [CATALOG_SCREEN] Réponse reçue du service:', catalogResponse);
+      
       setGenerating(false);
+      
+      const successMessage = `Catalogue généré avec succès !\n\n${catalogResponse.catalog.total_products} produits inclus\n${catalogResponse.catalog.total_pages} pages\n\nID du catalogue: ${catalogResponse.catalog.id}`;
+      
+      console.log('🎉 [CATALOG_SCREEN] Affichage du message de succès:', successMessage);
+      
       Alert.alert(
         'Succès', 
-        `Catalogue généré avec succès !\n\n${catalogResponse.catalog.total_products} produits inclus\n${catalogResponse.catalog.total_pages} pages\n\nID du catalogue: ${catalogResponse.catalog.id}`,
+        successMessage,
         [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]
@@ -96,16 +113,35 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
 
     } catch (error: any) {
       setGenerating(false);
-      console.error('❌ Erreur lors de la génération du catalogue:', error);
+      console.error('❌ [CATALOG_SCREEN] Erreur capturée dans generateCatalog:');
+      console.error('❌ [CATALOG_SCREEN] Error type:', typeof error);
+      console.error('❌ [CATALOG_SCREEN] Error message:', error.message);
+      console.error('❌ [CATALOG_SCREEN] Error response:', error.response);
+      console.error('❌ [CATALOG_SCREEN] Full error:', error);
       
       let errorMessage = 'Impossible de générer le catalogue PDF';
-      if (error.response?.status === 404) {
-        errorMessage = 'Service de génération de catalogue non disponible';
-      } else if (error.response?.status === 500) {
-        errorMessage = 'Erreur serveur lors de la génération';
+      
+      if (error.response) {
+        console.log('🔍 [CATALOG_SCREEN] Analyse de la réponse d\'erreur:');
+        console.log('🔍 [CATALOG_SCREEN] Status:', error.response.status);
+        console.log('🔍 [CATALOG_SCREEN] Data:', error.response.data);
+        
+        if (error.response.status === 404) {
+          errorMessage = 'Service de génération de catalogue non disponible';
+        } else if (error.response.status === 500) {
+          errorMessage = 'Erreur serveur lors de la génération';
+        } else if (error.response.status === 401) {
+          errorMessage = 'Erreur d\'authentification - veuillez vous reconnecter';
+        } else if (error.response.data?.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response.data?.detail) {
+          errorMessage = error.response.data.detail;
+        }
       } else if (error.message) {
         errorMessage = error.message;
       }
+      
+      console.log('💬 [CATALOG_SCREEN] Message d\'erreur final:', errorMessage);
       
       Alert.alert('Erreur', errorMessage);
     }
