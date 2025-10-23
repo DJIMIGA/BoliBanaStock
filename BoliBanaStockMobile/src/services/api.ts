@@ -1763,4 +1763,122 @@ export const catalogService = {
   }
 };
 
+// Service pour l'impression d'étiquettes
+export const labelPrintService = {
+  // Générer des étiquettes individuelles
+  generateLabels: async (labelData: {
+    product_ids: number[];
+    template_id?: number;
+    copies: number;
+    include_cug: boolean;
+    include_ean: boolean;
+    include_barcode: boolean;
+    printer_type?: 'pdf' | 'escpos' | 'tsc';
+  }) => {
+    try {
+      console.log('🏷️ [LABELS] Début génération étiquettes...');
+      console.log('🏷️ [LABELS] Données envoyées:', JSON.stringify(labelData, null, 2));
+      console.log('🏷️ [LABELS] URL API:', api.defaults.baseURL + '/labels/print/');
+      
+      const response = await api.post('/labels/print/', labelData, {
+        timeout: 30000, // 30 secondes pour la génération
+      });
+      
+      console.log('✅ [LABELS] Étiquettes générées avec succès');
+      console.log('✅ [LABELS] Status:', response.status);
+      console.log('✅ [LABELS] Response data:', JSON.stringify(response.data, null, 2));
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [LABELS] Erreur lors de la génération des étiquettes:');
+      console.error('❌ [LABELS] Error type:', typeof error);
+      console.error('❌ [LABELS] Error message:', error.message);
+      console.error('❌ [LABELS] Error response:', error.response);
+      
+      if (error.response) {
+        console.error('❌ [LABELS] Response status:', error.response.status);
+        console.error('❌ [LABELS] Response data:', JSON.stringify(error.response.data, null, 2));
+        console.error('❌ [LABELS] Response headers:', error.response.headers);
+      }
+      
+      if (error.request) {
+        console.error('❌ [LABELS] Request config:', error.request);
+      }
+      
+      console.error('❌ [LABELS] Full error object:', error);
+      throw error;
+    }
+  },
+
+  // Obtenir les modèles d'étiquettes disponibles
+  getTemplates: async () => {
+    try {
+      console.log('📋 [TEMPLATES] Récupération des modèles d\'étiquettes...');
+      
+      // Essayer d'abord l'endpoint spécifique
+      try {
+        const response = await api.get('/labels/templates/');
+        console.log('✅ [TEMPLATES] Modèles récupérés avec succès');
+        console.log('✅ [TEMPLATES] Status:', response.status);
+        console.log('✅ [TEMPLATES] Response data:', JSON.stringify(response.data, null, 2));
+        return response.data;
+      } catch (templateError: any) {
+        console.warn('⚠️ [TEMPLATES] Endpoint /labels/templates/ non disponible, utilisation du fallback');
+        
+        // Fallback: créer un modèle par défaut
+        const defaultTemplate = {
+          id: 1,
+          name: 'Étiquette par défaut',
+          type: 'barcode',
+          width_mm: 40,
+          height_mm: 30,
+          dpi: 203,
+          is_default: true,
+          paper_width_mm: 57.5,
+          printing_width_mm: 48.0
+        };
+        
+        console.log('✅ [TEMPLATES] Utilisation du modèle par défaut:', defaultTemplate);
+        return [defaultTemplate];
+      }
+    } catch (error: any) {
+      console.error('❌ [TEMPLATES] Erreur lors de la récupération des modèles:');
+      console.error('❌ [TEMPLATES] Error message:', error.message);
+      
+      // En cas d'erreur, retourner un modèle par défaut
+      const defaultTemplate = {
+        id: 1,
+        name: 'Étiquette par défaut',
+        type: 'barcode',
+        width_mm: 40,
+        height_mm: 30,
+        dpi: 203,
+        is_default: true,
+        paper_width_mm: 57.5,
+        printing_width_mm: 48.0
+      };
+      
+      console.log('✅ [TEMPLATES] Fallback vers modèle par défaut:', defaultTemplate);
+      return [defaultTemplate];
+    }
+  },
+
+  // Obtenir les paramètres d'étiquettes
+  getSettings: async () => {
+    try {
+      console.log('⚙️ [SETTINGS] Récupération des paramètres d\'étiquettes...');
+      
+      const response = await api.get('/labels/settings/');
+      
+      console.log('✅ [SETTINGS] Paramètres récupérés avec succès');
+      console.log('✅ [SETTINGS] Status:', response.status);
+      console.log('✅ [SETTINGS] Response data:', JSON.stringify(response.data, null, 2));
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [SETTINGS] Erreur lors de la récupération des paramètres:');
+      console.error('❌ [SETTINGS] Error message:', error.message);
+      throw error;
+    }
+  }
+};
+
 export default api; 

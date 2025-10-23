@@ -1,6 +1,8 @@
 {
   "dependencies": {
     "@railway/cli": "^4.6.3",
+    "react-native-blob-util": "^0.22.2",
+    "react-native-pdf": "^7.0.3",
     "react-native-worklets-core": "^1.6.2"
   }
 }

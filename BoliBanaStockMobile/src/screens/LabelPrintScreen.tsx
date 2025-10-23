@@ -10,9 +10,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import theme from '../utils/theme';
 import { useNavigation } from '@react-navigation/native';
 import { PrintOptionsConfig } from '../components/PrintOptionsConfig';
+import { productService, labelPrintService } from '../services/api';
 
 interface Product {
   id: number;
@@ -37,18 +42,102 @@ interface LabelPrintScreenProps {
 
 const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [generating, setGenerating] = useState(false);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [lastLabels, setLastLabels] = useState<any>(null);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   
   // Récupérer les paramètres passés depuis PrintModeSelectionScreen
   const selectedProducts = route?.params?.selectedProducts || [];
   
-  // Options de configuration
+  // Options de configuration simplifiées
   const [copies, setCopies] = useState(1);
-  const [includeCug, setIncludeCug] = useState(true);
-  const [includeEan, setIncludeEan] = useState(true);
-  const [includeBarcode, setIncludeBarcode] = useState(true);
   const [includePrices, setIncludePrices] = useState(true);
-  const [includeStock, setIncludeStock] = useState(true);
+  
+  // Configuration de l'imprimante
+  const [printerType, setPrinterType] = useState<'pdf' | 'escpos' | 'tsc'>('pdf');
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  
+  // Paramètres thermiques
+  const [thermalSettings, setThermalSettings] = useState({
+    density: 8,
+    speed: 4,
+    direction: 1,
+    gap: 2,
+    offset: 0
+  });
+  
+  // Options fixes (toujours incluses)
+  const includeCug = true;
+  const includeEan = true;
+  const includeBarcode = true;
+
+  // Charger les données des produits sélectionnés
+  useEffect(() => {
+    const loadProducts = async () => {
+      if (selectedProducts.length === 0) return;
+      
+      setLoadingProducts(true);
+      try {
+        console.log('🏷️ [LABELS] Chargement des produits:', selectedProducts);
+        
+        // Récupérer les détails de chaque produit
+        const productPromises = selectedProducts.map(id => productService.getProduct(id));
+        const productsData = await Promise.all(productPromises);
+        
+        console.log('✅ [LABELS] Produits chargés:', productsData.length);
+        setProducts(productsData);
+        
+      } catch (error) {
+        console.error('❌ [LABELS] Erreur chargement produits:', error);
+        Alert.alert('Erreur', 'Impossible de charger les données des produits');
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+
+    loadProducts();
+  }, [selectedProducts]);
+
+  // Charger les modèles d'étiquettes
+  useEffect(() => {
+    const loadTemplates = async () => {
+      setLoadingTemplates(true);
+      try {
+        console.log('📋 [TEMPLATES] Chargement des modèles d\'étiquettes...');
+        
+        const templatesData = await labelPrintService.getTemplates();
+        console.log('✅ [TEMPLATES] Réponse API complète:', JSON.stringify(templatesData, null, 2));
+        
+        // Vérifier que templatesData est un tableau
+        if (Array.isArray(templatesData)) {
+          console.log('✅ [TEMPLATES] Modèles chargés:', templatesData.length);
+          setTemplates(templatesData);
+          
+          // Sélectionner le premier modèle par défaut
+          if (templatesData.length > 0) {
+            const defaultTemplate = templatesData.find((t: any) => t.is_default) || templatesData[0];
+            setSelectedTemplate(defaultTemplate);
+          }
+        } else {
+          console.warn('⚠️ [TEMPLATES] Réponse API non valide, pas un tableau:', typeof templatesData);
+          setTemplates([]);
+        }
+        
+      } catch (error) {
+        console.error('❌ [TEMPLATES] Erreur chargement modèles:', error);
+        Alert.alert('Erreur', 'Impossible de charger les modèles d\'étiquettes');
+      } finally {
+        setLoadingTemplates(false);
+      }
+    };
+
+    loadTemplates();
+  }, []);
 
   // Vérifier qu'il y a des produits sélectionnés
   if (selectedProducts.length === 0) {
@@ -71,46 +160,456 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
   }
 
 
+  // Fonction pour valider un code EAN13
+  const validateEAN13 = (code: string): boolean => {
+    if (!code || code.length !== 13) return false;
+    
+    // Vérifier que tous les caractères sont des chiffres
+    if (!/^\d{13}$/.test(code)) return false;
+    
+    // Calculer la clé de contrôle
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      const digit = parseInt(code[i]);
+      sum += digit * (i % 2 === 0 ? 1 : 3);
+    }
+    
+    const checkDigit = (10 - (sum % 10)) % 10;
+    return checkDigit === parseInt(code[12]);
+  };
+
+  // Fonction pour générer un EAN13 valide à partir de l'ID du produit
+  const generateEANFromProductId = (productId: number): string => {
+    // Convertir l'ID en string et le padder pour avoir 12 chiffres
+    const idString = productId.toString().padStart(12, '0');
+    
+    // Calculer la clé de contrôle EAN13
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      const digit = parseInt(idString[i]);
+      // Multiplier par 1 pour les positions impaires, 3 pour les positions paires
+      sum += digit * (i % 2 === 0 ? 1 : 3);
+    }
+    
+    // La clé de contrôle est le complément à 10 du reste de la division par 10
+    const checkDigit = (10 - (sum % 10)) % 10;
+    
+    // Retourner l'EAN13 complet (12 chiffres + clé de contrôle)
+    return idString + checkDigit.toString();
+  };
+
+  // Fonction pour générer le code-barres EAN13 de qualité scannable
+  const generateEAN13Barcode = (code: string) => {
+    if (!code || code.length !== 13) return '';
+    
+    // Patterns EAN13 corrects pour les chiffres 0-9
+    const patterns: Record<string, string[]> = {
+      '0': ['0001101', '0100111', '1110010'],
+      '1': ['0011001', '0110011', '1100110'],
+      '2': ['0010011', '0011011', '1101100'],
+      '3': ['0111101', '0100001', '1000010'],
+      '4': ['0100011', '0011101', '1011100'],
+      '5': ['0110001', '0111001', '1001110'],
+      '6': ['0101111', '0000101', '1010000'],
+      '7': ['0111011', '0010001', '1000100'],
+      '8': ['0110111', '0001001', '1001000'],
+      '9': ['0001011', '0010111', '1110100']
+    };
+    
+    let svg = '';
+    let x = 0;
+    const barWidth = 1;
+    const barHeight = 12;
+    const quietZone = 4;
+    
+    // Calculer la largeur totale du code-barres
+    const totalWidth = (quietZone * 2) + (barWidth * 2) + barWidth + (barWidth * 2) + barWidth + (6 * 7 * barWidth) + (5 * barWidth) + (6 * 7 * barWidth) + (barWidth * 2) + barWidth + (barWidth * 2) + barWidth + quietZone;
+    
+    // Centrer le code-barres dans le SVG
+    const svgWidth = 100;
+    const startX = (svgWidth - totalWidth) / 2;
+    x = startX;
+    
+    // Zone de silence gauche
+    x += quietZone;
+    
+    // Barres de garde gauche (101)
+    svg += `<rect x="${x}" y="0" width="${barWidth * 2}" height="${barHeight}" fill="black"/>`;
+    x += barWidth * 2;
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+    x += barWidth;
+    svg += `<rect x="${x}" y="0" width="${barWidth * 2}" height="${barHeight}" fill="black"/>`;
+    x += barWidth * 2;
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+    x += barWidth;
+    
+    // Chiffres de gauche (6 premiers) - utiliser le pattern L
+    for (let i = 1; i <= 6; i++) {
+      const digit = code[i];
+      const pattern = patterns[digit] || patterns['0'];
+      const leftPattern = pattern[0]; // Pattern L
+      
+      for (let j = 0; j < 7; j++) {
+        if (leftPattern[j] === '1') {
+          svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="black"/>`;
+        } else {
+          svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+        }
+        x += barWidth;
+      }
+    }
+    
+    // Barres centrales (01010)
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+    x += barWidth;
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="black"/>`;
+    x += barWidth;
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+    x += barWidth;
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="black"/>`;
+    x += barWidth;
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+    x += barWidth;
+    
+    // Chiffres de droite (6 derniers) - utiliser le pattern R
+    for (let i = 7; i <= 12; i++) {
+      const digit = code[i];
+      const pattern = patterns[digit] || patterns['0'];
+      const rightPattern = pattern[2]; // Pattern R (inversé)
+      
+      for (let j = 0; j < 7; j++) {
+        if (rightPattern[j] === '1') {
+          svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="black"/>`;
+        } else {
+          svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+        }
+        x += barWidth;
+      }
+    }
+    
+    // Barres de garde droite (101)
+    svg += `<rect x="${x}" y="0" width="${barWidth * 2}" height="${barHeight}" fill="black"/>`;
+    x += barWidth * 2;
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+    x += barWidth;
+    svg += `<rect x="${x}" y="0" width="${barWidth * 2}" height="${barHeight}" fill="black"/>`;
+    x += barWidth * 2;
+    svg += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="white"/>`;
+    x += barWidth;
+    
+    // Zone de silence droite
+    x += quietZone;
+    
+    return svg;
+  };
+
+  // Fonction pour construire le HTML des étiquettes
+  const buildLabelsHtml = (products: any[]) => {
+    const totalLabels = products.length * copies;
+    const labelsPerRow = 2; // 2 étiquettes par ligne
+    const rows = Math.ceil(totalLabels / labelsPerRow);
+    
+    let html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Étiquettes Produits</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 5px;
+            background: white;
+          }
+          .label {
+            width: 25%;
+            height: 60px;
+            border: 1px solid #ddd;
+            margin: 1px;
+            padding: 2px;
+            display: inline-block;
+            vertical-align: top;
+            box-sizing: border-box;
+            position: relative;
+          }
+          .product-name {
+            font-size: 8px;
+            font-weight: bold;
+            margin-bottom: 1px;
+            line-height: 1.0;
+            max-height: 16px;
+            overflow: hidden;
+          }
+          .cug {
+            font-size: 6px;
+            color: #666;
+            margin-bottom: 1px;
+          }
+          .price {
+            font-size: 7px;
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 1px;
+          }
+          .barcode-container {
+            position: absolute;
+            bottom: 2px;
+            left: 2px;
+            right: 2px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+          }
+          .barcode {
+            font-size: 5px;
+            font-family: monospace;
+            margin-bottom: 1px;
+            text-align: center;
+          }
+          .barcode-svg {
+            width: 100%;
+            height: 10px;
+            display: block;
+            margin: 0 auto;
+          }
+          @media print {
+            body { margin: 0; padding: 0; }
+            .label { page-break-inside: avoid; }
+          }
+        </style>
+      </head>
+      <body>
+    `;
+    
+    // Générer les étiquettes
+    for (let i = 0; i < totalLabels; i++) {
+      const productIndex = Math.floor(i / copies);
+      const product = products[productIndex];
+      
+      if (product) {
+        // Logique pour le code-barres selon la structure Product avec barcodes array
+        let eanCode = '';
+        let barcodeSource = '';
+        
+        // 1. Chercher le code-barres principal dans le tableau barcodes
+        if (product.barcodes && Array.isArray(product.barcodes) && product.barcodes.length > 0) {
+          // Chercher le code-barres principal (is_primary: true)
+          const primaryBarcode = product.barcodes.find((b: any) => b.is_primary && b.ean && b.ean.length === 13);
+          if (primaryBarcode) {
+            eanCode = primaryBarcode.ean;
+            barcodeSource = 'primary_barcode';
+          } else {
+            // Si pas de principal, prendre le premier code-barres valide
+            const validBarcode = product.barcodes.find((b: any) => b.ean && b.ean.length === 13);
+            if (validBarcode) {
+              eanCode = validBarcode.ean;
+              barcodeSource = 'barcode_array';
+            }
+          }
+        }
+        
+        // 2. Fallback vers generated_ean si pas de barcodes dans le tableau
+        if (!eanCode && product.generated_ean && product.generated_ean.length === 13) {
+          eanCode = product.generated_ean;
+          barcodeSource = 'generated_ean';
+        }
+        
+        // 3. Fallback vers les anciens champs pour compatibilité
+        if (!eanCode && product.barcode_ean && product.barcode_ean.length === 13) {
+          eanCode = product.barcode_ean;
+          barcodeSource = 'barcode_ean_legacy';
+        } else if (!eanCode && product.ean && product.ean.length === 13) {
+          eanCode = product.ean;
+          barcodeSource = 'ean_legacy';
+        }
+        
+        // 4. Dernier recours : générer un EAN basé sur l'ID du produit
+        if (!eanCode) {
+          eanCode = generateEANFromProductId(product.id);
+          barcodeSource = 'generated_from_id';
+        }
+        
+        // Valider le code-barres généré
+        const isValidBarcode = validateEAN13(eanCode);
+        if (!isValidBarcode) {
+          console.warn(`⚠️ [LABELS] Code-barres invalide pour ${product.name}: ${eanCode}`);
+          // Régénérer un code valide si nécessaire
+          if (barcodeSource === 'generated_from_id') {
+            eanCode = generateEANFromProductId(product.id);
+            console.log(`🔄 [LABELS] Code-barres régénéré: ${eanCode}`);
+          }
+        }
+        
+        console.log(`🏷️ [LABELS] Produit ${product.name} - Code-barres: ${eanCode} (source: ${barcodeSource}, valid: ${isValidBarcode})`);
+        console.log(`   Barcodes array:`, product.barcodes);
+        
+        const barcodeSvg = generateEAN13Barcode(eanCode);
+        
+        // Gérer le prix
+        const price = product.selling_price || product.price || 0;
+        const priceDisplay = price > 0 ? `${price.toLocaleString()} FCFA` : 'Prix N/A';
+        
+        html += `
+          <div class="label">
+            <div class="product-name">${product.name || 'Produit'}</div>
+            <div class="cug">CUG: ${product.cug || 'N/A'}</div>
+            ${includePrices && price > 0 ? `<div class="price">${priceDisplay}</div>` : ''}
+            <div class="barcode-container">
+              <div style="display: flex; justify-content: center; align-items: center; width: 100%; margin-bottom: 1px;">
+                <svg class="barcode-svg" viewBox="0 0 100 12" style="width: 100%; height: 10px; display: block; margin: 0 auto;">
+                  <rect width="100" height="12" fill="white"/>
+                  ${barcodeSvg}
+                </svg>
+              </div>
+              <div class="barcode" style="text-align: center; width: 100%; display: flex; justify-content: center;">${eanCode}</div>
+            </div>
+          </div>
+        `;
+      }
+    }
+    
+    html += `
+      </body>
+      </html>
+    `;
+    
+    return html;
+  };
+
   const generateLabels = async () => {
     if (copies < 1 || copies > 100) {
       Alert.alert('Erreur', 'Le nombre de copies doit être entre 1 et 100');
       return;
     }
 
+    if (products.length === 0) {
+      Alert.alert('Erreur', 'Aucune donnée de produit disponible');
+      return;
+    }
+
     setGenerating(true);
     try {
-      // Simuler l'appel API
-      const labelData = {
-        product_ids: selectedProducts,
-        copies: copies,
-        include_cug: includeCug,
-        include_ean: includeEan,
-        include_barcode: includeBarcode,
-      };
+      console.log('🏷️ [LABELS] Génération des étiquettes:', {
+        products: products.length,
+        copies,
+        includePrices,
+        printerType,
+        selectedTemplate: selectedTemplate?.id,
+        total: products.length * copies
+      });
 
-      // Ici vous feriez l'appel API réel
-      // const response = await fetch('/api/v1/labels/print/', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(labelData)
-      // });
+      // Pour PDF : génération locale (plus rapide et directe)
+      if (printerType === 'pdf') {
+        console.log('📄 [LABELS] Génération PDF locale...');
+        
+        // Construire le HTML avec les vraies données
+        const html = buildLabelsHtml(products);
+        
+        // Générer le PDF
+        const { uri } = await Print.printToFileAsync({
+          html,
+          base64: false,
+        });
 
-      // Simulation du succès
-      setTimeout(() => {
-        setGenerating(false);
+        console.log('📄 [LABELS] PDF généré localement:', uri);
+
+        // Sauvegarder les données pour la prévisualisation
+        setLastLabels({
+          products: products,
+          copies,
+          includePrices,
+          printerType,
+          template: selectedTemplate,
+          total: products.length * copies,
+          generatedAt: new Date().toISOString()
+        });
+
+        // Afficher directement la prévisualisation
+        setPreviewUri(uri);
+        
+      } else {
+        // Pour imprimantes thermiques : utiliser l'API backend
+        console.log('🖨️ [LABELS] Génération via API backend pour imprimante thermique...');
+        
+        const labelData = {
+          product_ids: products.map(p => p.id),
+          template_id: selectedTemplate?.id,
+          copies,
+          include_cug: includeCug,
+          include_ean: includeEan,
+          include_barcode: includeBarcode,
+          printer_type: printerType,
+          // Paramètres spécifiques pour imprimantes thermiques
+          thermal_settings: thermalSettings
+        };
+
+        const result = await labelPrintService.generateLabels(labelData);
+        console.log('✅ [LABELS] Étiquettes générées via API:', result);
+
+        // Sauvegarder les données
+        setLastLabels({
+          products: products,
+          copies,
+          includePrices,
+          printerType,
+          template: selectedTemplate,
+          total: products.length * copies,
+          generatedAt: new Date().toISOString()
+        });
+
+        // Afficher un message de succès pour les imprimantes thermiques
         Alert.alert(
-          'Succès', 
-          `Étiquettes générées avec succès !\n${selectedProducts.length} étiquettes x ${copies} copies = ${selectedProducts.length * copies} étiquettes au total`,
-          [
-            { text: 'OK', onPress: () => navigation.goBack() }
-          ]
+          'Étiquettes générées',
+          `Les étiquettes ont été générées avec succès pour l'imprimante ${printerType.toUpperCase()}.\n\nTotal: ${result.labels?.total_labels || products.length * copies} étiquettes`
         );
-      }, 2000);
+      }
 
     } catch (error) {
-      setGenerating(false);
+      console.error('❌ [LABELS] Erreur génération:', error);
       Alert.alert('Erreur', 'Impossible de générer les étiquettes');
+    } finally {
+      setGenerating(false);
     }
+  };
+
+  const handleShareLabels = async () => {
+    if (!previewUri) return;
+    
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(previewUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Partager les étiquettes'
+        });
+      } else {
+        Alert.alert('Erreur', 'Le partage n\'est pas disponible sur cet appareil');
+      }
+    } catch (error) {
+      console.error('❌ [LABELS] Erreur partage:', error);
+      Alert.alert('Erreur', 'Impossible de partager les étiquettes');
+    }
+  };
+
+  const handlePrintLabels = async () => {
+    if (!previewUri) return;
+    
+    try {
+      await Print.printAsync({
+        uri: previewUri,
+      });
+    } catch (error) {
+      console.error('❌ [LABELS] Erreur impression:', error);
+      Alert.alert('Erreur', 'Impossible d\'imprimer les étiquettes');
+    }
+  };
+
+  const closePreview = () => {
+    setPreviewUri(null);
+    setLastLabels(null);
   };
 
 
@@ -129,64 +628,226 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Sous-titre et résumé des produits */}
-        <View style={styles.subtitleContainer}>
-          <Text style={styles.subtitle}>Imprimer des étiquettes à coller sur vos produits</Text>
+      {previewUri ? (
+        <View style={styles.previewContainer}>
+          <View style={styles.previewHeader}>
+            <View style={styles.previewTitleContainer}>
+              <Text style={styles.previewTitle}>Étiquettes générées !</Text>
+              <Text style={styles.previewSubtitle}>
+                {lastLabels?.total || 0} étiquettes • {lastLabels?.products?.length || 0} produits
+              </Text>
+            </View>
+            <TouchableOpacity onPress={closePreview} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
           
-          {/* Résumé des produits sélectionnés */}
-          <View style={styles.selectionSummary}>
-            <Text style={styles.selectionSummaryText}>
-              🏷️ {selectedProducts.length} produit{selectedProducts.length > 1 ? 's' : ''} sélectionné{selectedProducts.length > 1 ? 's' : ''}
+          <View style={styles.previewContent}>
+            <View style={styles.previewInfo}>
+              <View style={styles.previewInfoRow}>
+                <Ionicons name="document-text" size={20} color="#28a745" />
+                <Text style={styles.previewInfoText}>PDF généré avec succès</Text>
+              </View>
+              <View style={styles.previewInfoRow}>
+                <Ionicons name="time" size={20} color="#666" />
+                <Text style={styles.previewInfoText}>
+                  {lastLabels?.generatedAt ? new Date(lastLabels.generatedAt).toLocaleTimeString() : 'Maintenant'}
             </Text>
-            <Text style={styles.selectionSummarySubtext}>
-              Configuration: {includePrices ? '💰 Prix inclus' : '💰 Prix masqués'} • {includeStock ? '📊 Stock inclus' : '📊 Stock masqué'}
+              </View>
+              <View style={styles.previewInfoRow}>
+                <Ionicons name="copy" size={20} color="#666" />
+                <Text style={styles.previewInfoText}>
+                  {copies} copie{copies > 1 ? 's' : ''} par produit
             </Text>
+              </View>
+              {includePrices && (
+                <View style={styles.previewInfoRow}>
+                  <Ionicons name="cash" size={20} color="#28a745" />
+                  <Text style={styles.previewInfoText}>Prix inclus</Text>
+                </View>
+              )}
+            </View>
+          </View>
+          
+          <View style={[styles.previewActions, { paddingBottom: Math.max(34, insets.bottom + 16) }]}>
+            <TouchableOpacity style={styles.shareButton} onPress={handleShareLabels}>
+              <Ionicons name="share" size={20} color="white" />
+              <Text style={styles.previewActionText}>Partager</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.printButton} onPress={handlePrintLabels}>
+              <Ionicons name="print" size={20} color="white" />
+              <Text style={styles.previewActionText}>Imprimer</Text>
+            </TouchableOpacity>
           </View>
         </View>
+      ) : loadingProducts ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary[500]} />
+          <Text style={styles.loadingText}>Chargement des produits...</Text>
+        </View>
+      ) : (
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Configuration de l'imprimante */}
+        <View style={styles.printerConfigSection}>
+          <Text style={styles.sectionTitle}>Configuration de l'imprimante</Text>
+          
+          {/* Sélection du type d'imprimante */}
+          <View style={styles.printerTypeSection}>
+            <Text style={styles.printerTypeLabel}>Type d'imprimante</Text>
+            <View style={styles.printerTypeButtons}>
+              <TouchableOpacity
+                style={[styles.printerTypeButton, printerType === 'pdf' && styles.printerTypeButtonActive]}
+                onPress={() => setPrinterType('pdf')}
+              >
+                <Ionicons name="document-text" size={24} color={printerType === 'pdf' ? 'white' : '#666'} />
+                <Text style={[styles.printerTypeButtonText, printerType === 'pdf' && styles.printerTypeButtonTextActive]}>
+                  PDF
+            </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.printerTypeButton, printerType === 'escpos' && styles.printerTypeButtonActive]}
+                onPress={() => setPrinterType('escpos')}
+              >
+                <Ionicons name="print" size={24} color={printerType === 'escpos' ? 'white' : '#666'} />
+                <Text style={[styles.printerTypeButtonText, printerType === 'escpos' && styles.printerTypeButtonTextActive]}>
+                  Thermique
+            </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.printerTypeButton, printerType === 'tsc' && styles.printerTypeButtonActive]}
+                onPress={() => setPrinterType('tsc')}
+              >
+                <Ionicons name="hardware-chip" size={24} color={printerType === 'tsc' ? 'white' : '#666'} />
+                <Text style={[styles.printerTypeButtonText, printerType === 'tsc' && styles.printerTypeButtonTextActive]}>
+                  TSC
+                </Text>
+              </TouchableOpacity>
+          </View>
+          </View>
 
-        {/* Configuration Options */}
+          {/* Sélection du modèle d'étiquette */}
+          {loadingTemplates ? (
+            <View style={styles.loadingTemplates}>
+              <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+              <Text style={styles.loadingTemplatesText}>Chargement des modèles...</Text>
+            </View>
+          ) : (
+            <View style={styles.templateSection}>
+              <Text style={styles.templateLabel}>Modèle d'étiquette</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
+                {Array.isArray(templates) && templates.map((template) => (
+                  <TouchableOpacity
+                    key={template.id}
+                    style={[styles.templateButton, selectedTemplate?.id === template.id && styles.templateButtonActive]}
+                    onPress={() => setSelectedTemplate(template)}
+                  >
+                    <Text style={[styles.templateButtonText, selectedTemplate?.id === template.id && styles.templateButtonTextActive]}>
+                      {template.name}
+                    </Text>
+                    <Text style={[styles.templateButtonSubtext, selectedTemplate?.id === template.id && styles.templateButtonSubtextActive]}>
+                      {template.width_mm}x{template.height_mm}mm
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+           )}
+           
+           {/* Configuration des paramètres thermiques */}
+           {(printerType === 'escpos' || printerType === 'tsc') && (
+             <View style={styles.thermalSettingsSection}>
+               <Text style={styles.thermalSettingsTitle}>Paramètres d'impression thermique</Text>
+               
+               <View style={styles.thermalSettingsGrid}>
+                 <View style={styles.thermalSettingRow}>
+                   <Text style={styles.thermalSettingLabel}>Densité</Text>
+                   <View style={styles.thermalSettingValue}>
+                     <TouchableOpacity
+                       style={styles.thermalSettingButton}
+                       onPress={() => setThermalSettings(prev => ({ ...prev, density: Math.max(1, prev.density - 1) }))}
+                     >
+                       <Text style={styles.thermalSettingButtonText}>-</Text>
+                     </TouchableOpacity>
+                     <Text style={styles.thermalSettingValueText}>{thermalSettings.density}</Text>
+                     <TouchableOpacity
+                       style={styles.thermalSettingButton}
+                       onPress={() => setThermalSettings(prev => ({ ...prev, density: Math.min(15, prev.density + 1) }))}
+                     >
+                       <Text style={styles.thermalSettingButtonText}>+</Text>
+                     </TouchableOpacity>
+                   </View>
+                 </View>
+                 
+                 <View style={styles.thermalSettingRow}>
+                   <Text style={styles.thermalSettingLabel}>Vitesse</Text>
+                   <View style={styles.thermalSettingValue}>
+                     <TouchableOpacity
+                       style={styles.thermalSettingButton}
+                       onPress={() => setThermalSettings(prev => ({ ...prev, speed: Math.max(1, prev.speed - 1) }))}
+                     >
+                       <Text style={styles.thermalSettingButtonText}>-</Text>
+                     </TouchableOpacity>
+                     <Text style={styles.thermalSettingValueText}>{thermalSettings.speed}</Text>
+                     <TouchableOpacity
+                       style={styles.thermalSettingButton}
+                       onPress={() => setThermalSettings(prev => ({ ...prev, speed: Math.min(15, prev.speed + 1) }))}
+                     >
+                       <Text style={styles.thermalSettingButtonText}>+</Text>
+                     </TouchableOpacity>
+                   </View>
+                 </View>
+                 
+                 <View style={styles.thermalSettingRow}>
+                   <Text style={styles.thermalSettingLabel}>Espacement (mm)</Text>
+                   <View style={styles.thermalSettingValue}>
+                     <TouchableOpacity
+                       style={styles.thermalSettingButton}
+                       onPress={() => setThermalSettings(prev => ({ ...prev, gap: Math.max(0, prev.gap - 1) }))}
+                     >
+                       <Text style={styles.thermalSettingButtonText}>-</Text>
+                     </TouchableOpacity>
+                     <Text style={styles.thermalSettingValueText}>{thermalSettings.gap}</Text>
+                     <TouchableOpacity
+                       style={styles.thermalSettingButton}
+                       onPress={() => setThermalSettings(prev => ({ ...prev, gap: Math.min(10, prev.gap + 1) }))}
+                     >
+                       <Text style={styles.thermalSettingButtonText}>+</Text>
+                     </TouchableOpacity>
+                   </View>
+                 </View>
+               </View>
+             </View>
+           )}
+         </View>
+
+         {/* Configuration Options */}
         <PrintOptionsConfig
           screenType="labels"
           includePrices={includePrices}
           setIncludePrices={setIncludePrices}
-          includeStock={includeStock}
-          setIncludeStock={setIncludeStock}
           copies={copies}
           setCopies={setCopies}
-          includeCug={includeCug}
-          setIncludeCug={setIncludeCug}
-          includeEan={includeEan}
-          setIncludeEan={setIncludeEan}
-          includeBarcode={includeBarcode}
-          setIncludeBarcode={setIncludeBarcode}
+          {...({} as any)}
         />
 
-        {/* Product Selection */}
-        {/* Résumé des étiquettes */}
-        <View style={styles.labelsSummary}>
-          <Text style={styles.sectionTitle}>📊 Résumé des Étiquettes</Text>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryText}>
-              🏷️ {selectedProducts.length} produit{selectedProducts.length > 1 ? 's' : ''} sélectionné{selectedProducts.length > 1 ? 's' : ''}
+          {/* Résumé compact */}
+          <View style={styles.compactSummary}>
+            <Text style={styles.compactSummaryText}>
+              {products.length} produit{products.length > 1 ? 's' : ''} × {copies} copie{copies > 1 ? 's' : ''} = {products.length * copies} étiquettes
             </Text>
-            <Text style={styles.summaryText}>
-              📄 {copies} copie{copies > 1 ? 's' : ''} par produit
-            </Text>
-            <Text style={styles.summaryTotal}>
-              📦 Total : {selectedProducts.length * copies} étiquettes
-            </Text>
-          </View>
         </View>
 
         {/* Generate Button */}
         <TouchableOpacity
           style={[
             styles.generateButton,
-            selectedProducts.length === 0 && styles.disabledButton
+              (products.length === 0 || generating) && styles.disabledButton
           ]}
           onPress={generateLabels}
-          disabled={selectedProducts.length === 0 || generating}
+            disabled={products.length === 0 || generating}
         >
           {generating ? (
             <ActivityIndicator color="white" />
@@ -196,8 +857,12 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
             </Text>
           )}
         </TouchableOpacity>
+          
+          {/* Espace supplémentaire pour éviter la superposition */}
+          <View style={{ height: 20 }} />
 
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
@@ -209,8 +874,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
-    paddingTop: 30,
+    padding: 16,
+    paddingBottom: 120, // Espace pour éviter la superposition avec la navigation
   },
   loadingContainer: {
     flex: 1,
@@ -220,7 +885,180 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#6c757d',
+    color: theme.colors.text.secondary,
+  },
+  // Styles pour la configuration de l'imprimante
+  printerConfigSection: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 16,
+  },
+  printerTypeSection: {
+    marginBottom: 20,
+  },
+  printerTypeLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+  },
+  printerTypeButtons: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  printerTypeButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: 'white',
+    minHeight: 60,
+  },
+  printerTypeButtonActive: {
+    backgroundColor: theme.colors.primary[500],
+    borderColor: theme.colors.primary[500],
+  },
+  printerTypeButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  printerTypeButtonTextActive: {
+    color: 'white',
+  },
+  templateSection: {
+    marginBottom: 8,
+  },
+  templateLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+  },
+  templateScroll: {
+    flexDirection: 'row',
+  },
+  templateButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: 'white',
+    marginRight: 8,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  templateButtonActive: {
+    backgroundColor: theme.colors.primary[500],
+    borderColor: theme.colors.primary[500],
+  },
+  templateButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    textAlign: 'center',
+  },
+  templateButtonTextActive: {
+    color: 'white',
+  },
+  templateButtonSubtext: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  templateButtonSubtextActive: {
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  loadingTemplates: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  loadingTemplatesText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+  },
+  // Styles pour les paramètres thermiques
+  thermalSettingsSection: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  thermalSettingsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+  },
+  thermalSettingsGrid: {
+    gap: 12,
+  },
+  thermalSettingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  thermalSettingLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  thermalSettingValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  thermalSettingButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primary[500],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  thermalSettingButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  thermalSettingValueText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    minWidth: 24,
+    textAlign: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -364,12 +1202,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
-  },
   optionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -477,12 +1309,32 @@ const styles = StyleSheet.create({
     color: '#28a745',
     fontWeight: 'bold',
   },
+  compactSummary: {
+    backgroundColor: theme.colors.primary[50],
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.primary[500],
+  },
+  compactSummaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.primary[700],
+    textAlign: 'center',
+  },
   generateButton: {
-    backgroundColor: theme.colors.success[500],
+    backgroundColor: theme.colors.primary[500],
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   disabledButton: {
     backgroundColor: theme.colors.neutral[400],
@@ -491,6 +1343,106 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  // Styles pour la prévisualisation
+  previewContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#f8f9fa',
+  },
+  previewTitleContainer: {
+    flex: 1,
+  },
+  previewTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#28a745',
+    marginBottom: 4,
+  },
+  previewSubtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#e9ecef',
+  },
+  previewContent: {
+    flex: 1,
+    padding: 20,
+  },
+  previewInfo: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  previewInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  previewInfoText: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 12,
+    flex: 1,
+  },
+  previewActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  shareButton: {
+    flex: 1,
+    backgroundColor: theme.colors.primary[500],
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  printButton: {
+    flex: 1,
+    backgroundColor: theme.colors.success[500],
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  previewActionText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
