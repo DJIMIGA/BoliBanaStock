@@ -5,6 +5,7 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
 
+from apps.inventory import views as inventory_views
 from .views import (
     LoginView, LogoutView, DashboardView,
     ConfigurationAPIView, SitesAPIView, ParametresAPIView, ConfigurationResetAPIView,
@@ -99,6 +100,9 @@ urlpatterns = [
     
     # Administration - Collecte des fichiers statiques
     path('admin/collectstatic/', collect_static_files, name='api_collect_static'),
+    
+    # Codes-barres - Endpoints spécifiques
+    path('product/<int:product_id>/barcodes/add/', inventory_views.api_barcode_add, name='api_barcode_add'),
     
     # API endpoints
     path('', include(router.urls)),
