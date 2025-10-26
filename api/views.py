@@ -291,7 +291,17 @@ class ProductViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"⚠️  Erreur lors du logging de création: {e}")
         
-        return super().create(request, *args, **kwargs)
+        # Appeler le create par défaut qui va appeler Product.save()
+        # Product.save() appelle _auto_process_background() après super().save()
+        response = super().create(request, *args, **kwargs)
+        
+        # Vérifier si le produit a été créé avec succès
+        if hasattr(response, 'data') and 'id' in response.data:
+            product_id = response.data['id']
+            print(f"✅ Produit créé avec ID: {product_id}")
+            print(f"🎨 Le traitement automatique de background devrait avoir été appliqué par Product.save()")
+        
+        return response
 
     def update(self, request, *args, **kwargs):
         # Log de debug pour suivre les mises à jour complètes (PUT)
