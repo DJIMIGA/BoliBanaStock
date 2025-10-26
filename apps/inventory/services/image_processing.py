@@ -44,6 +44,10 @@ class BackgroundRemover:
                 logger.warning("⚠️ [BACKGROUND] OpenCV non disponible - traitement ignoré")
                 return None
                 
+            if not np:
+                logger.warning("⚠️ [BACKGROUND] NumPy non disponible - traitement ignoré")
+                return None
+                
             logger.info(f"🖼️ [BACKGROUND] Début du traitement: {image_path}")
             
             # Vérifier que le fichier existe
@@ -82,7 +86,7 @@ class BackgroundRemover:
             logger.error(f"❌ [BACKGROUND] Erreur lors du traitement: {str(e)}")
             return None
     
-    def _create_mask_by_color(self, image: np.ndarray) -> np.ndarray:
+    def _create_mask_by_color(self, image) -> any:
         """
         Crée un masque basé sur la couleur dominante du background
         
@@ -125,7 +129,7 @@ class BackgroundRemover:
             logger.error(f"❌ [BACKGROUND] Erreur création masque couleur: {str(e)}")
             return np.zeros(image.shape[:2], dtype=np.uint8)
     
-    def _improve_mask_with_grabcut(self, image: np.ndarray, initial_mask: np.ndarray) -> np.ndarray:
+    def _improve_mask_with_grabcut(self, image, initial_mask) -> any:
         """
         Améliore le masque initial avec l'algorithme GrabCut
         
@@ -162,7 +166,7 @@ class BackgroundRemover:
             logger.error(f"❌ [BACKGROUND] Erreur GrabCut: {str(e)}")
             return initial_mask
     
-    def _apply_mask(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    def _apply_mask(self, image, mask) -> any:
         """
         Applique le masque à l'image pour créer une image avec background transparent
         
@@ -187,7 +191,7 @@ class BackgroundRemover:
             logger.error(f"❌ [BACKGROUND] Erreur application masque: {str(e)}")
             return image
     
-    def _save_processed_image(self, image: np.ndarray, original_path: str) -> Optional[str]:
+    def _save_processed_image(self, image, original_path: str) -> Optional[str]:
         """
         Sauvegarde l'image traitée
         
