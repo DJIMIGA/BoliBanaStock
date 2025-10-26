@@ -17,7 +17,6 @@ urlpatterns = [
     # Gestion des codes-barres
     path('barcodes/dashboard/', views.barcode_dashboard, name='barcode_dashboard'),
     path('product/<int:product_id>/barcodes/', views.barcode_list, name='barcode_list'),
-    path('product/<int:product_id>/barcodes/add/', views.barcode_add, name='barcode_add'),
     path('product/<int:product_id>/barcodes/<int:barcode_id>/edit/', views.barcode_edit, name='barcode_edit'),
     path('product/<int:product_id>/barcodes/<int:barcode_id>/delete/', views.barcode_delete, name='barcode_delete'),
     path('product/<int:product_id>/barcodes/<int:barcode_id>/set-primary/', views.barcode_set_primary, name='barcode_set_primary'),

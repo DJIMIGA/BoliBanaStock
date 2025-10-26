@@ -1091,7 +1091,6 @@ def barcode_list(request, product_id):
     
     return render(request, 'inventory/barcode_list.html', context)
 
-@login_required
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_barcode_add(request, product_id):
@@ -1133,7 +1132,7 @@ def api_barcode_add(request, product_id):
             )
         
         # Vérifier que le code-barres n'existe pas déjà
-        existing_barcode = ProductBarcode.objects.filter(ean=ean).first()
+        existing_barcode = Barcode.objects.filter(ean=ean).first()
         if existing_barcode and existing_barcode.product != product:
             return Response(
                 {"error": f"Ce code EAN est déjà utilisé par le produit '{existing_barcode.product.name}'"}, 
@@ -1141,7 +1140,7 @@ def api_barcode_add(request, product_id):
             )
         
         # Créer le code-barres
-        barcode = ProductBarcode.objects.create(
+        barcode = Barcode.objects.create(
             product=product,
             ean=ean,
             notes=notes,
