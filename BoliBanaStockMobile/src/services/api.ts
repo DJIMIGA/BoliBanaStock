@@ -112,7 +112,7 @@ api.interceptors.response.use(
     
     if (error.response?.status === 401) {
       // Vérifier si c'est une erreur de connexion initiale ou une session expirée
-      const isLoginEndpoint = error.config?.url?.includes('/api/v1/auth/login/');
+      const isLoginEndpoint = error.config?.url?.includes('/auth/login/');
       
       if (isLoginEndpoint) {
         // Erreur 401 sur l'endpoint de connexion = identifiants incorrects
@@ -187,7 +187,7 @@ api.interceptors.response.use(
 export const authService = {
   login: async (username: string, password: string) => {
     try {
-      const response = await api.post('/api/v1/auth/login/', { username, password });
+      const response = await api.post('/auth/login/', { username, password });
       
       // Vérifier que la réponse contient les données attendues
       if (!response.data) {
@@ -251,7 +251,7 @@ export const authService = {
   }) => {
     try {
       // Utiliser l'endpoint simplifié qui fonctionne
-      const response = await api.post('/api/v1/auth/signup-simple/', userData);
+      const response = await api.post('/auth/signup-simple/', userData);
       
       // Si l'inscription retourne des tokens, les adapter au format attendu
       if (response.data.tokens) {
@@ -282,7 +282,7 @@ export const authService = {
         payload.refresh = refreshToken;
       }
       
-      await api.post('/api/v1/auth/logout/', payload);
+      await api.post('/auth/logout/', payload);
     } catch (error) {
       // Erreur API déconnexion (normal si endpoint n'existe pas)
     } finally {
@@ -294,7 +294,7 @@ export const authService = {
   logoutAllDevices: async () => {
     try {
       // Appeler l'API de déconnexion forcée sur tous les appareils
-      await api.post('/api/v1/auth/logout-all/');
+      await api.post('/auth/logout-all/');
     } catch (error) {
       // Erreur API déconnexion forcée
     } finally {
@@ -304,7 +304,7 @@ export const authService = {
   },
   
   refreshToken: async (refreshToken: string) => {
-    const response = await api.post('/api/v1/auth/refresh/', { refresh: refreshToken });
+    const response = await api.post('/auth/refresh/', { refresh: refreshToken });
     // Adapter la réponse pour le format attendu
     return {
       access: response.data.access_token,
