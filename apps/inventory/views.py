@@ -33,7 +33,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 import os
 import logging
-from .services.image_processing import BackgroundRemover
+# from .services.image_processing import BackgroundRemover  # Temporairement désactivé pour Railway
 
 logger = logging.getLogger(__name__)
 
