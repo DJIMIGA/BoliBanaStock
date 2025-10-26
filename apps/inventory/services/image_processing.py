@@ -1,8 +1,15 @@
 """
 Service de retrait de background pour les images de produits
 """
-import cv2
-import numpy as np
+try:
+    import cv2
+    import numpy as np
+    OPENCV_AVAILABLE = True
+except ImportError:
+    OPENCV_AVAILABLE = False
+    cv2 = None
+    np = None
+
 from PIL import Image, ImageEnhance
 import os
 import logging
@@ -33,6 +40,10 @@ class BackgroundRemover:
             Chemin vers l'image traitée ou None en cas d'erreur
         """
         try:
+            if not OPENCV_AVAILABLE:
+                logger.warning("⚠️ [BACKGROUND] OpenCV non disponible - traitement ignoré")
+                return None
+                
             logger.info(f"🖼️ [BACKGROUND] Début du traitement: {image_path}")
             
             # Vérifier que le fichier existe
@@ -258,6 +269,9 @@ class BackgroundRemover:
             Tuple (is_valid, error_message)
         """
         try:
+            if not OPENCV_AVAILABLE:
+                return False, "OpenCV non disponible sur ce serveur"
+                
             # Vérifier que le fichier existe
             if not os.path.exists(image_path):
                 return False, "Fichier non trouvé"

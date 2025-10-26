@@ -442,8 +442,8 @@ class Product(models.Model):
         
         super().save(*args, **kwargs)
         
-        # ✅ Traitement automatique du background après sauvegarde
-        self._auto_process_background()
+        # ✅ Traitement automatique du background après sauvegarde (désactivé temporairement)
+        # self._auto_process_background()
 
     @property
     def category_path(self):
