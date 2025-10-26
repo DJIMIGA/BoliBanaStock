@@ -775,31 +775,29 @@ export const productService = {
   },
 
   // Gestion des codes-barres
-  addBarcode: async (productId: number, ean: string, notes?: string) => {
-    const response = await api.post(`/products/${productId}/add_barcode/`, {
-      ean,
-      notes: notes || ''
+  addBarcode: async (productId: number, barcodeData: { ean: string; notes?: string; is_primary: boolean }) => {
+    console.log('🏷️ [BARCODE] Ajout code-barres:', { productId, barcodeData });
+    const response = await api.post(`/api/product/${productId}/barcodes/add/`, {
+      ean: barcodeData.ean,
+      notes: barcodeData.notes || '',
+      is_primary: barcodeData.is_primary
     });
+    console.log('✅ [BARCODE] Code-barres ajouté:', response.data);
     return response.data;
   },
 
   removeBarcode: async (productId: number, barcodeId: string | number) => {
-    const response = await api.delete(`/products/${productId}/remove_barcode/`, {
-      data: { barcode_id: barcodeId }
-    });
+    const response = await api.delete(`/product/${productId}/barcodes/${barcodeId}/delete/`);
     return response.data;
   },
 
   setPrimaryBarcode: async (productId: number, barcodeId: string | number) => {
-    const response = await api.put(`/products/${productId}/set_primary_barcode/`, {
-      barcode_id: barcodeId
-    });
+    const response = await api.put(`/product/${productId}/barcodes/${barcodeId}/set-primary/`);
     return response.data;
   },
 
   updateBarcode: async (productId: number, barcodeId: string | number, ean: string, notes?: string) => {
-    const response = await api.put(`/products/${productId}/update_barcode/`, {
-      barcode_id: barcodeId,
+    const response = await api.put(`/product/${productId}/barcodes/${barcodeId}/edit/`, {
       ean,
       notes: notes || ''
     });
@@ -1616,21 +1614,6 @@ export const productCopyService = {
       const response = await api.post('/inventory/copy/management/', {
         action: 'delete_copy',
         copy_id: copyId
-      });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // ✅ Gestion des codes-barres
-  // Ajouter un code-barres
-  addBarcode: async (productId: number, barcodeData: { ean: string; notes?: string; is_primary: boolean }) => {
-    try {
-      const response = await api.post(`/products/${productId}/add_barcode/`, {
-        ean: barcodeData.ean,
-        notes: barcodeData.notes || '',
-        is_primary: barcodeData.is_primary
       });
       return response.data;
     } catch (error) {

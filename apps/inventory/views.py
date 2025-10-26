@@ -1092,61 +1092,81 @@ def barcode_list(request, product_id):
     return render(request, 'inventory/barcode_list.html', context)
 
 @login_required
-def barcode_add(request, product_id):
-    """Vue pour ajouter un code-barres à un produit"""
-    product = get_object_or_404(Product, pk=product_id)
-    
-    # Vérifier que l'utilisateur a accès au produit (même site)
-    if not request.user.is_superuser:
-        if not hasattr(request.user, 'site_configuration') or product.site_configuration != request.user.site_configuration:
-            raise Http404("Produit non trouvé")
-    
-    if request.method == 'POST':
-        ean = request.POST.get('ean', '').strip()
-        notes = request.POST.get('notes', '').strip()
-        is_primary = request.POST.get('is_primary') == 'on'
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_barcode_add(request, product_id):
+    """API pour ajouter un code-barres à un produit"""
+    try:
+        logger.info(f"🏷️ [API_BARCODE] Ajout code-barres pour produit {product_id}")
+        
+        # Vérifier que le produit existe
+        try:
+            product = Product.objects.get(pk=product_id)
+        except Product.DoesNotExist:
+            logger.error(f"❌ [API_BARCODE] Produit {product_id} non trouvé")
+            return Response(
+                {"error": f"Produit avec l'ID {product_id} non trouvé"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Vérifier les permissions
+        if not request.user.is_superuser:
+            if not hasattr(request.user, 'site_configuration') or product.site_configuration != request.user.site_configuration:
+                logger.error(f"❌ [API_BARCODE] Accès refusé pour produit {product_id}")
+                return Response(
+                    {"error": "Accès refusé à ce produit"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Récupérer les données
+        ean = request.data.get('ean', '').strip()
+        notes = request.data.get('notes', '').strip()
+        is_primary = request.data.get('is_primary', False)
+        
+        logger.info(f"🏷️ [API_BARCODE] Données reçues: ean={ean}, notes={notes}, is_primary={is_primary}")
         
         # Validation
         if not ean:
-            messages.error(request, 'Le code EAN est obligatoire.')
-            return redirect('inventory:barcode_list', product_id=product_id)
+            return Response(
+                {"error": "Le code EAN est obligatoire"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Vérifier que le code-barres n'existe pas déjà
-        existing_barcode = Barcode.objects.filter(ean=ean).exclude(product=product).first()
-        if existing_barcode:
-            messages.error(request, f'Ce code-barres "{ean}" est déjà utilisé par le produit "{existing_barcode.product.name}".')
-            return redirect('inventory:barcode_list', product_id=product_id)
-        
-        # Cette vérification est redondante car nous avons déjà vérifié dans le modèle Barcode
-        # Le code-barres est stocké dans le modèle Barcode, pas directement dans Product
-        
-        try:
-            # Si c'est le premier code-barres, le rendre principal automatiquement
-            if not product.barcodes.exists():
-                is_primary = True
-            
-            # Si on veut le rendre principal, retirer le statut principal des autres
-            if is_primary:
-                product.barcodes.update(is_primary=False)
-                # Le champ barcode n'existe pas sur le modèle Product
-                # Le code-barres principal est géré via la relation barcodes avec is_primary=True
-            
-            # Créer le nouveau code-barres
-            barcode = Barcode.objects.create(
-                product=product,
-                ean=ean,
-                notes=notes,
-                is_primary=is_primary
+        existing_barcode = ProductBarcode.objects.filter(ean=ean).first()
+        if existing_barcode and existing_barcode.product != product:
+            return Response(
+                {"error": f"Ce code EAN est déjà utilisé par le produit '{existing_barcode.product.name}'"}, 
+                status=status.HTTP_400_BAD_REQUEST
             )
-            
-            messages.success(request, f'Code-barres "{ean}" ajouté avec succès.')
-            
-        except Exception as e:
-            messages.error(request, f'Erreur lors de l\'ajout du code-barres: {str(e)}')
         
-        return redirect('inventory:barcode_list', product_id=product_id)
-    
-    return redirect('inventory:barcode_list', product_id=product_id)
+        # Créer le code-barres
+        barcode = ProductBarcode.objects.create(
+            product=product,
+            ean=ean,
+            notes=notes,
+            is_primary=is_primary
+        )
+        
+        logger.info(f"✅ [API_BARCODE] Code-barres créé: {barcode.id}")
+        
+        return Response({
+            "success": True,
+            "message": "Code-barres ajouté avec succès",
+            "barcode": {
+                "id": barcode.id,
+                "ean": barcode.ean,
+                "notes": barcode.notes,
+                "is_primary": barcode.is_primary
+            }
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        logger.error(f"❌ [API_BARCODE] Erreur: {str(e)}")
+        return Response(
+            {"error": f"Erreur serveur: {str(e)}"}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @login_required
 def barcode_edit(request, product_id, barcode_id):
