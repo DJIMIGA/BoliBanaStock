@@ -70,6 +70,24 @@ const BarcodeModal: React.FC<BarcodeModalProps> = ({
 
     setLoading(true);
     try {
+      // Si productId = 0, c'est un nouveau produit - stocker temporairement
+      if (productId === 0) {
+        const tempBarcode: Barcode = {
+          id: Date.now(), // ID temporaire
+          ean: newBarcode.ean.trim(),
+          is_primary: barcodes.length === 0, // Premier code = principal
+          notes: ''
+        };
+        
+        onBarcodesUpdate([...barcodes, tempBarcode]);
+        setNewBarcode({ ean: '' });
+        setValidationError('');
+        onClose();
+        Alert.alert('✅ Succès', 'Code-barres ajouté (sera sauvegardé avec le produit)');
+        return;
+      }
+
+      // Si productId > 0, c'est un produit existant - appeler l'API
       const newBarcodeItem = await productService.addBarcode(productId, {
         ean: newBarcode.ean.trim(),
         is_primary: barcodes.length === 0, // Premier code = principal

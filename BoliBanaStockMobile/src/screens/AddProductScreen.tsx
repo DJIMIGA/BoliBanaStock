@@ -336,6 +336,30 @@ export default function AddProductScreen({ navigation, route }: any) {
       } else {
         const newProduct = await productService.createProduct(productData);
         
+        // Sauvegarder les codes-barres temporaires si le produit a été créé avec succès
+        if (newProduct.id && form.barcodes && form.barcodes.length > 0) {
+          console.log('🏷️ [BARCODE] Sauvegarde des codes-barres temporaires pour le produit', newProduct.id);
+          
+          try {
+            // Filtrer les codes-barres temporaires (ceux avec des IDs négatifs ou très grands)
+            const tempBarcodes = form.barcodes.filter(barcode => barcode.id > 1000000000); // IDs temporaires
+            
+            for (const barcode of tempBarcodes) {
+              await productService.addBarcode(newProduct.id, {
+                ean: barcode.ean,
+                is_primary: barcode.is_primary,
+                notes: barcode.notes || ''
+              });
+              console.log('✅ [BARCODE] Code-barres sauvegardé:', barcode.ean);
+            }
+            
+            console.log('✅ [BARCODE] Tous les codes-barres sauvegardés');
+          } catch (error) {
+            console.error('❌ [BARCODE] Erreur lors de la sauvegarde des codes-barres:', error);
+            // Ne pas faire échouer la création du produit pour des codes-barres
+          }
+        }
+        
         // Vérifier si l'image a été uploadée avec succès
         if (newProduct.image_uploaded === false && newProduct.image_error) {
           Alert.alert(
