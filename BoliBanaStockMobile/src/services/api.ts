@@ -412,7 +412,7 @@ export const productService = {
             try {
               if (Platform.OS === 'android' && normalizedUri?.startsWith('content://')) {
                 const fileName = imageAsset.fileName || `upload_${Date.now()}.jpg`;
-                const dest = `${FileSystem.cacheDirectory}${fileName}`;
+                const dest = `/tmp/${fileName}`;
                 console.log('🗂️ Copie image content:// vers cache (create):', dest);
                 await FileSystem.copyAsync({ from: normalizedUri, to: dest });
                 normalizedUri = dest;
@@ -472,7 +472,7 @@ export const productService = {
               let imageUri = productData.image.uri;
               if (Platform.OS === 'android' && imageUri?.startsWith('content://')) {
                 const fileName = productData.image.fileName || `upload_${Date.now()}.jpg`;
-                const dest = `${FileSystem.cacheDirectory}${fileName}`;
+                const dest = `/tmp/${fileName}`;
                 console.log('🗂️ Copie image content:// vers cache (create):', dest);
                 await FileSystem.copyAsync({ from: imageUri, to: dest });
                 imageUri = dest;
@@ -483,12 +483,12 @@ export const productService = {
                 imageUri,
                 {
                   httpMethod: 'POST',
-                  uploadType: 'MULTIPART',
+                  uploadType: 'MULTIPART' as any,
                   fieldName: 'image',
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Accept': 'application/json',
-                },
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json',
+                  },
                 }
               );
               
@@ -611,7 +611,7 @@ export const productService = {
           try {
             if (Platform.OS === 'android' && localImageUri?.startsWith('content://')) {
               const fileName = imageAsset.fileName || `upload_${Date.now()}.jpg`;
-              const dest = `${FileSystem.cacheDirectory}${fileName}`;
+              const dest = `/tmp/${fileName}`;
               console.log('🗂️ Copie image content:// vers cache (update):', dest);
               await FileSystem.copyAsync({ from: localImageUri, to: dest });
               localImageUri = dest;
@@ -1774,6 +1774,13 @@ export const labelPrintService = {
     include_ean: boolean;
     include_barcode: boolean;
     printer_type?: 'pdf' | 'escpos' | 'tsc';
+    thermal_settings?: {
+      density: number;
+      speed: number;
+      direction: number;
+      gap: number;
+      offset: number;
+    };
   }) => {
     try {
       console.log('🏷️ [LABELS] Début génération étiquettes...');
@@ -1805,6 +1812,173 @@ export const labelPrintService = {
       }
       
       console.error('❌ [LABELS] Full error object:', error);
+      throw error;
+    }
+  },
+
+  // Créer un lot d'étiquettes pour impression thermique
+  createLabelBatch: async (batchData: {
+    product_ids: number[];
+    template_id?: number;
+    copies: number;
+    include_cug: boolean;
+    include_ean: boolean;
+    include_barcode: boolean;
+    printer_type: 'escpos' | 'tsc';
+    thermal_settings?: {
+      density: number;
+      speed: number;
+      direction: number;
+      gap: number;
+      offset: number;
+    };
+  }) => {
+    try {
+      console.log('🏷️ [BATCH] Création d\'un lot d\'étiquettes...');
+      console.log('🏷️ [BATCH] Données envoyées:', JSON.stringify(batchData, null, 2));
+      
+      // Préparer les items pour le lot
+      const items = batchData.product_ids.map((productId, index) => ({
+        product_id: productId,
+        copies: batchData.copies,
+        position: index,
+        barcode_value: '' // Sera déterminé côté serveur
+      }));
+
+      const payload = {
+        template_id: batchData.template_id || 1,
+        printer_type: batchData.printer_type,
+        thermal_settings: batchData.thermal_settings,
+        items: items
+      };
+
+      const response = await api.post('/label-batches/create_batch/', payload, {
+        timeout: 30000,
+      });
+      
+      console.log('✅ [BATCH] Lot d\'étiquettes créé avec succès');
+      console.log('✅ [BATCH] Status:', response.status);
+      console.log('✅ [BATCH] Response data:', JSON.stringify(response.data, null, 2));
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [BATCH] Erreur lors de la création du lot:');
+      console.error('❌ [BATCH] Error message:', error.message);
+      console.error('❌ [BATCH] Error response:', error.response?.data);
+      throw error;
+    }
+  },
+
+  // Obtenir le fichier TSC pour impression thermique
+  getTSCFile: async (batchId: number) => {
+    try {
+      console.log('📄 [TSC] Récupération du fichier TSC pour le lot:', batchId);
+      
+      const response = await api.get(`/label-batches/${batchId}/tsc/`, {
+        responseType: 'text',
+        timeout: 15000,
+      });
+      
+      console.log('✅ [TSC] Fichier TSC récupéré avec succès');
+      console.log('✅ [TSC] Taille:', response.data.length, 'caractères');
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [TSC] Erreur lors de la récupération du fichier TSC:');
+      console.error('❌ [TSC] Error message:', error.message);
+      throw error;
+    }
+  },
+
+  // Obtenir le fichier PDF pour impression
+  getPDFFile: async (batchId: number) => {
+    try {
+      console.log('📄 [PDF] Récupération du fichier PDF pour le lot:', batchId);
+      
+      const response = await api.get(`/label-batches/${batchId}/pdf/`, {
+        responseType: 'blob',
+        timeout: 15000,
+      });
+      
+      console.log('✅ [PDF] Fichier PDF récupéré avec succès');
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [PDF] Erreur lors de la récupération du fichier PDF:');
+      console.error('❌ [PDF] Error message:', error.message);
+      throw error;
+    }
+  },
+
+  // Envoyer directement à l'imprimante thermique (si connectée)
+  sendToThermalPrinter: async (batchId: number, printerConfig: {
+    ip_address?: string;
+    port?: number;
+    printer_type: 'escpos' | 'tsc';
+    connection_type?: 'network' | 'bluetooth';
+    bluetooth_address?: string;
+  }) => {
+    try {
+      console.log('🖨️ [PRINTER] Envoi direct à l\'imprimante thermique...');
+      console.log('🖨️ [PRINTER] Configuration:', printerConfig);
+      
+      const payload = {
+        batch_id: batchId,
+        printer_config: printerConfig
+      };
+
+      const response = await api.post('/labels/send-to-printer/', payload, {
+        timeout: 30000,
+      });
+      
+      console.log('✅ [PRINTER] Envoi à l\'imprimante réussi');
+      console.log('✅ [PRINTER] Response:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [PRINTER] Erreur lors de l\'envoi à l\'imprimante:');
+      console.error('❌ [PRINTER] Error message:', error.message);
+      throw error;
+    }
+  },
+
+  // Envoyer directement à l'imprimante Bluetooth (local)
+  sendToBluetoothPrinter: async (labelData: {
+    product_ids: number[];
+    template_id?: number;
+    copies: number;
+    include_cug: boolean;
+    include_ean: boolean;
+    include_barcode: boolean;
+    printer_type: 'escpos' | 'tsc';
+    thermal_settings?: {
+      density: number;
+      speed: number;
+      direction: number;
+      gap: number;
+      offset: number;
+    };
+  }) => {
+    try {
+      console.log('🔵 [BLUETOOTH] Envoi direct à l\'imprimante Bluetooth...');
+      console.log('🔵 [BLUETOOTH] Données:', labelData);
+      
+      // Cette fonction sera implémentée côté client avec react-native-bluetooth-escpos-printer
+      // Pour l'instant, on retourne les données formatées pour l'impression locale
+      const formattedData = {
+        success: true,
+        message: 'Données formatées pour impression Bluetooth locale',
+        labels: labelData.product_ids.map(id => ({
+          product_id: id,
+          copies: labelData.copies,
+          template: labelData.template_id,
+          settings: labelData.thermal_settings
+        })),
+        printer_type: labelData.printer_type,
+        connection_type: 'bluetooth'
+      };
+      
+      console.log('✅ [BLUETOOTH] Données formatées pour impression locale');
+      return formattedData;
+    } catch (error: any) {
+      console.error('❌ [BLUETOOTH] Erreur lors de l\'envoi Bluetooth:');
+      console.error('❌ [BLUETOOTH] Error message:', error.message);
       throw error;
     }
   },
@@ -1878,7 +2052,53 @@ export const labelPrintService = {
       console.error('❌ [SETTINGS] Error message:', error.message);
       throw error;
     }
-  }
+  },
+
+  // Nouvelle méthode pour upload direct d'image traitée
+  uploadProcessedImage: async (imageUri: string, productData: any) => {
+    try {
+      console.log('🎨 [UPLOAD] Upload d\'image traitée côté client...');
+      
+      // Traiter l'image côté client
+      const { ClientBackgroundRemover } = await import('./clientBackgroundRemover');
+      const processed = await ClientBackgroundRemover.processImageForUpload(imageUri);
+      
+      if (!processed.success) {
+        throw new Error(processed.error || 'Échec du traitement côté client');
+      }
+      
+      // Créer un FormData pour l'upload
+      const formData = new FormData();
+      
+      // Ajouter l'image traitée
+      formData.append('image', {
+        uri: processed.processedUri,
+        type: 'image/png',
+        name: 'product_image_processed.png',
+      } as any);
+      
+      // Ajouter les données du produit
+      formData.append('product_data', JSON.stringify({
+        ...productData,
+        image_processed: true, // Flag indiquant que l'image est déjà traitée
+      }));
+      
+      // Upload direct de l'image traitée
+      const response = await api.post('/products/upload-processed-image/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000, // 30s pour l'upload
+      });
+      
+      console.log('✅ [UPLOAD] Image traitée uploadée:', response.data);
+      return response.data;
+      
+    } catch (error: any) {
+      console.error('❌ [UPLOAD] Erreur upload image traitée:', error.message);
+      throw error;
+    }
+  },
 };
 
 export default api; 

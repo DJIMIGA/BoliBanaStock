@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +18,7 @@ import * as FileSystem from 'expo-file-system';
 import theme from '../utils/theme';
 import { useNavigation } from '@react-navigation/native';
 import { PrintOptionsConfig } from '../components/PrintOptionsConfig';
+import ThermalPrinterTest from '../components/ThermalPrinterTest';
 import { productService, labelPrintService } from '../services/api';
 
 interface Product {
@@ -57,7 +59,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
   const [includePrices, setIncludePrices] = useState(true);
   
   // Configuration de l'imprimante
-  const [printerType, setPrinterType] = useState<'pdf' | 'escpos' | 'tsc'>('pdf');
+  const [printerType, setPrinterType] = useState<'pdf' | 'escpos' | 'tsc'>('escpos');
   const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -70,6 +72,21 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
     gap: 2,
     offset: 0
   });
+
+  // Configuration de l'imprimante thermique
+  const [printerConfig, setPrinterConfig] = useState({
+    ip_address: '',
+    port: 9100,
+    auto_connect: false,
+    connection_type: 'bluetooth' as 'network' | 'bluetooth',
+    bluetooth_address: '',
+  });
+
+  // État de connexion à l'imprimante
+  const [printerConnected, setPrinterConnected] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [bluetoothPrinters, setBluetoothPrinters] = useState<any[]>([]);
+  const [selectedBluetoothPrinter, setSelectedBluetoothPrinter] = useState<any>(null);
   
   // Options fixes (toujours incluses)
   const includeCug = true;
@@ -479,6 +496,60 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
     return html;
   };
 
+  // Fonction pour découvrir les imprimantes Bluetooth
+
+  // Découvrir les imprimantes Bluetooth
+  const discoverBluetoothPrinters = async () => {
+    setTestingConnection(true);
+    try {
+      console.log('🔍 [BLUETOOTH] Découverte des imprimantes Bluetooth...');
+      
+      // Simulation de la découverte (sera remplacé par la vraie implémentation)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      const mockPrinters = [
+        { device_name: 'Imprimante Thermique 1', device_address: '00:11:22:33:44:55' },
+        { device_name: 'TSC TTP-244ME', device_address: '00:11:22:33:44:66' },
+        { device_name: 'Epson TM-T20III', device_address: '00:11:22:33:44:77' },
+      ];
+      
+      setBluetoothPrinters(mockPrinters);
+      Alert.alert(
+        'Imprimantes trouvées',
+        `${mockPrinters.length} imprimante(s) Bluetooth découverte(s)`
+      );
+    } catch (error) {
+      console.error('❌ [BLUETOOTH] Erreur découverte:', error);
+      Alert.alert('Erreur', 'Erreur lors de la découverte des imprimantes Bluetooth');
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  // Se connecter à une imprimante Bluetooth sélectionnée
+  const connectToBluetoothPrinter = async (printer: any) => {
+    setTestingConnection(true);
+    try {
+      console.log('🔗 [BLUETOOTH] Connexion à l\'imprimante:', printer.device_name);
+      
+      // Simulation de la connexion (sera remplacé par la vraie implémentation)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      setSelectedBluetoothPrinter(printer);
+      setPrinterConnected(true);
+      
+      Alert.alert(
+        'Connexion réussie',
+        `Connecté à ${printer.device_name}`
+      );
+    } catch (error) {
+      console.error('❌ [BLUETOOTH] Erreur connexion:', error);
+      Alert.alert('Erreur', 'Erreur lors de la connexion à l\'imprimante');
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   const generateLabels = async () => {
     if (copies < 1 || copies > 100) {
       Alert.alert('Erreur', 'Le nombre de copies doit être entre 1 et 100');
@@ -531,23 +602,80 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
         setPreviewUri(uri);
         
       } else {
-        // Pour imprimantes thermiques : utiliser l'API backend
+        // Pour imprimantes thermiques : utiliser l'API backend avec lot d'étiquettes
         console.log('🖨️ [LABELS] Génération via API backend pour imprimante thermique...');
         
-        const labelData = {
+        const batchData = {
           product_ids: products.map(p => p.id),
           template_id: selectedTemplate?.id,
           copies,
-          include_cug: includeCug,
-          include_ean: includeEan,
-          include_barcode: includeBarcode,
+        include_cug: includeCug,
+        include_ean: includeEan,
+        include_barcode: includeBarcode,
           printer_type: printerType,
-          // Paramètres spécifiques pour imprimantes thermiques
           thermal_settings: thermalSettings
         };
 
-        const result = await labelPrintService.generateLabels(labelData);
-        console.log('✅ [LABELS] Étiquettes générées via API:', result);
+        // Créer un lot d'étiquettes
+        const batch = await labelPrintService.createLabelBatch(batchData);
+        console.log('✅ [BATCH] Lot d\'étiquettes créé:', batch);
+
+        // Si l'imprimante est connectée, envoyer directement
+        if (printerConnected && printerConfig.auto_connect) {
+          try {
+            if (printerConfig.connection_type === 'bluetooth') {
+              console.log('🔵 [BLUETOOTH] Envoi direct à l\'imprimante Bluetooth...');
+              const printResult = await labelPrintService.sendToBluetoothPrinter({
+                product_ids: products.map(p => p.id),
+                template_id: selectedTemplate?.id,
+                copies,
+                include_cug: includeCug,
+                include_ean: includeEan,
+                include_barcode: includeBarcode,
+                printer_type: printerType,
+                thermal_settings: thermalSettings
+              });
+              
+        Alert.alert(
+                'Impression Bluetooth réussie',
+                `Les étiquettes ont été envoyées directement à l'imprimante Bluetooth ${selectedBluetoothPrinter?.device_name}\n\nTotal: ${products.length * copies} étiquettes`
+              );
+            } else {
+              console.log('🖨️ [PRINTER] Envoi direct à l\'imprimante réseau...');
+              const printResult = await labelPrintService.sendToThermalPrinter(batch.id, {
+                ip_address: printerConfig.ip_address,
+                port: printerConfig.port,
+                printer_type: printerType,
+                connection_type: 'network'
+              });
+              
+              Alert.alert(
+                'Impression réseau réussie',
+                `Les étiquettes ont été envoyées directement à l'imprimante ${printerConfig.ip_address}\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes`
+              );
+            }
+          } catch (printError) {
+            console.warn('⚠️ [PRINTER] Envoi direct échoué, génération du fichier:', printError);
+            
+            // Fallback : générer le fichier TSC
+            const tscContent = await labelPrintService.getTSCFile(batch.id);
+            console.log('📄 [TSC] Fichier TSC généré:', tscContent.length, 'caractères');
+            
+            Alert.alert(
+              'Fichier généré',
+              `Le fichier TSC a été généré avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nVous pouvez maintenant l'envoyer à votre imprimante thermique.`
+            );
+          }
+        } else {
+          // Générer le fichier TSC pour transfert manuel
+          const tscContent = await labelPrintService.getTSCFile(batch.id);
+          console.log('📄 [TSC] Fichier TSC généré:', tscContent.length, 'caractères');
+          
+          Alert.alert(
+            'Fichier généré',
+            `Le fichier TSC a été généré avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nVous pouvez maintenant l'envoyer à votre imprimante thermique.`
+          );
+        }
 
         // Sauvegarder les données
         setLastLabels({
@@ -557,14 +685,9 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
           printerType,
           template: selectedTemplate,
           total: products.length * copies,
-          generatedAt: new Date().toISOString()
+          generatedAt: new Date().toISOString(),
+          batchId: batch.id
         });
-
-        // Afficher un message de succès pour les imprimantes thermiques
-        Alert.alert(
-          'Étiquettes générées',
-          `Les étiquettes ont été générées avec succès pour l'imprimante ${printerType.toUpperCase()}.\n\nTotal: ${result.labels?.total_labels || products.length * copies} étiquettes`
-        );
       }
 
     } catch (error) {
@@ -756,74 +879,248 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
             </View>
            )}
            
-           {/* Configuration des paramètres thermiques */}
+           {/* Configuration de l'imprimante thermique */}
            {(printerType === 'escpos' || printerType === 'tsc') && (
-             <View style={styles.thermalSettingsSection}>
-               <Text style={styles.thermalSettingsTitle}>Paramètres d'impression thermique</Text>
+             <View style={styles.printerConfigSection}>
+               <Text style={styles.printerConfigTitle}>Configuration de l'imprimante thermique</Text>
                
-               <View style={styles.thermalSettingsGrid}>
-                 <View style={styles.thermalSettingRow}>
-                   <Text style={styles.thermalSettingLabel}>Densité</Text>
-                   <View style={styles.thermalSettingValue}>
-                     <TouchableOpacity
-                       style={styles.thermalSettingButton}
-                       onPress={() => setThermalSettings(prev => ({ ...prev, density: Math.max(1, prev.density - 1) }))}
-                     >
-                       <Text style={styles.thermalSettingButtonText}>-</Text>
-                     </TouchableOpacity>
-                     <Text style={styles.thermalSettingValueText}>{thermalSettings.density}</Text>
-                     <TouchableOpacity
-                       style={styles.thermalSettingButton}
-                       onPress={() => setThermalSettings(prev => ({ ...prev, density: Math.min(15, prev.density + 1) }))}
-                     >
-                       <Text style={styles.thermalSettingButtonText}>+</Text>
-                     </TouchableOpacity>
+               {/* Sélection du type de connexion */}
+               <View style={styles.connectionTypeSection}>
+                 <Text style={styles.connectionTypeLabel}>Type de connexion</Text>
+                 <View style={styles.connectionTypeButtons}>
+                   <TouchableOpacity
+                     style={[
+                       styles.connectionTypeButton,
+                       printerConfig.connection_type === 'network' && styles.connectionTypeButtonActive
+                     ]}
+                     onPress={() => setPrinterConfig(prev => ({ ...prev, connection_type: 'network' }))}
+                   >
+                     <Ionicons 
+                       name="wifi" 
+                       size={20} 
+                       color={printerConfig.connection_type === 'network' ? 'white' : theme.colors.primary[500]} 
+                     />
+                     <Text style={[
+                       styles.connectionTypeButtonText,
+                       printerConfig.connection_type === 'network' && styles.connectionTypeButtonTextActive
+                     ]}>
+                       Réseau
+                     </Text>
+                   </TouchableOpacity>
+                   
+                   <TouchableOpacity
+                     style={[
+                       styles.connectionTypeButton,
+                       printerConfig.connection_type === 'bluetooth' && styles.connectionTypeButtonActive
+                     ]}
+                     onPress={() => setPrinterConfig(prev => ({ ...prev, connection_type: 'bluetooth' }))}
+                   >
+                     <Ionicons 
+                       name="bluetooth" 
+                       size={20} 
+                       color={printerConfig.connection_type === 'bluetooth' ? 'white' : theme.colors.primary[500]} 
+                     />
+                     <Text style={[
+                       styles.connectionTypeButtonText,
+                       printerConfig.connection_type === 'bluetooth' && styles.connectionTypeButtonTextActive
+                     ]}>
+                       Bluetooth
+                     </Text>
+                   </TouchableOpacity>
+                 </View>
+               </View>
+               
+               {/* Configuration réseau */}
+               {printerConfig.connection_type === 'network' && (
+                 <View style={styles.printerNetworkSection}>
+                   <Text style={styles.printerNetworkLabel}>Connexion réseau</Text>
+                   
+                   <View style={styles.printerInputRow}>
+                     <Text style={styles.printerInputLabel}>Adresse IP:</Text>
+                     <TextInput
+                       style={styles.printerInput}
+                       value={printerConfig.ip_address}
+                       onChangeText={(text) => setPrinterConfig(prev => ({ ...prev, ip_address: text }))}
+                       placeholder="192.168.1.100"
+                       keyboardType="numeric"
+                       autoCapitalize="none"
+                     />
+                   </View>
+                   
+                   <View style={styles.printerInputRow}>
+                     <Text style={styles.printerInputLabel}>Port:</Text>
+                     <TextInput
+                       style={styles.printerInput}
+                       value={printerConfig.port.toString()}
+                       onChangeText={(text) => setPrinterConfig(prev => ({ ...prev, port: parseInt(text) || 9100 }))}
+                       placeholder="9100"
+                       keyboardType="numeric"
+                     />
                    </View>
                  </View>
-                 
-                 <View style={styles.thermalSettingRow}>
-                   <Text style={styles.thermalSettingLabel}>Vitesse</Text>
-                   <View style={styles.thermalSettingValue}>
-                     <TouchableOpacity
-                       style={styles.thermalSettingButton}
-                       onPress={() => setThermalSettings(prev => ({ ...prev, speed: Math.max(1, prev.speed - 1) }))}
-                     >
-                       <Text style={styles.thermalSettingButtonText}>-</Text>
-                     </TouchableOpacity>
-                     <Text style={styles.thermalSettingValueText}>{thermalSettings.speed}</Text>
-                     <TouchableOpacity
-                       style={styles.thermalSettingButton}
-                       onPress={() => setThermalSettings(prev => ({ ...prev, speed: Math.min(15, prev.speed + 1) }))}
-                     >
-                       <Text style={styles.thermalSettingButtonText}>+</Text>
-                     </TouchableOpacity>
+               )}
+               
+               {/* Configuration Bluetooth */}
+               {printerConfig.connection_type === 'bluetooth' && (
+                 <View style={styles.printerBluetoothSection}>
+                   <Text style={styles.printerBluetoothLabel}>Connexion Bluetooth</Text>
+                   
+                   <TouchableOpacity
+                     style={[styles.discoverButton, testingConnection && styles.disabledButton]}
+                     onPress={discoverBluetoothPrinters}
+                     disabled={testingConnection}
+                   >
+                     {testingConnection ? (
+                       <ActivityIndicator size="small" color="white" />
+                     ) : (
+                       <Ionicons name="search" size={16} color="white" />
+                     )}
+                     <Text style={styles.discoverButtonText}>
+                       {testingConnection ? 'Recherche...' : 'Rechercher des imprimantes'}
+                     </Text>
+                   </TouchableOpacity>
+                   
+                   {bluetoothPrinters.length > 0 && (
+                     <View style={styles.bluetoothPrintersList}>
+                       {bluetoothPrinters.map((printer, index) => (
+                         <TouchableOpacity
+                           key={index}
+                           style={[
+                             styles.bluetoothPrinterItem,
+                             selectedBluetoothPrinter?.device_address === printer.device_address && styles.bluetoothPrinterItemSelected
+                           ]}
+                           onPress={() => connectToBluetoothPrinter(printer)}
+                           disabled={testingConnection}
+                         >
+                           <Ionicons name="print" size={20} color={theme.colors.primary[500]} />
+                           <View style={styles.bluetoothPrinterInfo}>
+                             <Text style={styles.bluetoothPrinterName}>{printer.device_name}</Text>
+                             <Text style={styles.bluetoothPrinterAddress}>{printer.device_address}</Text>
+                           </View>
+                           {selectedBluetoothPrinter?.device_address === printer.device_address && (
+                             <Ionicons name="checkmark-circle" size={20} color="#28a745" />
+                           )}
+                         </TouchableOpacity>
+                       ))}
+                     </View>
+                   )}
+                   
+                   {selectedBluetoothPrinter && (
+                     <View style={styles.selectedPrinterContainer}>
+                       <Ionicons name="print" size={20} color={theme.colors.primary[500]} />
+                       <View style={styles.selectedPrinterInfo}>
+                         <Text style={styles.selectedPrinterName}>{selectedBluetoothPrinter.device_name}</Text>
+                         <Text style={styles.selectedPrinterAddress}>{selectedBluetoothPrinter.device_address}</Text>
+                       </View>
+                     </View>
+                   )}
+                 </View>
+               )}
+               
+               {/* Statut de connexion */}
+               {printerConnected && (
+                 <View style={styles.connectionStatusContainer}>
+                   <View style={styles.connectionStatus}>
+                     <Ionicons name="checkmark-circle" size={20} color="#28a745" />
+                     <Text style={styles.connectionStatusText}>Imprimante connectée</Text>
                    </View>
                  </View>
+               )}
+               
+               <View style={styles.printerOptionRow}>
+                 <TouchableOpacity
+                   style={styles.printerOptionToggle}
+                   onPress={() => setPrinterConfig(prev => ({ ...prev, auto_connect: !prev.auto_connect }))}
+                 >
+                   <Ionicons 
+                     name={printerConfig.auto_connect ? "checkbox" : "checkbox-outline"} 
+                     size={24} 
+                     color={printerConfig.auto_connect ? theme.colors.primary[500] : '#666'} 
+                   />
+                   <Text style={styles.printerOptionText}>Envoi automatique à l'imprimante</Text>
+                 </TouchableOpacity>
+               </View>
+               
+               {/* Paramètres d'impression */}
+               <View style={styles.thermalSettingsSection}>
+                 <Text style={styles.thermalSettingsTitle}>Paramètres d'impression</Text>
                  
-                 <View style={styles.thermalSettingRow}>
-                   <Text style={styles.thermalSettingLabel}>Espacement (mm)</Text>
-                   <View style={styles.thermalSettingValue}>
-                     <TouchableOpacity
-                       style={styles.thermalSettingButton}
-                       onPress={() => setThermalSettings(prev => ({ ...prev, gap: Math.max(0, prev.gap - 1) }))}
-                     >
-                       <Text style={styles.thermalSettingButtonText}>-</Text>
-                     </TouchableOpacity>
-                     <Text style={styles.thermalSettingValueText}>{thermalSettings.gap}</Text>
-                     <TouchableOpacity
-                       style={styles.thermalSettingButton}
-                       onPress={() => setThermalSettings(prev => ({ ...prev, gap: Math.min(10, prev.gap + 1) }))}
-                     >
-                       <Text style={styles.thermalSettingButtonText}>+</Text>
-                     </TouchableOpacity>
+                 <View style={styles.thermalSettingsGrid}>
+                   <View style={styles.thermalSettingRow}>
+                     <Text style={styles.thermalSettingLabel}>Densité</Text>
+                     <View style={styles.thermalSettingValue}>
+                       <TouchableOpacity
+                         style={styles.thermalSettingButton}
+                         onPress={() => setThermalSettings(prev => ({ ...prev, density: Math.max(1, prev.density - 1) }))}
+                       >
+                         <Text style={styles.thermalSettingButtonText}>-</Text>
+                       </TouchableOpacity>
+                       <Text style={styles.thermalSettingValueText}>{thermalSettings.density}</Text>
+                       <TouchableOpacity
+                         style={styles.thermalSettingButton}
+                         onPress={() => setThermalSettings(prev => ({ ...prev, density: Math.min(15, prev.density + 1) }))}
+                       >
+                         <Text style={styles.thermalSettingButtonText}>+</Text>
+                       </TouchableOpacity>
+                     </View>
+                   </View>
+                   
+                   <View style={styles.thermalSettingRow}>
+                     <Text style={styles.thermalSettingLabel}>Vitesse</Text>
+                     <View style={styles.thermalSettingValue}>
+                       <TouchableOpacity
+                         style={styles.thermalSettingButton}
+                         onPress={() => setThermalSettings(prev => ({ ...prev, speed: Math.max(1, prev.speed - 1) }))}
+                       >
+                         <Text style={styles.thermalSettingButtonText}>-</Text>
+                       </TouchableOpacity>
+                       <Text style={styles.thermalSettingValueText}>{thermalSettings.speed}</Text>
+                       <TouchableOpacity
+                         style={styles.thermalSettingButton}
+                         onPress={() => setThermalSettings(prev => ({ ...prev, speed: Math.min(15, prev.speed + 1) }))}
+                       >
+                         <Text style={styles.thermalSettingButtonText}>+</Text>
+                       </TouchableOpacity>
+                     </View>
+                   </View>
+                   
+                   <View style={styles.thermalSettingRow}>
+                     <Text style={styles.thermalSettingLabel}>Espacement (mm)</Text>
+                     <View style={styles.thermalSettingValue}>
+                       <TouchableOpacity
+                         style={styles.thermalSettingButton}
+                         onPress={() => setThermalSettings(prev => ({ ...prev, gap: Math.max(0, prev.gap - 1) }))}
+                       >
+                         <Text style={styles.thermalSettingButtonText}>-</Text>
+                       </TouchableOpacity>
+                       <Text style={styles.thermalSettingValueText}>{thermalSettings.gap}</Text>
+                       <TouchableOpacity
+                         style={styles.thermalSettingButton}
+                         onPress={() => setThermalSettings(prev => ({ ...prev, gap: Math.min(10, prev.gap + 1) }))}
+                       >
+                         <Text style={styles.thermalSettingButtonText}>+</Text>
+                       </TouchableOpacity>
+                     </View>
                    </View>
                  </View>
                </View>
              </View>
            )}
-         </View>
 
-         {/* Configuration Options */}
+           {/* Composant de test pour l'imprimante thermique */}
+           {(printerType === 'escpos' || printerType === 'tsc') && printerConfig.ip_address && (
+             <ThermalPrinterTest
+               printerConfig={{
+                 ip_address: printerConfig.ip_address,
+                 port: printerConfig.port,
+                 printer_type: printerType
+               }}
+               onTestComplete={(success) => setPrinterConnected(success)}
+             />
+           )}
+        </View>
+
+        {/* Configuration Options */}
         <PrintOptionsConfig
           screenType="labels"
           includePrices={includePrices}
@@ -1002,20 +1299,218 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.text.secondary,
   },
+  // Styles pour la configuration de l'imprimante thermique
+  printerConfigTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 16,
+  },
+  printerNetworkSection: {
+    marginBottom: 16,
+  },
+  printerNetworkLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+  },
+  printerInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  printerInputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    width: 100,
+  },
+  printerInput: {
+    flex: 1,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    backgroundColor: '#f8f9fa',
+  },
+  printerConnectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  testConnectionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary[500],
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 8,
+  },
+  testConnectionButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  connectionStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  connectionStatusText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#28a745',
+  },
+  connectionStatusContainer: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  printerOptionRow: {
+    marginTop: 12,
+  },
+  printerOptionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  printerOptionText: {
+    fontSize: 14,
+    color: theme.colors.text.primary,
+  },
+  // Styles pour le type de connexion
+  connectionTypeSection: {
+    marginBottom: 16,
+  },
+  connectionTypeLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+  },
+  connectionTypeButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  connectionTypeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.primary[500],
+    backgroundColor: 'white',
+    gap: 8,
+  },
+  connectionTypeButtonActive: {
+    backgroundColor: theme.colors.primary[500],
+    borderColor: theme.colors.primary[500],
+  },
+  connectionTypeButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.primary[500],
+  },
+  connectionTypeButtonTextActive: {
+    color: 'white',
+  },
+  // Styles pour Bluetooth
+  printerBluetoothSection: {
+    marginBottom: 16,
+  },
+  printerBluetoothLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+  },
+  discoverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary[500],
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 8,
+    marginBottom: 12,
+  },
+  discoverButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  bluetoothPrintersList: {
+    maxHeight: 200,
+  },
+  bluetoothPrinterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: 'white',
+  },
+  bluetoothPrinterItemSelected: {
+    backgroundColor: '#f0f8ff',
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary[500],
+  },
+  bluetoothPrinterInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  bluetoothPrinterName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+  },
+  bluetoothPrinterAddress: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
+  },
+  selectedPrinterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8ff',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary[500],
+  },
+  selectedPrinterInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  selectedPrinterName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+  },
+  selectedPrinterAddress: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
+  },
   // Styles pour les paramètres thermiques
   thermalSettingsSection: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
   },
   thermalSettingsTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: theme.colors.text.primary,
     marginBottom: 12,

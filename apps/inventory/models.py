@@ -441,6 +441,9 @@ class Product(models.Model):
         # - Sur Railway avec S3 : ProductImageStorage (assets/products/site-{site_id}/)
         
         super().save(*args, **kwargs)
+        
+        # ✅ Traitement automatique du background après sauvegarde
+        self._auto_process_background()
 
     @property
     def category_path(self):
@@ -460,6 +463,95 @@ class Product(models.Model):
         if self.purchase_price > 0:
             return (self.margin / self.purchase_price) * 100
         return 0
+
+    def process_background_removal(self):
+        """
+        Retire le background de l'image du produit
+        Remplace l'image actuelle par la version sans background
+        """
+        if not self.image:
+            return False, "Aucune image à traiter"
+        
+        try:
+            from .services.image_processing import BackgroundRemover
+            import os
+            from django.core.files.base import ContentFile
+            
+            # Initialiser le service de retrait de background
+            background_remover = BackgroundRemover()
+            
+            # Valider l'image
+            is_valid, error_message = background_remover.validate_image(self.image.path)
+            if not is_valid:
+                return False, f"Image invalide: {error_message}"
+            
+            # Traiter l'image
+            processed_image_path = background_remover.remove_background(self.image.path)
+            
+            if processed_image_path and os.path.exists(processed_image_path):
+                # Remplacer l'image actuelle par la version traitée
+                with open(processed_image_path, 'rb') as f:
+                    processed_image_file = ContentFile(f.read())
+                    processed_image_file.name = os.path.basename(processed_image_path)
+                    
+                    # Sauvegarder la nouvelle image (remplace l'ancienne)
+                    self.image.save(
+                        f"product_{self.id}_processed.png",
+                        processed_image_file,
+                        save=True
+                    )
+                
+                # Nettoyer le fichier temporaire
+                try:
+                    os.remove(processed_image_path)
+                except Exception as e:
+                    pass  # Ignorer les erreurs de nettoyage
+                
+                return True, "Background retiré avec succès"
+            else:
+                return False, "Échec du traitement de l'image"
+                
+        except Exception as e:
+            return False, f"Erreur lors du traitement: {str(e)}"
+
+    def _auto_process_background(self):
+        """
+        Traitement automatique du background après sauvegarde
+        Se déclenche automatiquement à chaque save()
+        """
+        # Vérifier si l'image existe et n'a pas encore été traitée
+        if not self.image or not self.image.name:
+            return
+        
+        # Vérifier si l'image a déjà été traitée (éviter les boucles infinies)
+        if hasattr(self, '_background_processed'):
+            return
+        
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🎨 [AUTO] Traitement automatique background pour produit {self.id}")
+            
+            # Marquer comme en cours de traitement pour éviter les boucles
+            self._background_processed = True
+            
+            # Utiliser la méthode de traitement
+            success, message = self.process_background_removal()
+            
+            if success:
+                logger.info(f"✅ [AUTO] Background retiré automatiquement: {message}")
+            else:
+                logger.warning(f"⚠️ [AUTO] Échec traitement automatique: {message}")
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"❌ [AUTO] Erreur traitement automatique: {str(e)}")
+        finally:
+            # Réinitialiser le flag
+            if hasattr(self, '_background_processed'):
+                delattr(self, '_background_processed')
 
     class Meta:
         verbose_name = "Produit"

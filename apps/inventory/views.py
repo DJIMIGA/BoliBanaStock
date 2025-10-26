@@ -25,6 +25,17 @@ from apps.core.services import (
     can_user_manage_category_quick, can_user_create_category_quick, can_user_delete_category_quick
 )
 from .models import ProductCopy
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+import os
+import logging
+from .services.image_processing import BackgroundRemover
+
+logger = logging.getLogger(__name__)
 
 class ProductListView(SiteRequiredMixin, ListView):
     model = Product
@@ -1634,3 +1645,77 @@ class GetSubcategoriesView(LoginRequiredMixin, View):
             return JsonResponse({'error': 'Rayon non trouvé'}, status=404)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+
+
+# =============================================================================
+def upload_processed_image(request):
+    """
+    Upload d'une image déjà traitée côté client (sans background)
+    
+    POST /api/v1/products/upload-processed-image/
+    
+    Body:
+        - image: Fichier image déjà traité
+        - product_data: JSON avec les données du produit
+    """
+    try:
+        logger.info("🎨 [UPLOAD] Upload d'image déjà traitée")
+        
+        # Récupérer l'image et les données
+        image_file = request.FILES.get('image')
+        product_data_str = request.POST.get('product_data')
+        
+        if not image_file:
+            return Response({
+                'success': False,
+                'error': 'Aucune image fournie'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not product_data_str:
+            return Response({
+                'success': False,
+                'error': 'Aucune donnée produit fournie'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parser les données du produit
+        import json
+        product_data = json.loads(product_data_str)
+        
+        # Créer le produit avec l'image traitée
+        product = Product.objects.create(
+            name=product_data.get('name', 'Produit'),
+            cug=product_data.get('cug', 'TEMP001'),
+            price=product_data.get('price', 0),
+            user=request.user,
+            image=image_file,  # Image déjà traitée
+            image_processed=True  # Marquer comme traité
+        )
+        
+        logger.info(f"📦 [UPLOAD] Produit créé avec image traitée: {product.id}")
+        
+        return Response({
+            'success': True,
+            'message': 'Produit créé avec image traitée',
+            'product_id': product.id,
+            'image_url': product.image.url,  # URL de l'image traitée sur S3
+            'image_processed': True,
+            'processing_info': {
+                'method': 'Traitement côté client + Upload S3',
+                'output_format': 'PNG',
+                'transparency': True,
+                'storage': 'S3 direct'
+            }
+        }, status=status.HTTP_201_CREATED)
+        
+    except json.JSONDecodeError:
+        return Response({
+            'success': False,
+            'error': 'Données produit invalides'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Exception as e:
+        logger.error(f"❌ [UPLOAD] Erreur inattendue: {str(e)}")
+        return Response({
+            'success': False,
+            'error': 'Erreur interne du serveur'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
