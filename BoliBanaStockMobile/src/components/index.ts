@@ -25,4 +25,7 @@ export { default as SaraliPaymentModal } from './SaraliPaymentModal';
 export { default as CustomerSelectorModal } from './CustomerSelectorModal';
 export { default as CustomerFormModal } from './CustomerFormModal';
 
+// Composants d'impression
+export { default as ReceiptPrintModal } from './ReceiptPrintModal';
+
 // Ajoutez ici d'autres composants si nécessaire

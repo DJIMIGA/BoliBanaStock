@@ -14,7 +14,7 @@ from .views import (
     CustomerViewSet, CreditTransactionViewSet,
     RefreshTokenView, ForceLogoutAllView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
-    CatalogPDFAPIView, LabelPrintAPIView,
+    CatalogPDFAPIView, LabelPrintAPIView, ReceiptPrintAPIView,
     collect_static_files, GetRayonsView, GetSubcategoriesMobileView,
     ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView
 )
@@ -86,6 +86,7 @@ urlpatterns = [
     # Modes d'impression
     path('catalog/pdf/', CatalogPDFAPIView.as_view(), name='api_catalog_pdf'),
     path('labels/print/', LabelPrintAPIView.as_view(), name='api_label_print'),
+    path('receipts/print/', ReceiptPrintAPIView.as_view(), name='api_receipt_print'),
     
     # Sélection hiérarchisée pour mobile
     path('rayons/', GetRayonsView.as_view(), name='api_rayons'),
@@ -103,6 +104,7 @@ urlpatterns = [
     
     # Codes-barres - Endpoints spécifiques
     path('product/<int:product_id>/barcodes/add/', inventory_views.api_barcode_add, name='api_barcode_add'),
+    path('product/<int:product_id>/barcodes/<int:barcode_id>/set-primary/', inventory_views.api_barcode_set_primary, name='api_barcode_set_primary'),
     
     # API endpoints
     path('', include(router.urls)),

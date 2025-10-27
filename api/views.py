@@ -288,6 +288,14 @@ class ProductViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
                     )
             
+            # Log spécifique pour l'image
+            if 'image' in request.FILES:
+                image_file = request.FILES['image']
+                print(f"🖼️ Image reçue: {image_file.name}, {image_file.size} bytes, {image_file.content_type}")
+                print(f"🎨 Image sera traitée automatiquement par Product.save()")
+            else:
+                print(f"❌ Aucune image reçue")
+            
         except Exception as e:
             print(f"⚠️  Erreur lors du logging de création: {e}")
         
@@ -2989,6 +2997,143 @@ class LabelPrintAPIView(APIView):
         except Exception as e:
             return Response(
                 {'error': f'Erreur lors de la génération des étiquettes: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ReceiptPrintAPIView(APIView):
+    """API pour générer des tickets de caisse"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Générer un ticket de caisse"""
+        try:
+            from apps.sales.models import Sale, SaleItem
+            
+            # Récupérer les paramètres
+            sale_id = request.data.get('sale_id')
+            printer_type = request.data.get('printer_type', 'pdf')  # 'pdf' ou 'escpos'
+            
+            if not sale_id:
+                return Response(
+                    {'error': 'ID de vente requis'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Récupérer la vente
+            user = request.user
+            user_site = get_user_site_configuration_api(user)
+            
+            try:
+                if user.is_superuser:
+                    sale = Sale.objects.select_related(
+                        'customer', 'seller', 'cash_register', 'site_configuration'
+                    ).prefetch_related('items__product').get(id=sale_id)
+                else:
+                    if not user_site:
+                        return Response(
+                            {'error': 'Aucun site configuré pour cet utilisateur'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    sale = Sale.objects.select_related(
+                        'customer', 'seller', 'cash_register', 'site_configuration'
+                    ).prefetch_related('items__product').filter(
+                        id=sale_id,
+                        site_configuration=user_site
+                    ).first()
+                    
+                    if not sale:
+                        return Response(
+                            {'error': 'Vente non trouvée ou non autorisée'},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+            except Sale.DoesNotExist:
+                return Response(
+                    {'error': 'Vente non trouvée'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Récupérer les informations du site
+            site_config = sale.site_configuration or user_site
+            
+            # Préparer les données du ticket
+            receipt_data = {
+                'sale': {
+                    'id': sale.id,
+                    'reference': sale.reference or f"V{sale.id}",
+                    'sale_date': sale.sale_date.isoformat(),
+                    'status': sale.status,
+                    'payment_status': sale.payment_status,
+                    'payment_method': sale.payment_method,
+                    'subtotal': float(sale.subtotal),
+                    'tax_amount': float(sale.tax_amount),
+                    'discount_amount': float(sale.discount_amount),
+                    'total_amount': float(sale.total_amount),
+                    'amount_paid': float(sale.amount_paid),
+                    'amount_given': float(sale.amount_given) if sale.amount_given else None,
+                    'change_amount': float(sale.change_amount) if sale.change_amount else None,
+                    'sarali_reference': sale.sarali_reference,
+                    'notes': sale.notes,
+                },
+                'site': {
+                    'name': site_config.site_name if site_config else 'BoliBana Stock',
+                    'company_name': site_config.nom_societe if site_config else 'BoliBana Stock',
+                    'address': site_config.adresse if site_config else '',
+                    'phone': site_config.telephone if site_config else '',
+                    'email': site_config.email if site_config else '',
+                    'currency': site_config.devise if site_config else 'FCFA',
+                },
+                'seller': {
+                    'username': sale.seller.username,
+                    'first_name': sale.seller.first_name,
+                    'last_name': sale.seller.last_name,
+                },
+                'customer': None,
+                'items': [],
+                'printer_type': printer_type,
+                'generated_at': timezone.now().isoformat(),
+            }
+            
+            # Informations client si défini
+            if sale.customer:
+                receipt_data['customer'] = {
+                    'name': sale.customer.name,
+                    'first_name': sale.customer.first_name,
+                    'phone': sale.customer.phone,
+                    'email': sale.customer.email,
+                    'credit_balance': float(sale.customer.credit_balance) if hasattr(sale.customer, 'credit_balance') else 0,
+                }
+            
+            # Articles de la vente
+            for item in sale.items.all():
+                item_data = {
+                    'product_name': item.product.name,
+                    'product_cug': item.product.cug,
+                    'quantity': item.quantity,
+                    'unit_price': float(item.unit_price),
+                    'total_price': float(item.amount),
+                }
+                receipt_data['items'].append(item_data)
+            
+            # Calculer les totaux pour vérification
+            calculated_subtotal = sum(item['total_price'] for item in receipt_data['items'])
+            calculated_total = calculated_subtotal + receipt_data['sale']['tax_amount'] - receipt_data['sale']['discount_amount']
+            
+            # Ajouter les totaux calculés pour vérification côté client
+            receipt_data['calculated_totals'] = {
+                'subtotal': calculated_subtotal,
+                'total': calculated_total,
+            }
+            
+            return Response({
+                'success': True,
+                'receipt': receipt_data,
+                'message': f'Ticket de caisse généré avec succès - Vente #{sale.reference or sale.id}'
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la génération du ticket de caisse: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

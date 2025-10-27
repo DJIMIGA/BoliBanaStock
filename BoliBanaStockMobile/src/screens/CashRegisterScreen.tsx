@@ -17,7 +17,8 @@ import {
   CashPaymentModal,
   SaraliPaymentModal,
   CustomerSelectorModal,
-  CustomerFormModal
+  CustomerFormModal,
+  ReceiptPrintModal
 } from '../components';
 import { useContinuousScanner } from '../hooks';
 import { useUserPermissions } from '../hooks/useUserPermissions';
@@ -38,6 +39,10 @@ export default function CashRegisterScreen({ navigation }: any) {
   const [saraliPaymentModalVisible, setSaraliPaymentModalVisible] = useState(false);
   const [customerSelectorModalVisible, setCustomerSelectorModalVisible] = useState(false);
   const [customerFormModalVisible, setCustomerFormModalVisible] = useState(false);
+  
+  // États pour l'impression de tickets
+  const [receiptPrintModalVisible, setReceiptPrintModalVisible] = useState(false);
+  const [lastSaleId, setLastSaleId] = useState<number | null>(null);
   
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [amountGiven, setAmountGiven] = useState<number>(0);
@@ -279,6 +284,11 @@ export default function CashRegisterScreen({ navigation }: any) {
     processSale('credit');
   };
 
+  const handlePrintReceipt = (saleId: number) => {
+    setLastSaleId(saleId);
+    setReceiptPrintModalVisible(true);
+  };
+
   const processSale = async (paymentMethod: 'cash' | 'credit' | 'sarali') => {
     setLoading(true);
     try {
@@ -329,6 +339,12 @@ export default function CashRegisterScreen({ navigation }: any) {
             onPress: () => {
               resetPaymentState();
               scanner.clearList();
+            }
+          },
+          {
+            text: '🖨️ Imprimer ticket',
+            onPress: () => {
+              handlePrintReceipt(sale.id);
             }
           },
           {
@@ -559,6 +575,16 @@ export default function CashRegisterScreen({ navigation }: any) {
         visible={customerFormModalVisible}
         onClose={() => setCustomerFormModalVisible(false)}
         onCustomerCreated={handleCustomerCreated}
+      />
+
+      <ReceiptPrintModal
+        visible={receiptPrintModalVisible}
+        onClose={() => setReceiptPrintModalVisible(false)}
+        saleId={lastSaleId || 0}
+        onSuccess={() => {
+          // Optionnel : actions après impression réussie
+          console.log('✅ Ticket imprimé avec succès');
+        }}
       />
     </SafeAreaView>
   );

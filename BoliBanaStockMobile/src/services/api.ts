@@ -395,130 +395,88 @@ export const productService = {
 
   createProduct: async (productData: any) => {
     try {
-      // Si une image est fournie, utiliser FormData
       const hasImage = !!productData.image;
+      
       if (hasImage) {
+        console.log('🔍 Debug image object:', productData.image);
+        console.log('🔍 Image keys:', Object.keys(productData.image || {}));
+        
+        // Normaliser l'URI pour Android si nécessaire
+        let imageUri = productData.image.uri;
+        if (Platform.OS === 'android' && imageUri?.startsWith('content://')) {
+          const fileName = productData.image.fileName || `upload_${Date.now()}.jpg`;
+          const dest = `/tmp/${fileName}`;
+          try {
+            await FileSystem.copyAsync({ from: imageUri, to: dest });
+            imageUri = dest;
+          } catch (e) {
+            console.warn('⚠️ Copie d\'image échouée:', (e as any)?.message || e);
+          }
+        }
+        
+        // Créer FormData avec l'image ET les autres champs
         const formData = new FormData();
         
-        // Traiter chaque champ du produit (séquentiel pour permettre await)
-        for (const [key, value] of Object.entries(productData)) {
-          if (value === null || value === undefined) continue;
-          
-          if (key === 'image' && value) {
-            // Gestion spéciale pour l'image
-            const imageAsset = value as ImageAsset;
-            // Normaliser l'URI pour Android (content:// -> file:// en cache)
-            let normalizedUri = imageAsset.uri;
-            try {
-              if (Platform.OS === 'android' && normalizedUri?.startsWith('content://')) {
-                const fileName = imageAsset.fileName || `upload_${Date.now()}.jpg`;
-                const dest = `/tmp/${fileName}`;
-                console.log('🗂️ Copie image content:// vers cache (create):', dest);
-                await FileSystem.copyAsync({ from: normalizedUri, to: dest });
-                normalizedUri = dest;
-              }
-            } catch (e) {
-              console.warn('⚠️ Normalisation URI échouée (create):', (e as any)?.message || e);
-            }
-            const imageFile = {
-              uri: normalizedUri,
-              type: imageAsset.type || 'image/jpeg',
-              name: imageAsset.fileName || `product_${Date.now()}.jpg`,
-            };
-            formData.append('image', imageFile as any);
-          } else if (key === 'category' && value) {
-            // Gestion des relations
-            formData.append('category', String(value));
-          } else if (key === 'brand' && value) {
-            formData.append('brand', String(value));
-          } else {
-            // Champs normaux
+        // Ajouter l'image
+        formData.append('image', {
+          uri: imageUri,
+          type: productData.image?.type || 'image/jpeg',
+          name: productData.image?.fileName || `product_${Date.now()}.jpg`,
+        } as any);
+        
+        // Ajouter tous les autres champs sauf l'image
+        const imageData = productData.image;
+        delete productData.image;
+        
+        Object.entries(productData).forEach(([key, value]) => {
+          if (value !== null && value !== undefined) {
             formData.append(key, String(value));
           }
-        }
-
-        console.log('📤 Upload avec image - FormData:', formData);
-        console.log('🔗 URL API utilisée:', `${API_BASE_URL}/products/`);
-        console.log('🌐 Mode développement:', __DEV__);
+        });
         
-        // Vérifier l'authentification avant l'upload
+        console.log('📤 Création produit avec image en une seule requête...');
+        console.log('📎 Image à envoyer:', {
+          uri: imageUri,
+          type: productData.image?.type || 'image/jpeg',
+          fileName: productData.image?.fileName || `product_${Date.now()}.jpg`,
+        });
+        console.log('📦 Données produit:', Object.keys(productData).filter(k => k !== 'image'));
+        
+        // Upload direct avec fetch natif pour éviter les problèmes de Content-Type
         const token = await AsyncStorage.getItem('access_token');
-        if (!token) {
-          throw new Error('Aucun token d\'authentification trouvé. Veuillez vous reconnecter.');
-        }
-        
-        // Validation de la taille de l'image avant upload
-        if (productData.image?.size && productData.image.size > 10 * 1024 * 1024) { // 10MB max
-          console.warn('⚠️ Image trop volumineuse, compression recommandée');
-        }
-        
-        // Stratégie de fallback : Créer le produit sans image, puis uploader l'image séparément
-        console.log('🔁 Stratégie de fallback : Création produit + upload image séparé...');
         
         try {
-          // 1. Créer le produit sans image d'abord
-          const productDataWithoutImage = { ...productData };
-          delete productDataWithoutImage.image;
+          const response = await fetch(`${API_BASE_URL}/products/`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json',
+              // Ne pas spécifier Content-Type - fetch le gère automatiquement pour FormData
+            },
+            body: formData as any,
+          });
           
-          const productResponse = await api.post('/products/', productDataWithoutImage);
-          const createdProduct = productResponse.data;
-          
-          
-          // 2. Uploader l'image séparément avec FileSystem.uploadAsync (méthode qui fonctionnait avant)
-          if (productData.image) {
-            console.log('📤 Upload de l\'image via FileSystem.uploadAsync...');
-            try {
-              // Normaliser l'URI pour FileSystem.uploadAsync
-              let imageUri = productData.image.uri;
-              if (Platform.OS === 'android' && imageUri?.startsWith('content://')) {
-                const fileName = productData.image.fileName || `upload_${Date.now()}.jpg`;
-                const dest = `/tmp/${fileName}`;
-                console.log('🗂️ Copie image content:// vers cache (create):', dest);
-                await FileSystem.copyAsync({ from: imageUri, to: dest });
-                imageUri = dest;
-              }
-              
-              const uploadResult = await FileSystem.uploadAsync(
-                `${API_BASE_URL}/products/${createdProduct.id}/upload_image/`,
-                imageUri,
-                {
-                  httpMethod: 'POST',
-                  uploadType: 'MULTIPART' as any,
-                  fieldName: 'image',
-                  headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json',
-                  },
-                }
-              );
-              
-              return { ...createdProduct, image_uploaded: true };
-            } catch (imageError: any) {
-              console.warn('⚠️ Upload d\'image échoué, mais produit créé avec succès:', imageError?.message || imageError);
-              // Retourner le produit créé même si l'image a échoué
-              return { 
-                ...createdProduct, 
-                image_uploaded: false,
-                image_error: 'L\'image n\'a pas pu être uploadée, mais le produit a été créé avec succès. Vous pourrez ajouter l\'image plus tard.'
-              };
-            }
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Fetch échec:', response.status, errorText);
+            throw new Error(`Upload failed: ${response.status} - ${errorText}`);
           }
           
-          return createdProduct;
-        } catch (fallbackError: any) {
-          console.warn('⚠️ Fallback échoué, tentative upload direct...', fallbackError?.message || fallbackError);
+          const data = await response.json();
+          console.log('✅ Produit créé avec succès via fetch:', data);
+          return data;
           
-          // Dernière tentative : upload direct avec FormData
+        } catch (fetchError: any) {
+          console.warn('⚠️ Fetch échoué, tentative Axios...', fetchError?.message || fetchError);
+          
+          // Fallback vers Axios si fetch échoue
           const response = await api.post('/products/', formData, {
             timeout: 120000,
             maxContentLength: 100 * 1024 * 1024,
             maxBodyLength: 100 * 1024 * 1024,
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Accept': 'application/json',
-            },
           });
           
+          console.log('✅ Produit créé avec succès via Axios:', response.data);
           return response.data;
         }
       } else {
@@ -777,7 +735,7 @@ export const productService = {
   // Gestion des codes-barres
   addBarcode: async (productId: number, barcodeData: { ean: string; notes?: string; is_primary: boolean }) => {
     console.log('🏷️ [BARCODE] Ajout code-barres:', { productId, barcodeData });
-    const response = await api.post(`/api/product/${productId}/barcodes/add/`, {
+    const response = await api.post(`/product/${productId}/barcodes/add/`, {
       ean: barcodeData.ean,
       notes: barcodeData.notes || '',
       is_primary: barcodeData.is_primary
@@ -2040,33 +1998,25 @@ export const labelPrintService = {
   // Nouvelle méthode pour upload direct d'image traitée
   uploadProcessedImage: async (imageUri: string, productData: any) => {
     try {
-      console.log('🎨 [UPLOAD] Upload d\'image traitée côté client...');
+      console.log('📤 [UPLOAD] Upload direct de l\'image originale...');
       
-      // Traiter l'image côté client
-      const { ClientBackgroundRemover } = await import('./clientBackgroundRemover');
-      const processed = await ClientBackgroundRemover.processImageForUpload(imageUri);
-      
-      if (!processed.success) {
-        throw new Error(processed.error || 'Échec du traitement côté client');
-      }
-      
-      // Créer un FormData pour l'upload
+      // Créer un FormData pour l'upload direct
       const formData = new FormData();
       
-      // Ajouter l'image traitée
+      // Ajouter l'image originale directement
       formData.append('image', {
-        uri: processed.processedUri,
-        type: 'image/png',
-        name: 'product_image_processed.png',
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'product_image.jpg',
       } as any);
       
       // Ajouter les données du produit
       formData.append('product_data', JSON.stringify({
         ...productData,
-        image_processed: true, // Flag indiquant que l'image est déjà traitée
+        image_processed: false, // Flag indiquant que l'image sera traitée en backend
       }));
       
-      // Upload direct de l'image traitée
+      // Upload direct de l'image originale
       const response = await api.post('/products/upload-processed-image/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -2074,11 +2024,53 @@ export const labelPrintService = {
         timeout: 30000, // 30s pour l'upload
       });
       
-      console.log('✅ [UPLOAD] Image traitée uploadée:', response.data);
+      console.log('✅ [UPLOAD] Image originale uploadée:', response.data);
       return response.data;
       
     } catch (error: any) {
-      console.error('❌ [UPLOAD] Erreur upload image traitée:', error.message);
+      console.error('❌ [UPLOAD] Erreur upload image:', error.message);
+      throw error;
+    }
+  },
+};
+
+// Service pour l'impression de tickets de caisse
+export const receiptService = {
+  // Générer un ticket de caisse
+  generateReceipt: async (receiptData: {
+    sale_id: number;
+    printer_type?: 'pdf' | 'escpos';
+  }) => {
+    try {
+      console.log('🧾 [RECEIPT] Début génération ticket...');
+      console.log('🧾 [RECEIPT] Données envoyées:', JSON.stringify(receiptData, null, 2));
+      console.log('🧾 [RECEIPT] URL API:', api.defaults.baseURL + '/receipts/print/');
+      
+      const response = await api.post('/receipts/print/', receiptData, {
+        timeout: 30000, // 30 secondes pour la génération
+      });
+      
+      console.log('✅ [RECEIPT] Ticket généré avec succès');
+      console.log('✅ [RECEIPT] Status:', response.status);
+      console.log('✅ [RECEIPT] Response data:', JSON.stringify(response.data, null, 2));
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [RECEIPT] Erreur lors de la génération du ticket:');
+      console.error('❌ [RECEIPT] Error type:', typeof error);
+      console.error('❌ [RECEIPT] Error message:', error.message);
+      console.error('❌ [RECEIPT] Error response:', error.response);
+      
+      if (error.response) {
+        console.error('❌ [RECEIPT] Response status:', error.response.status);
+        console.error('❌ [RECEIPT] Response data:', JSON.stringify(error.response.data, null, 2));
+        console.error('❌ [RECEIPT] Response headers:', error.response.headers);
+      }
+      
+      if (error.request) {
+        console.error('❌ [RECEIPT] Request config:', error.request);
+      }
+      
+      console.error('❌ [RECEIPT] Full error object:', error);
       throw error;
     }
   },
