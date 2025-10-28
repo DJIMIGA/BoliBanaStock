@@ -38,6 +38,9 @@ from django.http import JsonResponse
 from django.core.files.base import ContentFile
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 from django.http import Http404
 from apps.inventory.printing.pdf import render_label_batch_pdf
 from apps.inventory.printing.tsc import render_label_batch_tsc
