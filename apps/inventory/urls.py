@@ -60,8 +60,5 @@ urlpatterns = [
     # URLs pour la copie de produits entre sites
     path('copy/', views.ProductCopyView.as_view(), name='product_copy'),
     path('copy/management/', views.ProductCopyManagementView.as_view(), name='product_copy_management'),
-    
-    # URLs pour le retrait de background (simplifiées)
-    path('products/upload-processed-image/', views.upload_processed_image, name='upload_processed_image'),
 
 ] 

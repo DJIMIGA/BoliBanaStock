@@ -1139,6 +1139,19 @@ def api_barcode_add(request, product_id):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Vérifier si c'est le premier code-barres pour ce produit
+        existing_count = Barcode.objects.filter(product=product).count()
+        
+        # Si c'est le premier code-barres, il devient automatiquement principal
+        # Sinon, respecter la valeur fournie
+        if existing_count == 0:
+            is_primary = True
+            logger.info(f"🏷️ [API_BARCODE] Premier code-barres, défini comme principal automatiquement")
+        elif is_primary:
+            # Si on définit ce code-barres comme principal, retirer le statut des autres
+            Barcode.objects.filter(product=product).update(is_primary=False)
+            logger.info(f"🏷️ [API_BARCODE] Retrait du statut principal des autres codes-barres")
+        
         # Créer le code-barres
         barcode = Barcode.objects.create(
             product=product,
@@ -1300,6 +1313,95 @@ def barcode_set_primary(request, product_id, barcode_id):
         return redirect('inventory:barcode_list', product_id=product_id)
     
     return redirect('inventory:barcode_list', product_id=product_id)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def api_barcode_set_primary(request, product_id, barcode_id):
+    """API pour définir un code-barres comme principal"""
+    try:
+        logger.info(f"🏷️ [API_BARCODE] Définir code-barres {barcode_id} comme principal pour produit {product_id}")
+        
+        product = get_object_or_404(Product, pk=product_id)
+        barcode = get_object_or_404(Barcode, pk=barcode_id, product=product)
+        
+        # Vérifier que l'utilisateur a accès au produit (même site)
+        if not request.user.is_superuser:
+            if not hasattr(request.user, 'site_configuration') or product.site_configuration != request.user.site_configuration:
+                return Response({'error': 'Produit non trouvé'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Retirer le statut principal de tous les codes-barres
+        product.barcodes.update(is_primary=False)
+        
+        # Définir ce code-barres comme principal
+        barcode.is_primary = True
+        barcode.save()
+        
+        logger.info(f"✅ [API_BARCODE] Code-barres {barcode.ean} défini comme principal")
+        
+        return Response({
+            'success': True,
+            'message': f'Code-barres "{barcode.ean}" défini comme principal',
+            'barcode': {
+                'id': barcode.id,
+                'ean': barcode.ean,
+                'is_primary': barcode.is_primary,
+                'notes': barcode.notes
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"❌ [API_BARCODE] Erreur définition principal: {str(e)}")
+        return Response({
+            'error': f'Erreur lors de la définition du code-barres principal: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def api_barcode_delete(request, product_id, barcode_id):
+    """API pour supprimer un code-barres"""
+    try:
+        logger.info(f"🏷️ [API_BARCODE] Suppression code-barres {barcode_id} pour produit {product_id}")
+        
+        product = get_object_or_404(Product, pk=product_id)
+        barcode = get_object_or_404(Barcode, pk=barcode_id, product=product)
+        
+        # Vérifier que l'utilisateur a accès au produit (même site)
+        if not request.user.is_superuser:
+            if not hasattr(request.user, 'site_configuration') or product.site_configuration != request.user.site_configuration:
+                return Response({'error': 'Produit non trouvé'}, status=status.HTTP_404_NOT_FOUND)
+        
+        ean = barcode.ean
+        was_primary = barcode.is_primary
+        
+        # Supprimer le code-barres
+        barcode.delete()
+        
+        # Si c'était le code-barres principal, essayer de définir un nouveau principal
+        if was_primary:
+            # Essayer de trouver un autre code-barres principal
+            new_primary = product.barcodes.filter(is_primary=True).first()
+            if not new_primary:
+                # Aucun code-barres principal, essayer le premier disponible
+                first_barcode = product.barcodes.first()
+                if first_barcode:
+                    first_barcode.is_primary = True
+                    first_barcode.save()
+                    logger.info(f"🏷️ [API_BARCODE] Nouveau code-barres principal défini: {first_barcode.ean}")
+        
+        logger.info(f"✅ [API_BARCODE] Code-barres {ean} supprimé avec succès")
+        
+        return Response({
+            'success': True,
+            'message': f'Code-barres "{ean}" supprimé avec succès'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"❌ [API_BARCODE] Erreur suppression: {str(e)}")
+        return Response({
+            'error': f'Erreur lors de la suppression du code-barres: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ProductQuickScanView(SiteRequiredMixin, View):
     """
@@ -1666,75 +1768,3 @@ class GetSubcategoriesView(LoginRequiredMixin, View):
             return JsonResponse({'error': str(e)}, status=500)
 
 
-# =============================================================================
-def upload_processed_image(request):
-    """
-    Upload d'une image déjà traitée côté client (sans background)
-    
-    POST /api/v1/products/upload-processed-image/
-    
-    Body:
-        - image: Fichier image déjà traité
-        - product_data: JSON avec les données du produit
-    """
-    try:
-        logger.info("🎨 [UPLOAD] Upload d'image déjà traitée")
-        
-        # Récupérer l'image et les données
-        image_file = request.FILES.get('image')
-        product_data_str = request.POST.get('product_data')
-        
-        if not image_file:
-            return Response({
-                'success': False,
-                'error': 'Aucune image fournie'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        if not product_data_str:
-            return Response({
-                'success': False,
-                'error': 'Aucune donnée produit fournie'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Parser les données du produit
-        import json
-        product_data = json.loads(product_data_str)
-        
-        # Créer le produit avec l'image traitée
-        product = Product.objects.create(
-            name=product_data.get('name', 'Produit'),
-            cug=product_data.get('cug', 'TEMP001'),
-            price=product_data.get('price', 0),
-            user=request.user,
-            image=image_file,  # Image déjà traitée
-            image_processed=True  # Marquer comme traité
-        )
-        
-        logger.info(f"📦 [UPLOAD] Produit créé avec image traitée: {product.id}")
-        
-        return Response({
-            'success': True,
-            'message': 'Produit créé avec image traitée',
-            'product_id': product.id,
-            'image_url': product.image.url,  # URL de l'image traitée sur S3
-            'image_processed': True,
-            'processing_info': {
-                'method': 'Traitement côté client + Upload S3',
-                'output_format': 'PNG',
-                'transparency': True,
-                'storage': 'S3 direct'
-            }
-        }, status=status.HTTP_201_CREATED)
-        
-    except json.JSONDecodeError:
-        return Response({
-            'success': False,
-            'error': 'Données produit invalides'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    except Exception as e:
-        logger.error(f"❌ [UPLOAD] Erreur inattendue: {str(e)}")
-        return Response({
-            'success': False,
-            'error': 'Erreur interne du serveur'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

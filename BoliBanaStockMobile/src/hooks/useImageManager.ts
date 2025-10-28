@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import { Alert } from 'react-native';
 
 interface ImageAsset {
@@ -21,13 +20,9 @@ interface UseImageManagerReturn {
   showImageOptions: () => void;
 }
 
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_IMAGE_DIMENSIONS = { width: 1920, height: 1080 };
-const COMPRESSION_QUALITY = 0.8;
-
 export const useImageManager = (): UseImageManagerReturn => {
   const [selectedImage, setSelectedImage] = useState<ImageAsset | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing] = useState(false); // Toujours false - pas de traitement
 
   const requestPermissions = useCallback(async (type: 'camera' | 'mediaLibrary') => {
     if (type === 'camera') {
@@ -54,59 +49,6 @@ export const useImageManager = (): UseImageManagerReturn => {
     return true;
   }, []);
 
-  const processImage = useCallback(async (asset: ImagePicker.ImagePickerAsset): Promise<ImageAsset> => {
-    try {
-      setIsProcessing(true);
-
-      // Vérifier la taille de l'image
-      if (asset.fileSize && asset.fileSize > MAX_IMAGE_SIZE) {
-        throw new Error('Image trop volumineuse. Taille maximale : 5MB');
-      }
-
-      // Redimensionner et compresser l'image si nécessaire
-      let processedImage = asset;
-      
-      if (asset.width > MAX_IMAGE_DIMENSIONS.width || asset.height > MAX_IMAGE_DIMENSIONS.height) {
-        const result = await ImageManipulator.manipulateAsync(
-          asset.uri,
-          [
-            {
-              resize: {
-                width: MAX_IMAGE_DIMENSIONS.width,
-                height: MAX_IMAGE_DIMENSIONS.height,
-              },
-            },
-          ],
-          {
-            compress: COMPRESSION_QUALITY,
-            format: ImageManipulator.SaveFormat.JPEG,
-          }
-        );
-        
-        processedImage = {
-          ...asset,
-          uri: result.uri,
-          width: result.width,
-          height: result.height,
-        };
-      }
-
-      return {
-        uri: processedImage.uri,
-        width: processedImage.width,
-        height: processedImage.height,
-        type: 'image/jpeg',
-        fileName: `product_${Date.now()}.jpg`,
-        fileSize: processedImage.fileSize,
-      };
-    } catch (error) {
-      console.error('❌ Erreur lors du traitement de l\'image:', error);
-      throw error;
-    } finally {
-      setIsProcessing(false);
-    }
-  }, []);
-
   const pickImage = useCallback(async () => {
     try {
       const hasPermission = await requestPermissions('mediaLibrary');
@@ -114,20 +56,27 @@ export const useImageManager = (): UseImageManagerReturn => {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 1, // Qualité maximale pour le traitement
+        quality: 1,
         allowsEditing: false,
-        aspect: [4, 3],
+        aspect: undefined,
       });
 
       if (!result.canceled && result.assets?.length) {
-        const processedImage = await processImage(result.assets[0]);
-        setSelectedImage(processedImage);
+        const asset = result.assets[0];
+        setSelectedImage({
+          uri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+          type: 'image/jpeg',
+          fileName: asset.fileName || `product_${Date.now()}.jpg`,
+          fileSize: asset.fileSize,
+        });
       }
     } catch (error) {
       console.error('❌ Erreur lors de la sélection d\'image:', error);
-      Alert.alert('Erreur', 'Impossible de traiter l\'image sélectionnée');
+      Alert.alert('Erreur', 'Impossible de sélectionner l\'image');
     }
-  }, [requestPermissions, processImage]);
+  }, [requestPermissions]);
 
   const takePhoto = useCallback(async () => {
     try {
@@ -136,20 +85,27 @@ export const useImageManager = (): UseImageManagerReturn => {
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 1, // Qualité maximale pour le traitement
-        allowsEditing: true,
-        aspect: [4, 3],
+        quality: 1,
+        allowsEditing: false,
+        aspect: undefined,
       });
 
       if (!result.canceled && result.assets?.length) {
-        const processedImage = await processImage(result.assets[0]);
-        setSelectedImage(processedImage);
+        const asset = result.assets[0];
+        setSelectedImage({
+          uri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+          type: 'image/jpeg',
+          fileName: asset.fileName || `product_${Date.now()}.jpg`,
+          fileSize: asset.fileSize,
+        });
       }
     } catch (error) {
       console.error('❌ Erreur lors de la prise de photo:', error);
-      Alert.alert('Erreur', 'Impossible de traiter la photo prise');
+      Alert.alert('Erreur', 'Impossible de prendre la photo');
     }
-  }, [requestPermissions, processImage]);
+  }, [requestPermissions]);
 
   const removeImage = useCallback(() => {
     setSelectedImage(null);

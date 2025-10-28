@@ -105,6 +105,7 @@ urlpatterns = [
     # Codes-barres - Endpoints spécifiques
     path('product/<int:product_id>/barcodes/add/', inventory_views.api_barcode_add, name='api_barcode_add'),
     path('product/<int:product_id>/barcodes/<int:barcode_id>/set-primary/', inventory_views.api_barcode_set_primary, name='api_barcode_set_primary'),
+    path('product/<int:product_id>/barcodes/<int:barcode_id>/delete/', inventory_views.api_barcode_delete, name='api_barcode_delete'),
     
     # API endpoints
     path('', include(router.urls)),

@@ -288,7 +288,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   // Fonctions pour gérer les codes-barres
   const handleAddBarcode = async (ean: string, notes?: string) => {
     try {
-      await productService.addBarcode(product!.id, ean, notes);
+      await productService.addBarcode(product!.id, { ean, notes: notes || undefined, is_primary: false });
       Alert.alert('Succès', 'Code-barres ajouté avec succès');
       // Recharger les données du produit
       await loadProduct();
@@ -321,7 +321,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
 
   const handleUpdateBarcode = async (id: string | number, ean: string, notes?: string) => {
     try {
-      await productService.updateBarcode(product!.id, id, ean, notes);
+      await productService.updateBarcode(product!.id, id, ean, notes || undefined);
       Alert.alert('Succès', 'Code-barres modifié avec succès');
       // Recharger les données du produit
       await loadProduct();

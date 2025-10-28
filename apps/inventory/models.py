@@ -428,13 +428,15 @@ class Product(models.Model):
         if hasattr(self, 'site_configuration') and self.site_configuration:
             site_id = str(self.site_configuration.id)
             # ✅ NOUVELLE STRUCTURE S3: assets/products/site-{site_id}/
-            if not self.image.name or not self.image.name.startswith(f'assets/products/site-{site_id}/'):
-                # Si l'image n'a pas encore le bon chemin, on le corrige
-                if self.image.name:
-                    # Extraire le nom du fichier
+            expected_prefix = f'assets/products/site-{site_id}/'
+            
+            if self.image and self.image.name:
+                # Vérifier si le chemin est déjà correct
+                if not self.image.name.startswith(expected_prefix):
+                    # Si l'image n'a pas encore le bon chemin, on le corrige
                     filename = os.path.basename(self.image.name)
                     # Utiliser la nouvelle structure S3
-                    self.image.name = f'assets/products/site-{site_id}/{filename}'
+                    self.image.name = f'{expected_prefix}{filename}'
         
         # ✅ Le stockage sera automatiquement géré par Django selon DEFAULT_FILE_STORAGE
         # - En local : FileSystemStorage (assets/products/site-{site_id}/)
@@ -442,8 +444,12 @@ class Product(models.Model):
         
         super().save(*args, **kwargs)
         
-        # ✅ Traitement automatique du background après sauvegarde
-        self._auto_process_background()
+        # ✅ Traitement automatique du background après sauvegarde (si OpenCV disponible)
+        try:
+            import cv2
+            self._auto_process_background()
+        except ImportError:
+            print(f"⚠️ [AUTO] OpenCV non disponible - traitement de background ignoré pour produit {self.id}")
 
     @property
     def category_path(self):
@@ -475,41 +481,60 @@ class Product(models.Model):
         try:
             from .services.image_processing import BackgroundRemover
             import os
+            import tempfile
             from django.core.files.base import ContentFile
+            from django.core.files.storage import default_storage
             
             # Initialiser le service de retrait de background
             background_remover = BackgroundRemover()
             
-            # Valider l'image
-            is_valid, error_message = background_remover.validate_image(self.image.path)
-            if not is_valid:
-                return False, f"Image invalide: {error_message}"
+            # Télécharger l'image depuis S3 vers un fichier temporaire local
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                temp_path = temp_file.name
+                
+                # Télécharger depuis S3
+                with default_storage.open(self.image.name, 'rb') as source_file:
+                    temp_file.write(source_file.read())
             
-            # Traiter l'image
-            processed_image_path = background_remover.remove_background(self.image.path)
-            
-            if processed_image_path and os.path.exists(processed_image_path):
-                # Remplacer l'image actuelle par la version traitée
-                with open(processed_image_path, 'rb') as f:
-                    processed_image_file = ContentFile(f.read())
-                    processed_image_file.name = os.path.basename(processed_image_path)
+            try:
+                # Valider l'image
+                is_valid, error_message = background_remover.validate_image(temp_path)
+                if not is_valid:
+                    return False, f"Image invalide: {error_message}"
+                
+                # Traiter l'image
+                processed_image_path = background_remover.remove_background(temp_path)
+                
+                if processed_image_path and os.path.exists(processed_image_path):
+                    # Remplacer l'image actuelle par la version traitée
+                    with open(processed_image_path, 'rb') as f:
+                        processed_image_file = ContentFile(f.read())
+                        processed_image_file.name = os.path.basename(processed_image_path)
+                        
+                        # Sauvegarder la nouvelle image (remplace l'ancienne)
+                        self.image.save(
+                            f"product_{self.id}_processed.png",
+                            processed_image_file,
+                            save=True
+                        )
                     
-                    # Sauvegarder la nouvelle image (remplace l'ancienne)
-                    self.image.save(
-                        f"product_{self.id}_processed.png",
-                        processed_image_file,
-                        save=True
-                    )
-                
-                # Nettoyer le fichier temporaire
+                    # Nettoyer les fichiers temporaires
+                    try:
+                        os.remove(processed_image_path)
+                        os.remove(temp_path)
+                    except Exception as e:
+                        pass  # Ignorer les erreurs de nettoyage
+                    
+                    return True, "Background retiré avec succès"
+                else:
+                    return False, "Échec du traitement de l'image"
+                    
+            finally:
+                # Nettoyer le fichier temporaire même en cas d'erreur
                 try:
-                    os.remove(processed_image_path)
-                except Exception as e:
-                    pass  # Ignorer les erreurs de nettoyage
-                
-                return True, "Background retiré avec succès"
-            else:
-                return False, "Échec du traitement de l'image"
+                    os.remove(temp_path)
+                except:
+                    pass
                 
         except Exception as e:
             return False, f"Erreur lors du traitement: {str(e)}"
@@ -521,16 +546,20 @@ class Product(models.Model):
         """
         # Vérifier si l'image existe et n'a pas encore été traitée
         if not self.image or not self.image.name:
+            print(f"⚠️ [AUTO] Produit {self.id}: Aucune image à traiter")
             return
         
         # Vérifier si l'image a déjà été traitée (éviter les boucles infinies)
         if hasattr(self, '_background_processed'):
+            print(f"⚠️ [AUTO] Produit {self.id}: Image déjà traitée, skip")
             return
         
         try:
             import logging
             logger = logging.getLogger(__name__)
             
+            print(f"🎨 [AUTO] Début traitement automatique background pour produit {self.id}")
+            print(f"📁 Image: {self.image.name}")
             logger.info(f"🎨 [AUTO] Traitement automatique background pour produit {self.id}")
             
             # Marquer comme en cours de traitement pour éviter les boucles
@@ -540,11 +569,14 @@ class Product(models.Model):
             success, message = self.process_background_removal()
             
             if success:
+                print(f"✅ [AUTO] Background retiré avec succès: {message}")
                 logger.info(f"✅ [AUTO] Background retiré automatiquement: {message}")
             else:
+                print(f"⚠️ [AUTO] Échec traitement: {message}")
                 logger.warning(f"⚠️ [AUTO] Échec traitement automatique: {message}")
                 
         except Exception as e:
+            print(f"❌ [AUTO] Erreur traitement automatique: {str(e)}")
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"❌ [AUTO] Erreur traitement automatique: {str(e)}")
