@@ -519,21 +519,6 @@ class SaleCreateSerializer(serializers.ModelSerializer):
             'sarali_reference', 'amount_given', 'change_amount'
         ]
         read_only_fields = ['id']
-    
-    def create(self, validated_data):
-        """Override create pour ajouter des logs"""
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info("🏪 [SERIALIZER] SaleCreateSerializer.create() appelé")
-        logger.info(f"🏪 [SERIALIZER] validated_data: {validated_data}")
-        
-        sale = super().create(validated_data)
-        
-        logger.info(f"🏪 [SERIALIZER] Vente créée avec ID: {sale.id}")
-        logger.info(f"🏪 [SERIALIZER] Données de la vente: {sale.__dict__}")
-        
-        return sale
 
 
 class LabelTemplateSerializer(serializers.ModelSerializer):

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -42,7 +42,7 @@ export default function ProductsScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('all'); // all, low_stock, out_of_stock
+  const [filter, setFilter] = useState('all'); // all, low_stock, out_of_stock, negative_stock
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   
@@ -58,6 +58,9 @@ export default function ProductsScreen({ navigation, route }: any) {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  
+  // ✅ Référence pour le scroll des filtres
+  const filtersScrollRef = useRef<ScrollView>(null);
   
   // Paramètres de navigation
   const brandFilter = route?.params?.brandFilter;
@@ -157,6 +160,15 @@ export default function ProductsScreen({ navigation, route }: any) {
     loadSites();
   }, [isSuperuser]);
 
+  // ✅ Centrer le filtre sélectionné au chargement
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToSelectedFilter(filter);
+    }, 100); // Petit délai pour s'assurer que le ScrollView est rendu
+    
+    return () => clearTimeout(timer);
+  }, [filter]);
+
 
   const filteredProducts = products.filter(product => {
     // Filtre de recherche textuelle
@@ -171,12 +183,20 @@ export default function ProductsScreen({ navigation, route }: any) {
       matchesStockFilter = product.stock_status === 'low_stock';
     } else if (filter === 'out_of_stock') {
       matchesStockFilter = product.stock_status === 'out_of_stock';
+    } else if (filter === 'negative_stock') {
+      // Montrer tous les produits avec stock négatif, peu importe leur statut
+      matchesStockFilter = product.quantity < 0;
     }
     
     return matchesSearch && matchesStockFilter;
   });
 
-  const getStockStatusColor = (status: string) => {
+  const getStockStatusColor = (status: string, quantity: number) => {
+    // Gestion spéciale pour les stocks négatifs
+    if (quantity < 0) {
+      return '#E91E63'; // Rose/Magenta pour les stocks négatifs
+    }
+    
     switch (status) {
       case 'in_stock':
         return '#4CAF50';
@@ -189,7 +209,12 @@ export default function ProductsScreen({ navigation, route }: any) {
     }
   };
 
-  const getStockStatusText = (status: string) => {
+  const getStockStatusText = (status: string, quantity: number) => {
+    // Gestion spéciale pour les stocks négatifs
+    if (quantity < 0) {
+      return 'Stock négatif';
+    }
+    
     switch (status) {
       case 'in_stock':
         return 'En stock';
@@ -199,6 +224,23 @@ export default function ProductsScreen({ navigation, route }: any) {
         return 'Rupture';
       default:
         return 'Inconnu';
+    }
+  };
+
+  const getStockStatusIcon = (status: string, quantity: number) => {
+    if (quantity < 0) {
+      return 'warning'; // Icône d'alerte pour les stocks négatifs
+    }
+    
+    switch (status) {
+      case 'in_stock':
+        return 'checkmark-circle';
+      case 'low_stock':
+        return 'warning';
+      case 'out_of_stock':
+        return 'close-circle';
+      default:
+        return 'help-circle';
     }
   };
 
@@ -224,8 +266,34 @@ export default function ProductsScreen({ navigation, route }: any) {
     setSiteModalVisible(false);
   };
 
-  const clearSiteFilter = () => {
-    setSelectedSite(null);
+  // ✅ Fonction pour centrer le filtre sélectionné
+  const scrollToSelectedFilter = (filterValue: string) => {
+    const filterOrder = ['all', 'low_stock', 'out_of_stock', 'negative_stock'];
+    const filterIndex = filterOrder.indexOf(filterValue);
+    
+    if (filterIndex !== -1 && filtersScrollRef.current) {
+      // Calculer la position pour centrer le bouton
+      const buttonWidth = 100; // Largeur approximative d'un bouton (padding + texte)
+      const marginBetween = 8; // Marge entre les boutons
+      const scrollViewWidth = 350; // Largeur approximative du ScrollView
+      
+      // Position du centre du bouton
+      const buttonCenterX = (filterIndex * (buttonWidth + marginBetween)) + (buttonWidth / 2);
+      
+      // Position pour centrer le bouton dans le ScrollView
+      const targetX = Math.max(0, buttonCenterX - (scrollViewWidth / 2));
+      
+      filtersScrollRef.current.scrollTo({
+        x: targetX,
+        animated: true,
+      });
+    }
+  };
+
+  // ✅ Fonction pour changer de filtre avec scroll automatique
+  const handleFilterChange = (newFilter: string) => {
+    setFilter(newFilter);
+    scrollToSelectedFilter(newFilter);
   };
 
 
@@ -261,11 +329,17 @@ export default function ProductsScreen({ navigation, route }: any) {
           <View
             style={[
               styles.statusBadge,
-              { backgroundColor: getStockStatusColor(item.stock_status) }
+              { backgroundColor: getStockStatusColor(item.stock_status, item.quantity) }
             ]}
           >
+            <Ionicons 
+              name={getStockStatusIcon(item.stock_status, item.quantity)} 
+              size={12} 
+              color="white" 
+              style={{ marginRight: 4 }}
+            />
             <Text style={styles.statusText}>
-              {getStockStatusText(item.stock_status)}
+              {getStockStatusText(item.stock_status, item.quantity)}
             </Text>
           </View>
           {/* Affichage du taux de marge */}
@@ -279,8 +353,8 @@ export default function ProductsScreen({ navigation, route }: any) {
       
       <View style={styles.productFooter}>
         <View style={styles.quantityContainer}>
-          <Ionicons name="cube-outline" size={16} color="#666" />
-          <Text style={styles.quantityText}>
+          <Ionicons name="cube-outline" size={16} color={item.quantity < 0 ? "#E91E63" : "#666"} />
+          <Text style={[styles.quantityText, { color: item.quantity < 0 ? "#E91E63" : "#666" }]}>
             {item.quantity} unités
           </Text>
         </View>
@@ -294,7 +368,7 @@ export default function ProductsScreen({ navigation, route }: any) {
   const FilterButton = ({ title, value, isActive }: any) => (
     <TouchableOpacity
       style={[styles.filterButton, isActive && styles.filterButtonActive]}
-      onPress={() => setFilter(value)}
+      onPress={() => handleFilterChange(value)}
     >
       <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
         {title}
@@ -415,10 +489,23 @@ export default function ProductsScreen({ navigation, route }: any) {
       )}
 
       {/* Filters */}
-      <View style={styles.filtersContainer}>
-        <FilterButton title="Tous" value="all" isActive={filter === 'all'} />
-        <FilterButton title="Stock faible" value="low_stock" isActive={filter === 'low_stock'} />
-        <FilterButton title="Rupture" value="out_of_stock" isActive={filter === 'out_of_stock'} />
+      <View style={styles.filtersWrapper}>
+        <ScrollView 
+          ref={filtersScrollRef}
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.filtersScrollContainer}
+          contentContainerStyle={styles.filtersContainer}
+        >
+          <FilterButton title="Tous" value="all" isActive={filter === 'all'} />
+          <FilterButton title="Stock faible" value="low_stock" isActive={filter === 'low_stock'} />
+          <FilterButton title="Rupture" value="out_of_stock" isActive={filter === 'out_of_stock'} />
+          <FilterButton title="Stock négatif" value="negative_stock" isActive={filter === 'negative_stock'} />
+        </ScrollView>
+        {/* Indicateur de scroll */}
+        <View style={styles.scrollIndicator}>
+          <Ionicons name="chevron-forward" size={16} color="#ccc" />
+        </View>
       </View>
 
       {/* Products List */}
@@ -573,19 +660,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
-  filtersContainer: {
+  filtersWrapper: {
     flexDirection: 'row',
-    padding: 20,
+    alignItems: 'center',
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  filterButton: {
+  filtersScrollContainer: {
+    flex: 1,
+  },
+  filtersContainer: {
+    flexDirection: 'row',
     paddingHorizontal: 20,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  filterButton: {
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    marginRight: 10,
+    marginRight: 8,
     borderRadius: 20,
     backgroundColor: '#f5f5f5',
+    flexShrink: 0, // Empêche le bouton de se rétrécir
   },
   filterButtonActive: {
     backgroundColor: '#4CAF50',
@@ -666,6 +763,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   statusText: {
     fontSize: 10,
@@ -798,5 +897,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 2,
+  },
+  scrollIndicator: {
+    paddingHorizontal: 10,
+    paddingVertical: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 }); 

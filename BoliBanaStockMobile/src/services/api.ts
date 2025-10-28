@@ -1181,18 +1181,10 @@ export const saleService = {
   // Récupérer une vente spécifique
   getSale: async (id: number) => {
     try {
-      console.log('🏪 [API_SERVICE] Récupération vente ID:', id);
-      console.log('🏪 [API_SERVICE] Type de l\'ID:', typeof id);
       const response = await api.get(`/sales/${id}/`);
-      console.log('🏪 [API_SERVICE] Réponse brute getSale:', response);
-      console.log('🏪 [API_SERVICE] Status:', response.status);
-      console.log('🏪 [API_SERVICE] Data:', JSON.stringify(response.data, null, 2));
-      console.log('🏪 [API_SERVICE] Items dans la réponse:', response.data?.items);
-      console.log('🏪 [API_SERVICE] Type des items:', typeof response.data?.items);
-      console.log('🏪 [API_SERVICE] Longueur des items:', response.data?.items?.length);
       return response.data;
     } catch (error) {
-      console.error('❌ [API_SERVICE] Erreur API vente:', error);
+      console.error('❌ Erreur API vente:', error);
       throw error;
     }
   },
@@ -1200,16 +1192,10 @@ export const saleService = {
   // Créer une nouvelle vente
   createSale: async (saleData: any) => {
     try {
-      console.log('🏪 [API_SERVICE] Création de vente - Données envoyées:', JSON.stringify(saleData, null, 2));
       const response = await api.post('/sales/', saleData);
-      console.log('🏪 [API_SERVICE] Réponse brute de création:', response);
-      console.log('🏪 [API_SERVICE] Status:', response.status);
-      console.log('🏪 [API_SERVICE] Data:', JSON.stringify(response.data, null, 2));
-      console.log('🏪 [API_SERVICE] ID dans la réponse:', response.data?.id);
-      console.log('🏪 [API_SERVICE] Type de l\'ID:', typeof response.data?.id);
       return response.data;
     } catch (error) {
-      console.error('❌ [API_SERVICE] Erreur création vente:', error);
+      console.error('❌ Erreur API création vente:', error);
       throw error;
     }
   },

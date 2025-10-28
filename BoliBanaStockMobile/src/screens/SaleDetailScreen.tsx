@@ -45,16 +45,10 @@ export default function SaleDetailScreen({ route, navigation }: any) {
   const loadSaleDetail = async () => {
     try {
       setLoading(true);
-      console.log('🏪 [SALE_DETAIL] Chargement détail vente ID:', saleId);
-      console.log('🏪 [SALE_DETAIL] Type de saleId:', typeof saleId);
       const data = await saleService.getSale(saleId);
-      console.log('🏪 [SALE_DETAIL] Données reçues:', JSON.stringify(data, null, 2));
-      console.log('🏪 [SALE_DETAIL] Items dans les données:', data?.items);
-      console.log('🏪 [SALE_DETAIL] Type des items:', typeof data?.items);
-      console.log('🏪 [SALE_DETAIL] Longueur des items:', data?.items?.length);
       setSale(data);
     } catch (error) {
-      console.error('❌ [SALE_DETAIL] Erreur chargement détail vente:', error);
+      console.error('Erreur chargement détail vente:', error);
       Alert.alert('Erreur', 'Impossible de charger les détails de la vente');
     } finally {
       setLoading(false);

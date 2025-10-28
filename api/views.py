@@ -1443,21 +1443,16 @@ class SaleViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Créer une vente avec gestion automatique du stock"""
-        logger.info("🏪 [SALE_CREATE] Début création vente")
-        logger.info(f"🏪 [SALE_CREATE] Données reçues: {self.request.data}")
-        
         user_site = getattr(self.request.user, 'site_configuration', None)
         
         if not user_site and not self.request.user.is_superuser:
             raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
         
         # Créer la vente
-        logger.info("🏪 [SALE_CREATE] Sauvegarde de la vente...")
         sale = serializer.save(
             site_configuration=user_site,
             seller=self.request.user
         )
-        logger.info(f"🏪 [SALE_CREATE] Vente créée avec ID: {sale.id}")
         
         # Traiter les articles de la vente
         items_data = self.request.data.get('items', [])
@@ -1503,7 +1498,9 @@ class SaleViewSet(viewsets.ModelViewSet):
                         quantity=quantity,
                         unit_price=unit_price,
                         notes=notes,
-                        user=self.request.user
+                        user=self.request.user,
+                        site_configuration=user_site,
+                        sale=sale
                     )
                     
                     total_amount += quantity * unit_price
@@ -1583,9 +1580,6 @@ class SaleViewSet(viewsets.ModelViewSet):
             sale.payment_status = 'paid'
         
         sale.save()
-        
-        logger.info(f"🏪 [SALE_CREATE] Vente finalisée - ID: {sale.id}, Total: {sale.total_amount}")
-        logger.info(f"🏪 [SALE_CREATE] Réponse serializer: {serializer.data}")
         
         return sale
 
