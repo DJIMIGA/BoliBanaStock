@@ -65,6 +65,9 @@ interface StockMovement {
   date: string;
   notes?: string;
   user?: string;
+  sale_id?: number;
+  sale_reference?: string;
+  is_sale_transaction?: boolean;
 }
 
 interface StockActionModal {
@@ -256,19 +259,26 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       let result;
       switch (actionModal.type) {
         case 'add':
-          result = await productService.addStock(product.id, quantity, actionModal.notes);
+          // Utiliser le contexte 'manual' pour les ajouts manuels
+          result = await productService.addStock(product.id, quantity, {
+            notes: actionModal.notes,
+            context: 'manual'
+          });
           break;
         case 'remove':
+          // Utiliser le contexte 'manual' pour les retraits manuels
           // ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
-          // Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
-          // if (quantity > product.quantity) {
-          //   Alert.alert('Erreur', 'Stock insuffisant');
-          //   return;
-          // }
-          result = await productService.removeStock(product.id, quantity, actionModal.notes);
+          result = await productService.removeStock(product.id, quantity, {
+            notes: actionModal.notes,
+            context: 'manual'
+          });
           break;
         case 'adjust':
-          result = await productService.adjustStock(product.id, quantity, actionModal.notes);
+          // Utiliser le contexte 'manual' pour les ajustements manuels
+          result = await productService.adjustStock(product.id, quantity, {
+            notes: actionModal.notes,
+            context: 'manual'
+          });
           break;
       }
 
@@ -629,6 +639,12 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
               </View>
               {movement.notes && (
                 <Text style={styles.movementNotes}>{movement.notes}</Text>
+              )}
+              {movement.is_sale_transaction && movement.sale_reference && (
+                <View style={styles.saleInfo}>
+                  <Ionicons name="receipt-outline" size={14} color={theme.colors.primary[500]} />
+                  <Text style={styles.saleInfoText}>{movement.sale_reference}</Text>
+                </View>
               )}
               {movement.user && (
                 <Text style={styles.movementUser}>Par: {movement.user}</Text>
@@ -1057,6 +1073,21 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.xs,
     color: theme.colors.text.tertiary,
     marginTop: theme.spacing.xs,
+  },
+  saleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.primary[50],
+    borderRadius: theme.borderRadius.sm,
+  },
+  saleInfoText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.primary[600],
+    fontWeight: '600',
   },
   emptyMovements: {
     alignItems: 'center',

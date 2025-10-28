@@ -707,29 +707,72 @@ export const productService = {
     return response.data;
   },
 
-  // Actions rapides de stock
-  addStock: async (productId: number, quantity: number, notes?: string) => {
+  // Actions rapides de stock avec contexte métier
+  addStock: async (productId: number, quantity: number, options?: {
+    notes?: string;
+    context?: 'reception' | 'inventory' | 'manual';
+    contextId?: number;
+  }) => {
     const response = await api.post(`/products/${productId}/add_stock/`, {
       quantity,
-      notes: notes || 'Ajout de stock via mobile'
+      notes: options?.notes || 'Ajout de stock via mobile',
+      context: options?.context || 'manual',
+      context_id: options?.contextId
     });
     return response.data;
   },
 
-  removeStock: async (productId: number, quantity: number, notes?: string) => {
+  removeStock: async (productId: number, quantity: number, options?: {
+    notes?: string;
+    context?: 'sale' | 'inventory' | 'return' | 'manual';
+    contextId?: number;
+  }) => {
     const response = await api.post(`/products/${productId}/remove_stock/`, {
       quantity,
-      notes: notes || 'Retrait de stock via mobile'
+      notes: options?.notes || 'Retrait de stock via mobile',
+      context: options?.context || 'manual',
+      context_id: options?.contextId
     });
     return response.data;
   },
 
-  adjustStock: async (productId: number, newQuantity: number, notes?: string) => {
+  adjustStock: async (productId: number, newQuantity: number, options?: {
+    notes?: string;
+    context?: 'inventory' | 'correction' | 'manual';
+    contextId?: number;
+  }) => {
     const response = await api.post(`/products/${productId}/adjust_stock/`, {
       quantity: newQuantity,
-      notes: notes || 'Ajustement de stock via mobile'
+      notes: options?.notes || 'Ajustement de stock via mobile',
+      context: options?.context || 'manual',
+      context_id: options?.contextId
     });
     return response.data;
+  },
+
+  // Méthodes spécialisées pour compatibilité
+  removeStockForSale: async (productId: number, quantity: number, saleId: number, notes?: string) => {
+    return productService.removeStock(productId, quantity, {
+      context: 'sale',
+      contextId: saleId,
+      notes: notes || 'Retrait de stock pour vente'
+    });
+  },
+
+  addStockForReception: async (productId: number, quantity: number, receptionId?: number, notes?: string) => {
+    return productService.addStock(productId, quantity, {
+      context: 'reception',
+      contextId: receptionId,
+      notes: notes || 'Réception marchandise'
+    });
+  },
+
+  adjustStockForInventory: async (productId: number, quantity: number, inventoryId?: number, notes?: string) => {
+    return productService.adjustStock(productId, quantity, {
+      context: 'inventory',
+      contextId: inventoryId,
+      notes: notes || 'Ajustement inventaire'
+    });
   },
 
   // Gestion des codes-barres

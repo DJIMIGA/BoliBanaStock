@@ -629,10 +629,18 @@ class ProductViewSet(viewsets.ModelViewSet):
         """Récupérer les mouvements de stock d'un produit avec avant/après"""
         product = self.get_object()
         
+        # Filtrer par site de l'utilisateur
+        user_site = getattr(request.user, 'site_configuration', None)
+        
         # Récupérer les transactions pour ce produit (plus récentes d'abord)
+        transactions_query = Transaction.objects.filter(product=product)
+        
+        if not request.user.is_superuser and user_site:
+            # Filtrer par site pour les utilisateurs normaux
+            transactions_query = transactions_query.filter(site_configuration=user_site)
+        
         transactions = (
-            Transaction.objects
-            .filter(product=product)
+            transactions_query
             .select_related('user')
             .order_by('-transaction_date')[:50]
         )
@@ -666,6 +674,9 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'date': transaction.transaction_date.isoformat(),
                 'notes': transaction.notes,
                 'user': transaction.user.username if transaction.user else 'Système',
+                'sale_id': transaction.sale.id if transaction.sale else None,
+                'sale_reference': f"Vente #{transaction.sale.id}" if transaction.sale else None,
+                'is_sale_transaction': transaction.sale is not None,
             })
         
         return Response({
@@ -677,10 +688,24 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def add_stock(self, request, pk=None):
-        """Ajouter du stock à un produit"""
+        """Ajouter du stock à un produit avec contexte métier"""
         product = self.get_object()
         quantity = request.data.get('quantity')
         notes = request.data.get('notes', 'Ajout de stock')
+        
+        # Nouveaux paramètres de contexte métier
+        context = request.data.get('context', 'manual')  # 'reception', 'inventory', 'manual'
+        context_id = request.data.get('context_id')     # ID du contexte
+        
+        # Gestion du contexte métier
+        context_notes = notes
+        
+        if context == 'reception':
+            context_notes = f'Réception marchandise - {notes}'
+        elif context == 'inventory':
+            context_notes = f'Ajustement inventaire - {notes}'
+        elif context == 'manual':
+            context_notes = f'Ajout manuel - {notes}'
         
         if not quantity or quantity <= 0:
             return Response(
@@ -688,27 +713,35 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Mettre à jour le stock
-        old_quantity = product.quantity
-        product.quantity += quantity
-        product.save()
-        
-        # Créer la transaction
-        Transaction.objects.create(
-            product=product,
-            type='in',
-            quantity=quantity,
-            unit_price=product.purchase_price,
-            notes=notes,
-            user=request.user
-        )
+        # Utiliser une transaction atomique pour éviter les race conditions
+        with transaction.atomic():
+            # Recharger le produit depuis la base pour avoir la dernière version
+            product.refresh_from_db()
+            
+            # Mettre à jour le stock
+            old_quantity = product.quantity
+            product.quantity += quantity
+            product.save()
+            
+            # Créer la transaction
+            Transaction.objects.create(
+                product=product,
+                type='in',
+                quantity=quantity,
+                unit_price=product.purchase_price,
+                notes=context_notes,
+                user=request.user,
+                site_configuration=getattr(request.user, 'site_configuration', None)
+            )
         
         return Response({
             'success': True,
             'message': f'{quantity} unités ajoutées au stock',
             'old_quantity': old_quantity,
             'new_quantity': product.quantity,
-            'product': ProductSerializer(product).data
+            'product': ProductSerializer(product).data,
+            'context': context,
+            'context_id': context_id
         })
 
     @action(detail=True, methods=['post'])
@@ -727,25 +760,71 @@ class ProductViewSet(viewsets.ModelViewSet):
         # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
         # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
         
-        # Mettre à jour le stock
-        old_quantity = product.quantity
-        product.quantity -= quantity
-        product.save()
+        # Utiliser une transaction atomique pour éviter les race conditions
+        with transaction.atomic():
+            # Recharger le produit depuis la base pour avoir la dernière version
+            product.refresh_from_db()
+            
+            # Mettre à jour le stock
+            old_quantity = product.quantity
+            product.quantity -= quantity
+            product.save()
+            
+            # Déterminer le type de transaction selon le stock final
+            transaction_type = 'out'
+            if product.quantity < 0:
+                transaction_type = 'backorder'  # Nouveau type pour les backorders
+            
+            # Récupérer le site de l'utilisateur
+            user_site = getattr(request.user, 'site_configuration', None)
+            
+        # Nouveaux paramètres de contexte métier
+        context = request.data.get('context', 'manual')  # 'sale', 'inventory', 'return', 'manual'
+        context_id = request.data.get('context_id')     # ID du contexte
         
-        # Déterminer le type de transaction selon le stock final
-        transaction_type = 'out'
-        if product.quantity < 0:
-            transaction_type = 'backorder'  # Nouveau type pour les backorders
+        # Gestion du contexte métier
+        sale = None
+        context_notes = notes
         
-        # Créer la transaction
-        Transaction.objects.create(
-            product=product,
-            type=transaction_type,
-            quantity=quantity,
-            unit_price=product.purchase_price,
-            notes=notes,
-            user=request.user
-        )
+        if context == 'sale' and context_id:
+            try:
+                sale = Sale.objects.get(id=context_id)
+                context_notes = f'Retrait pour vente #{sale.id} - {notes}'
+            except Sale.DoesNotExist:
+                return Response(
+                    {'error': f'Vente avec ID {context_id} non trouvée'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        elif context == 'inventory':
+            context_notes = f'Ajustement inventaire - {notes}'
+        elif context == 'return':
+            context_notes = f'Retour client - {notes}'
+        elif context == 'manual':
+            context_notes = f'Retrait manuel - {notes}'
+        
+        # Compatibilité avec l'ancien paramètre sale_id
+        sale_id = request.data.get('sale_id')
+        if sale_id and not sale:
+            try:
+                sale = Sale.objects.get(id=sale_id)
+                context_notes = f'Retrait pour vente #{sale.id} - {notes}'
+            except Sale.DoesNotExist:
+                return Response(
+                    {'error': f'Vente avec ID {sale_id} non trouvée'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Créer la transaction
+            Transaction.objects.create(
+                product=product,
+                type=transaction_type,
+                quantity=quantity,
+                unit_price=product.purchase_price,
+                notes=context_notes,
+                user=request.user,
+                site_configuration=user_site,
+                sale=sale
+            )
         
         # Message adaptatif selon le stock final
         if product.quantity < 0:
@@ -763,18 +842,35 @@ class ProductViewSet(viewsets.ModelViewSet):
             'stock_status': product.stock_status,
             'has_backorder': product.has_backorder,
             'backorder_quantity': product.backorder_quantity,
-            'product': ProductSerializer(product).data
+            'product': ProductSerializer(product).data,
+            'context': context,
+            'context_id': context_id,
+            'sale_linked': sale.id if sale else None
         })
 
     @action(detail=True, methods=['post'])
     def adjust_stock(self, request, pk=None):
-        """Ajuster le stock d'un produit (correction)"""
+        """Ajuster le stock d'un produit avec contexte métier (correction)"""
         product = self.get_object()
         try:
             new_quantity = int(request.data.get('quantity'))
         except (TypeError, ValueError):
             return Response({'error': 'Quantité invalide'}, status=status.HTTP_400_BAD_REQUEST)
         notes = request.data.get('notes', 'Ajustement de stock')
+        
+        # Nouveaux paramètres de contexte métier
+        context = request.data.get('context', 'manual')  # 'inventory', 'correction', 'manual'
+        context_id = request.data.get('context_id')     # ID du contexte
+        
+        # Gestion du contexte métier
+        context_notes = notes
+        
+        if context == 'inventory':
+            context_notes = f'Ajustement inventaire - {notes}'
+        elif context == 'correction':
+            context_notes = f'Correction stock - {notes}'
+        elif context == 'manual':
+            context_notes = f'Ajustement manuel - {notes}'
         
         if new_quantity is None or new_quantity < 0:
             return Response(
@@ -795,8 +891,9 @@ class ProductViewSet(viewsets.ModelViewSet):
                 type='adjustment',
                 quantity=adjustment_quantity,
                 unit_price=product.purchase_price,
-                notes=notes,
-                user=request.user
+                notes=context_notes,
+                user=request.user,
+                site_configuration=getattr(request.user, 'site_configuration', None)
             )
         
         return Response({
@@ -804,7 +901,9 @@ class ProductViewSet(viewsets.ModelViewSet):
             'message': f'Stock ajusté de {old_quantity} à {new_quantity}',
             'old_quantity': old_quantity,
             'new_quantity': product.quantity,
-            'product': ProductSerializer(product).data
+            'product': ProductSerializer(product).data,
+            'context': context,
+            'context_id': context_id
         })
 
     @action(detail=False, methods=['get'])
@@ -1478,35 +1577,8 @@ class SaleViewSet(viewsets.ModelViewSet):
                         unit_price=unit_price
                     )
                     
-                    # Mettre à jour le stock (peut devenir négatif)
-                    old_quantity = product.quantity
-                    product.quantity -= quantity
-                    product.save()
-                    
-                    # 🔍 LOGS DE DIAGNOSTIC - Double retrait
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info(f"🏪 [STOCK_DEBUG] Retrait stock - Produit {product_id}: {old_quantity} -> {product.quantity} (retrait: {quantity})")
-                    
-                    # Déterminer le type de transaction selon le stock final
-                    if product.quantity < 0:
-                        transaction_type = 'backorder'  # Nouveau type pour les backorders
-                        notes = f'Vente #{sale.id} - Stock en backorder ({abs(product.quantity)} unités en attente)'
-                    else:
-                        transaction_type = 'out'
-                        notes = f'Vente #{sale.id}'
-                    
-                    # Créer une transaction de sortie
-                    Transaction.objects.create(
-                        product=product,
-                        type=transaction_type,
-                        quantity=quantity,
-                        unit_price=unit_price,
-                        notes=notes,
-                        user=self.request.user,
-                        site_configuration=user_site,
-                        sale=sale
-                    )
+                    # ✅ NOUVELLE APPROCHE: Le stock sera retiré via l'endpoint remove_stock appelé par le frontend
+                    # Plus de retrait automatique ici pour éviter les doublons
                     
                     total_amount += quantity * unit_price
                     

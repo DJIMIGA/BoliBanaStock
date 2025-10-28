@@ -26,26 +26,30 @@ interface Product {
   category_name: string;
   brand_name: string;
   image_url?: string;
+  purchase_price: number;
 }
 
-interface InventoryItem {
+interface ReceptionItem {
   product: Product;
-  counted_quantity: number;
-  difference: number;
+  received_quantity: number;
+  unit_price: number;
+  total_price: number;
   notes: string;
 }
 
-export default function InventoryScreen({ navigation }: any) {
+export default function ReceptionScreen({ navigation }: any) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [receptionItems, setReceptionItems] = useState<ReceptionItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [countModalVisible, setCountModalVisible] = useState(false);
-  const [countedQuantity, setCountedQuantity] = useState('');
+  const [receptionModalVisible, setReceptionModalVisible] = useState(false);
+  const [receivedQuantity, setReceivedQuantity] = useState('');
+  const [unitPrice, setUnitPrice] = useState('');
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [supplierName, setSupplierName] = useState('');
 
   const loadProducts = useCallback(async () => {
     try {
@@ -71,106 +75,125 @@ export default function InventoryScreen({ navigation }: any) {
     setRefreshing(false);
   };
 
-  const openCountModal = (product: Product) => {
+  const openReceptionModal = (product: Product) => {
     setSelectedProduct(product);
-    setCountedQuantity(product.quantity.toString());
+    setReceivedQuantity('');
+    setUnitPrice(product.purchase_price.toString());
     setNotes('');
-    setCountModalVisible(true);
+    setReceptionModalVisible(true);
   };
 
-  const closeCountModal = () => {
-    setCountModalVisible(false);
+  const closeReceptionModal = () => {
+    setReceptionModalVisible(false);
     setSelectedProduct(null);
-    setCountedQuantity('');
+    setReceivedQuantity('');
+    setUnitPrice('');
     setNotes('');
   };
 
-  const addToInventory = () => {
-    if (!selectedProduct || !countedQuantity.trim()) {
-      Alert.alert('Erreur', 'Veuillez saisir une quantité comptée');
+  const addToReception = () => {
+    if (!selectedProduct || !receivedQuantity.trim() || !unitPrice.trim()) {
+      Alert.alert('Erreur', 'Veuillez saisir la quantité et le prix unitaire');
       return;
     }
 
-    const counted = parseInt(countedQuantity);
-    if (isNaN(counted) || counted < 0) {
+    const quantity = parseInt(receivedQuantity);
+    const price = parseFloat(unitPrice);
+    
+    if (isNaN(quantity) || quantity <= 0) {
       Alert.alert('Erreur', 'Veuillez saisir une quantité valide');
       return;
     }
 
-    const difference = counted - selectedProduct.quantity;
+    if (isNaN(price) || price <= 0) {
+      Alert.alert('Erreur', 'Veuillez saisir un prix valide');
+      return;
+    }
+
+    const totalPrice = quantity * price;
     
-    const inventoryItem: InventoryItem = {
+    const receptionItem: ReceptionItem = {
       product: selectedProduct,
-      counted_quantity: counted,
-      difference,
+      received_quantity: quantity,
+      unit_price: price,
+      total_price: totalPrice,
       notes: notes.trim()
     };
 
-    // Vérifier si le produit est déjà dans l'inventaire
-    const existingIndex = inventoryItems.findIndex(item => item.product.id === selectedProduct.id);
+    // Vérifier si le produit est déjà dans la réception
+    const existingIndex = receptionItems.findIndex(item => item.product.id === selectedProduct.id);
     
     if (existingIndex >= 0) {
       // Mettre à jour l'item existant
-      const updatedItems = [...inventoryItems];
-      updatedItems[existingIndex] = inventoryItem;
-      setInventoryItems(updatedItems);
+      const updatedItems = [...receptionItems];
+      updatedItems[existingIndex] = receptionItem;
+      setReceptionItems(updatedItems);
     } else {
       // Ajouter un nouvel item
-      setInventoryItems(prev => [...prev, inventoryItem]);
+      setReceptionItems(prev => [...prev, receptionItem]);
     }
 
-    closeCountModal();
+    closeReceptionModal();
   };
 
-  const removeFromInventory = (productId: number) => {
-    setInventoryItems(prev => prev.filter(item => item.product.id !== productId));
+  const removeFromReception = (productId: number) => {
+    setReceptionItems(prev => prev.filter(item => item.product.id !== productId));
   };
 
-  const validateInventory = async () => {
-    if (inventoryItems.length === 0) {
-      Alert.alert('Erreur', 'Aucun produit dans l\'inventaire');
+  const validateReception = async () => {
+    if (receptionItems.length === 0) {
+      Alert.alert('Erreur', 'Aucun produit dans la réception');
+      return;
+    }
+
+    if (!supplierName.trim()) {
+      Alert.alert('Erreur', 'Veuillez saisir le nom du fournisseur');
       return;
     }
 
     try {
       let successCount = 0;
       let errorCount = 0;
+      const receptionId = Date.now(); // ID fictif de réception basé sur le timestamp
 
-      for (const item of inventoryItems) {
+      for (const item of receptionItems) {
         try {
-          // Utiliser le contexte 'inventory' pour l'ajustement
-          await productService.adjustStockForInventory(
+          // Utiliser le contexte 'reception' pour l'ajout de stock
+          await productService.addStockForReception(
             item.product.id,
-            item.counted_quantity,
-            Date.now(), // ID fictif d'inventaire basé sur le timestamp
-            item.notes || 'Inventaire physique'
+            item.received_quantity,
+            receptionId,
+            `${supplierName} - ${item.notes || 'Réception marchandise'}`
           );
           successCount++;
         } catch (error) {
-          console.error(`❌ Erreur ajustement produit ${item.product.id}:`, error);
+          console.error(`❌ Erreur ajout stock produit ${item.product.id}:`, error);
           errorCount++;
         }
       }
 
       if (successCount > 0) {
+        const totalValue = receptionItems.reduce((sum, item) => sum + item.total_price, 0);
+        
         Alert.alert(
-          'Inventaire validé',
-          `${successCount} produits ajustés avec succès${errorCount > 0 ? `\n${errorCount} erreurs` : ''}`,
+          'Réception validée',
+          `${successCount} produits réceptionnés avec succès${errorCount > 0 ? `\n${errorCount} erreurs` : ''}\n\nValeur totale: ${totalValue.toFixed(2)} FCFA`,
           [
             {
               text: 'OK',
               onPress: () => {
-                setInventoryItems([]);
+                setReceptionItems([]);
+                setSupplierName('');
                 loadProducts();
               }
             }
           ]
         );
       } else {
-        Alert.alert('Erreur', 'Aucun produit n\'a pu être ajusté');
+        Alert.alert('Erreur', 'Aucun produit n\'a pu être réceptionné');
       }
     } catch (error: any) {
-      Alert.alert('Erreur', 'Erreur lors de la validation de l\'inventaire');
+      Alert.alert('Erreur', 'Erreur lors de la validation de la réception');
     }
   };
 
@@ -181,10 +204,10 @@ export default function InventoryScreen({ navigation }: any) {
 
   const getStockStatusColor = (status: string) => {
     const colorMap: Record<string, string> = {
-      in_stock: theme.colors.success[500],
-      low_stock: theme.colors.warning[500],
-      out_of_stock: theme.colors.error[500],
-      backorder: theme.colors.info[500],
+      in_stock: stockColors.inStock,
+      low_stock: stockColors.lowStock,
+      out_of_stock: stockColors.outOfStock,
+      backorder: stockColors.backorder,
     };
     return colorMap[status] || theme.colors.neutral[500];
   };
@@ -200,12 +223,12 @@ export default function InventoryScreen({ navigation }: any) {
   };
 
   const renderProduct = ({ item }: { item: Product }) => {
-    const isInInventory = inventoryItems.some(invItem => invItem.product.id === item.id);
+    const isInReception = receptionItems.some(recItem => recItem.product.id === item.id);
     
     return (
       <TouchableOpacity
-        style={[styles.productCard, isInInventory && styles.productCardInInventory]}
-        onPress={() => openCountModal(item)}
+        style={[styles.productCard, isInReception && styles.productCardInReception]}
+        onPress={() => openReceptionModal(item)}
       >
         <View style={styles.productHeader}>
           <View style={styles.productInfo}>
@@ -213,6 +236,9 @@ export default function InventoryScreen({ navigation }: any) {
             <Text style={styles.productCug}>{item.cug}</Text>
             <Text style={styles.productCategory}>
               {item.category_name} - {item.brand_name}
+            </Text>
+            <Text style={styles.productPrice}>
+              Prix d'achat: {item.purchase_price.toFixed(2)} FCFA
             </Text>
           </View>
           <View style={styles.productStock}>
@@ -224,53 +250,50 @@ export default function InventoryScreen({ navigation }: any) {
             </View>
           </View>
         </View>
-        {isInInventory && (
-          <View style={styles.inventoryIndicator}>
+        {isInReception && (
+          <View style={styles.receptionIndicator}>
             <Ionicons name="checkmark-circle" size={16} color={theme.colors.success[500]} />
-            <Text style={styles.inventoryText}>Dans l'inventaire</Text>
+            <Text style={styles.receptionText}>Dans la réception</Text>
           </View>
         )}
       </TouchableOpacity>
     );
   };
 
-  const renderInventoryItem = ({ item }: { item: InventoryItem }) => (
-    <View style={styles.inventoryItem}>
-      <View style={styles.inventoryItemHeader}>
-        <View style={styles.inventoryItemInfo}>
-          <Text style={styles.inventoryItemName}>{item.product.name}</Text>
-          <Text style={styles.inventoryItemCug}>{item.product.cug}</Text>
+  const renderReceptionItem = ({ item }: { item: ReceptionItem }) => (
+    <View style={styles.receptionItem}>
+      <View style={styles.receptionItemHeader}>
+        <View style={styles.receptionItemInfo}>
+          <Text style={styles.receptionItemName}>{item.product.name}</Text>
+          <Text style={styles.receptionItemCug}>{item.product.cug}</Text>
         </View>
         <TouchableOpacity
           style={styles.removeButton}
-          onPress={() => removeFromInventory(item.product.id)}
+          onPress={() => removeFromReception(item.product.id)}
         >
           <Ionicons name="close-circle" size={20} color={theme.colors.error[500]} />
         </TouchableOpacity>
       </View>
       
-      <View style={styles.inventoryItemDetails}>
-        <View style={styles.inventoryDetail}>
-          <Text style={styles.inventoryDetailLabel}>Stock système:</Text>
-          <Text style={styles.inventoryDetailValue}>{item.product.quantity}</Text>
+      <View style={styles.receptionItemDetails}>
+        <View style={styles.receptionDetail}>
+          <Text style={styles.receptionDetailLabel}>Quantité:</Text>
+          <Text style={styles.receptionDetailValue}>{item.received_quantity}</Text>
         </View>
-        <View style={styles.inventoryDetail}>
-          <Text style={styles.inventoryDetailLabel}>Quantité comptée:</Text>
-          <Text style={styles.inventoryDetailValue}>{item.counted_quantity}</Text>
+        <View style={styles.receptionDetail}>
+          <Text style={styles.receptionDetailLabel}>Prix unitaire:</Text>
+          <Text style={styles.receptionDetailValue}>{item.unit_price.toFixed(2)} FCFA</Text>
         </View>
-        <View style={styles.inventoryDetail}>
-          <Text style={styles.inventoryDetailLabel}>Différence:</Text>
-          <Text style={[
-            styles.inventoryDetailValue,
-            { color: item.difference >= 0 ? theme.colors.success[500] : theme.colors.error[500] }
-          ]}>
-            {item.difference >= 0 ? '+' : ''}{item.difference}
+        <View style={styles.receptionDetail}>
+          <Text style={styles.receptionDetailLabel}>Total:</Text>
+          <Text style={[styles.receptionDetailValue, styles.totalPrice]}>
+            {item.total_price.toFixed(2)} FCFA
           </Text>
         </View>
       </View>
       
       {item.notes && (
-        <Text style={styles.inventoryNotes}>Notes: {item.notes}</Text>
+        <Text style={styles.receptionNotes}>Notes: {item.notes}</Text>
       )}
     </View>
   );
@@ -295,7 +318,7 @@ export default function InventoryScreen({ navigation }: any) {
         >
           <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Inventaire</Text>
+        <Text style={styles.headerTitle}>Réception</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -334,56 +357,78 @@ export default function InventoryScreen({ navigation }: any) {
         )}
       </ScrollView>
 
-      {inventoryItems.length > 0 && (
-        <View style={styles.inventorySummary}>
-          <View style={styles.inventorySummaryHeader}>
-            <Text style={styles.inventorySummaryTitle}>
-              Inventaire ({inventoryItems.length} produits)
+      {receptionItems.length > 0 && (
+        <View style={styles.receptionSummary}>
+          <View style={styles.supplierContainer}>
+            <Text style={styles.supplierLabel}>Fournisseur:</Text>
+            <TextInput
+              style={styles.supplierInput}
+              value={supplierName}
+              onChangeText={setSupplierName}
+              placeholder="Nom du fournisseur"
+            />
+          </View>
+          
+          <View style={styles.receptionSummaryHeader}>
+            <Text style={styles.receptionSummaryTitle}>
+              Réception ({receptionItems.length} produits)
             </Text>
             <TouchableOpacity
               style={styles.validateButton}
-              onPress={validateInventory}
+              onPress={validateReception}
             >
               <Text style={styles.validateButtonText}>Valider</Text>
             </TouchableOpacity>
           </View>
           
           <FlatList
-            data={inventoryItems}
-            renderItem={renderInventoryItem}
+            data={receptionItems}
+            renderItem={renderReceptionItem}
             keyExtractor={(item) => item.product.id.toString()}
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.inventoryList}
+            style={styles.receptionList}
           />
         </View>
       )}
 
-      {/* Modal de comptage */}
+      {/* Modal de réception */}
       <Modal
-        visible={countModalVisible}
+        visible={receptionModalVisible}
         transparent={true}
         animationType="slide"
-        onRequestClose={closeCountModal}
+        onRequestClose={closeReceptionModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Comptage - {selectedProduct?.name}</Text>
+            <Text style={styles.modalTitle}>Réception - {selectedProduct?.name}</Text>
             
             <View style={styles.modalInfo}>
               <Text style={styles.modalInfoText}>
-                Stock système: {selectedProduct?.quantity}
+                Stock actuel: {selectedProduct?.quantity}
+              </Text>
+              <Text style={styles.modalInfoText}>
+                Prix d'achat: {selectedProduct?.purchase_price.toFixed(2)} FCFA
               </Text>
             </View>
             
-            <Text style={styles.modalLabel}>Quantité comptée</Text>
+            <Text style={styles.modalLabel}>Quantité reçue</Text>
             <TextInput
               style={styles.modalInput}
-              value={countedQuantity}
-              onChangeText={setCountedQuantity}
-              placeholder="Quantité réelle comptée"
+              value={receivedQuantity}
+              onChangeText={setReceivedQuantity}
+              placeholder="Quantité reçue"
               keyboardType="numeric"
               autoFocus
+            />
+            
+            <Text style={styles.modalLabel}>Prix unitaire (FCFA)</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={unitPrice}
+              onChangeText={setUnitPrice}
+              placeholder="Prix unitaire"
+              keyboardType="numeric"
             />
             
             <Text style={styles.modalLabel}>Notes (optionnel)</Text>
@@ -397,10 +442,10 @@ export default function InventoryScreen({ navigation }: any) {
             />
             
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalButtonCancel} onPress={closeCountModal}>
+              <TouchableOpacity style={styles.modalButtonCancel} onPress={closeReceptionModal}>
                 <Text style={styles.modalButtonCancelText}>Annuler</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalButtonConfirm} onPress={addToInventory}>
+              <TouchableOpacity style={styles.modalButtonConfirm} onPress={addToReception}>
                 <Text style={styles.modalButtonConfirmText}>Ajouter</Text>
               </TouchableOpacity>
             </View>
@@ -496,7 +541,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border.primary,
   },
-  productCardInInventory: {
+  productCardInReception: {
     borderColor: theme.colors.success[500],
     backgroundColor: theme.colors.success[50],
   },
@@ -522,6 +567,12 @@ const styles = StyleSheet.create({
   productCategory: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.text.tertiary,
+    marginBottom: theme.spacing.xs,
+  },
+  productPrice: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.info[600],
+    fontWeight: '600',
   },
   productStock: {
     alignItems: 'flex-end',
@@ -542,7 +593,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text.inverse,
     fontWeight: '600',
   },
-  inventoryIndicator: {
+  receptionIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: theme.spacing.sm,
@@ -550,26 +601,48 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: theme.colors.border.primary,
   },
-  inventoryText: {
+  receptionText: {
     marginLeft: theme.spacing.xs,
     fontSize: theme.fontSize.sm,
     color: theme.colors.success[600],
     fontWeight: '600',
   },
-  inventorySummary: {
+  receptionSummary: {
     backgroundColor: theme.colors.background.secondary,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border.primary,
     paddingVertical: theme.spacing.md,
   },
-  inventorySummaryHeader: {
+  supplierContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+  },
+  supplierLabel: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginRight: theme.spacing.sm,
+  },
+  supplierInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.border.primary,
+    borderRadius: theme.borderRadius.sm,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text.primary,
+  },
+  receptionSummaryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.md,
     marginBottom: theme.spacing.sm,
   },
-  inventorySummaryTitle: {
+  receptionSummaryTitle: {
     fontSize: theme.fontSize.md,
     fontWeight: '600',
     color: theme.colors.text.primary,
@@ -584,10 +657,10 @@ const styles = StyleSheet.create({
     color: theme.colors.text.inverse,
     fontWeight: '600',
   },
-  inventoryList: {
+  receptionList: {
     paddingHorizontal: theme.spacing.md,
   },
-  inventoryItem: {
+  receptionItem: {
     backgroundColor: theme.colors.background.primary,
     borderRadius: theme.borderRadius.md,
     padding: theme.spacing.md,
@@ -596,46 +669,49 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border.primary,
   },
-  inventoryItemHeader: {
+  receptionItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: theme.spacing.sm,
   },
-  inventoryItemInfo: {
+  receptionItemInfo: {
     flex: 1,
   },
-  inventoryItemName: {
+  receptionItemName: {
     fontSize: theme.fontSize.md,
     fontWeight: '600',
     color: theme.colors.text.primary,
     marginBottom: theme.spacing.xs,
   },
-  inventoryItemCug: {
+  receptionItemCug: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.text.secondary,
   },
   removeButton: {
     padding: theme.spacing.xs,
   },
-  inventoryItemDetails: {
+  receptionItemDetails: {
     marginBottom: theme.spacing.sm,
   },
-  inventoryDetail: {
+  receptionDetail: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: theme.spacing.xs,
   },
-  inventoryDetailLabel: {
+  receptionDetailLabel: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.text.secondary,
   },
-  inventoryDetailValue: {
+  receptionDetailValue: {
     fontSize: theme.fontSize.sm,
     fontWeight: '600',
     color: theme.colors.text.primary,
   },
-  inventoryNotes: {
+  totalPrice: {
+    color: theme.colors.success[600],
+  },
+  receptionNotes: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.text.tertiary,
     fontStyle: 'italic',
@@ -670,6 +746,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.info[700],
     textAlign: 'center',
+    marginBottom: theme.spacing.xs,
   },
   modalLabel: {
     fontSize: theme.fontSize.sm,

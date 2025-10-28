@@ -7,6 +7,7 @@ export { default as ConfigurationScreen } from './ConfigurationScreen';
 export { default as DashboardScreen } from './DashboardScreen';
 export { default as InventoryScannerScreen } from './InventoryScannerScreen';
 export { default as InventoryScreen } from './InventoryScreen';
+export { default as ReceptionScreen } from './ReceptionScreen';
 export { default as DeliveryScreen } from './DeliveryScreen';
 export { default as LabelGeneratorScreen } from './LabelGeneratorScreen';
 export { default as LabelPreviewScreen } from './LabelPreviewScreen';

@@ -830,20 +830,11 @@ class Transaction(models.Model):
         # Calculer le montant total
         self.total_amount = self.quantity * self.unit_price
         
-        # Mettre à jour le stock selon le type de transaction
-        if self.type == 'in':
-            # Ajout de stock (achat, réception)
-            self.product.quantity += self.quantity
-        elif self.type in ['out', 'loss', 'backorder']:
-            # Retrait de stock (vente, casse, backorder)
-            # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
-            self.product.quantity -= self.quantity
-            # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
-        elif self.type == 'adjustment':
-            # Ajustement manuel - la quantité est déjà définie dans le produit
-            pass
+        # ✅ NOUVELLE APPROCHE: Ne plus modifier le stock automatiquement
+        # Le stock doit être modifié uniquement par les endpoints de gestion de stock
+        # pour éviter les doublons et les incohérences
         
-        self.product.save()
+        # Sauvegarder la transaction sans modifier le stock
         super().save(*args, **kwargs)
 
     def __str__(self):

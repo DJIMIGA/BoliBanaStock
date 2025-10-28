@@ -315,8 +315,22 @@ export default function CashRegisterScreen({ navigation }: any) {
         saleData.sarali_reference = saraliReference;
       }
 
-      // Appel API pour créer la vente
+      // Appel API pour créer la vente (sans retrait de stock automatique)
       const sale = await saleService.createSale(saleData);
+      
+      // ✅ NOUVELLE APPROCHE: Retirer le stock via l'endpoint dédié pour chaque item
+      for (const item of scanner.scanList) {
+        try {
+          await productService.removeStockForSale(
+            parseInt(item.productId), 
+            item.quantity, 
+            sale.id,
+            `Vente #${sale.id}`
+          );
+        } catch (error) {
+          console.error(`❌ Erreur retrait stock pour produit ${item.productId}:`, error);
+        }
+      }
       
       // Message de succès adapté au mode de paiement
       let successMessage = `Vente #${sale.id} enregistrée avec succès !\n\n${scanner.getTotalItems()} articles\nTotal: ${scanner.getTotalValue().toLocaleString()} FCFA`;

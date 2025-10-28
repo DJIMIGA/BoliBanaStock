@@ -222,7 +222,7 @@ export default function DashboardScreen({ navigation }: any) {
               title="Réception"
               icon="cube-outline"
               color={actionColors.info}
-              onPress={() => navigation.navigate('Delivery')}
+              onPress={() => navigation.navigate('Reception')}
             />
             <ActionButton
               title="Rapports"

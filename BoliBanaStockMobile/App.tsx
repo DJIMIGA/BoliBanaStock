@@ -29,6 +29,7 @@ import {
   StockValueScreen,
   NewSaleScreen,
   InventoryScreen,
+  ReceptionScreen,
   DeliveryScreen,
   ReportsScreen,
   TransactionsScreen,
@@ -155,6 +156,7 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="StockValue" component={StockValueScreen} />
           <Stack.Screen name="NewSale" component={NewSaleScreen} />
           <Stack.Screen name="Inventory" component={InventoryScreen} />
+          <Stack.Screen name="Reception" component={ReceptionScreen} />
           <Stack.Screen name="Delivery" component={DeliveryScreen} />
           <Stack.Screen name="Reports" component={ReportsScreen} />
           <Stack.Screen name="AddProduct" component={AddProductScreen} />
