@@ -246,9 +246,14 @@ export default function BarcodeManager({
       return;
     }
 
+    const isLastBarcode = barcodes.length === 1;
+    const message = isLastBarcode 
+      ? `Voulez-vous vraiment supprimer le dernier code-barres ${formatEAN(barcode.ean)} ?\n\nLe produit n'aura plus de code-barres après cette suppression.`
+      : `Voulez-vous vraiment supprimer le code-barres ${formatEAN(barcode.ean)} ?`;
+
     Alert.alert(
       'Confirmer la suppression',
-      `Voulez-vous vraiment supprimer le code-barres ${formatEAN(barcode.ean)} ?`,
+      message,
       [
         { text: 'Annuler', style: 'cancel' },
         { 
@@ -477,15 +482,11 @@ export default function BarcodeManager({
                   <TouchableOpacity
                     style={[styles.actionButton, styles.deleteActionButton]}
                     onPress={() => confirmRemove(barcode)}
-                    disabled={barcode.is_primary && barcodes.length === 1}
                   >
                     <Ionicons 
                       name="trash" 
                       size={16} 
-                      color={barcode.is_primary && barcodes.length === 1 
-                        ? theme.colors.neutral[400] 
-                        : theme.colors.error[500]
-                      } 
+                      color={theme.colors.error[500]}
                     />
                   </TouchableOpacity>
                 </View>
