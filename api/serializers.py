@@ -439,13 +439,25 @@ class TransactionSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'transaction_date', 'created_at']
 
 
+class SaleItemSerializer(serializers.ModelSerializer):
+    """Serializer pour les éléments de vente"""
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    total_price = serializers.DecimalField(source='amount', max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = SaleItem
+        fields = ['id', 'sale', 'product', 'product_name', 'quantity', 'unit_price', 'amount', 'total_price']
+
+
 class SaleSerializer(serializers.ModelSerializer):
     """Serializer pour les ventes"""
+    items = SaleItemSerializer(many=True, read_only=True)
+    
     class Meta:
         model = Sale
         fields = [
             'id', 'customer', 'sale_date', 'total_amount', 'payment_method', 'status',
-            'notes', 'created_at', 'updated_at'
+            'notes', 'created_at', 'updated_at', 'items'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -503,18 +515,25 @@ class SaleCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sale
         fields = [
-            'customer', 'total_amount', 'payment_method', 'status', 'notes',
+            'id', 'customer', 'total_amount', 'payment_method', 'status', 'notes',
             'sarali_reference', 'amount_given', 'change_amount'
         ]
-
-
-class SaleItemSerializer(serializers.ModelSerializer):
-    """Serializer pour les éléments de vente"""
-    product_name = serializers.CharField(source='product.name', read_only=True)
+        read_only_fields = ['id']
     
-    class Meta:
-        model = SaleItem
-        fields = ['id', 'sale', 'product', 'product_name', 'quantity', 'unit_price', 'total_price']
+    def create(self, validated_data):
+        """Override create pour ajouter des logs"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("🏪 [SERIALIZER] SaleCreateSerializer.create() appelé")
+        logger.info(f"🏪 [SERIALIZER] validated_data: {validated_data}")
+        
+        sale = super().create(validated_data)
+        
+        logger.info(f"🏪 [SERIALIZER] Vente créée avec ID: {sale.id}")
+        logger.info(f"🏪 [SERIALIZER] Données de la vente: {sale.__dict__}")
+        
+        return sale
 
 
 class LabelTemplateSerializer(serializers.ModelSerializer):

@@ -316,7 +316,11 @@ export default function CashRegisterScreen({ navigation }: any) {
       }
 
       // Appel API pour créer la vente
+      console.log('🏪 [FRONTEND] Envoi des données de vente:', JSON.stringify(saleData, null, 2));
       const sale = await saleService.createSale(saleData);
+      console.log('🏪 [FRONTEND] Réponse de création de vente:', JSON.stringify(sale, null, 2));
+      console.log('🏪 [FRONTEND] ID de la vente:', sale?.id);
+      console.log('🏪 [FRONTEND] Type de sale.id:', typeof sale?.id);
       
       // Message de succès adapté au mode de paiement
       let successMessage = `Vente #${sale.id} enregistrée avec succès !\n\n${scanner.getTotalItems()} articles\nTotal: ${scanner.getTotalValue().toLocaleString()} FCFA`;
