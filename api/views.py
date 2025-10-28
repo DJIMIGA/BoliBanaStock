@@ -1467,6 +1467,12 @@ class SaleViewSet(viewsets.ModelViewSet):
                 try:
                     product = Product.objects.get(id=product_id)
                     
+                    # 🔍 LOGS DE DIAGNOSTIC - À RETIRER APRÈS DEBUG
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"🏪 [SALE_DEBUG] Traitement item - Produit ID: {product_id}, Quantité: {quantity}")
+                    logger.info(f"🏪 [SALE_DEBUG] Stock AVANT: {product.quantity}")
+                    
                     # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
                     # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
                     
@@ -1482,6 +1488,8 @@ class SaleViewSet(viewsets.ModelViewSet):
                     old_quantity = product.quantity
                     product.quantity -= quantity
                     product.save()
+                    
+                    logger.info(f"🏪 [SALE_DEBUG] Stock APRÈS: {product.quantity}")
                     
                     # Déterminer le type de transaction selon le stock final
                     if product.quantity < 0:
