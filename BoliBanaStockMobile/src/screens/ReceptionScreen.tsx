@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,15 @@ import {
   TextInput,
   Modal,
   FlatList,
+  NativeSyntheticEvent,
+  TextInputFocusEventData,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { productService } from '../services/api';
+import { loadReceptionDraft, saveReceptionDraft, clearReceptionDraft } from '../utils/draftStorage';
 import theme, { stockColors, actionColors } from '../utils/theme';
+import BarcodeScanner from '../components/BarcodeScanner';
 
 interface Product {
   id: number;
@@ -35,11 +39,14 @@ interface ReceptionItem {
   unit_price: number;
   total_price: number;
   notes: string;
+  line_id?: string;
+  from_search?: boolean;
 }
 
 export default function ReceptionScreen({ navigation }: any) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [searching, setSearching] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [receptionItems, setReceptionItems] = useState<ReceptionItem[]>([]);
@@ -50,35 +57,148 @@ export default function ReceptionScreen({ navigation }: any) {
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [supplierName, setSupplierName] = useState('');
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [focusedLineId, setFocusedLineId] = useState<string | null>(null);
+  // Quantité par scan (pré-saisie globale)
+  const [scanQuantity, setScanQuantity] = useState<string>('1');
+  const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
+  const [unknownModalVisible, setUnknownModalVisible] = useState(false);
+  const [unknownCode, setUnknownCode] = useState<string>('');
+  const scrollRef = useRef<ScrollView>(null);
+  const rowPositionsRef = useRef<Record<string, number>>({});
 
-  const loadProducts = useCallback(async () => {
+  const setDraftQuantity = (lineId: string, text: string) => {
+    setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9]/g, '') }));
+  };
+
+  const commitReceptionQuantity = (lineId: string) => {
+    const wasFromSearch = receptionItems.find(it => it.line_id === lineId)?.from_search === true;
+    setReceptionItems(prev => {
+      const idx = prev.findIndex(it => it.line_id === lineId);
+      if (idx === -1) return prev;
+      const updated = [...prev];
+      const existing = updated[idx];
+      const raw = qtyDraft[lineId];
+      const newQty = raw ? parseInt(raw, 10) : existing.received_quantity;
+      if (!isNaN(newQty) && newQty > 0) {
+        updated[idx] = {
+          ...existing,
+          received_quantity: newQty,
+          total_price: newQty * (existing.unit_price || 0),
+        };
+      }
+      return updated;
+    });
+    setQtyDraft(prev => {
+      const copy = { ...prev };
+      delete copy[lineId];
+      return copy;
+    });
+    // Ne relancer le scanner que si la ligne vient du scan (pas d'une recherche)
+    if (!wasFromSearch) {
+      setScannerVisible(true);
+    }
+  };
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const formatFCFA = (value: any) => {
+    const num = typeof value === 'number' ? value : parseFloat((value ?? 0).toString());
+    if (!isFinite(num)) return '0 FCFA';
+    return `${Math.round(num).toLocaleString()} FCFA`;
+  };
+
+  const loadProducts = useCallback(async (query?: string, page: number = 1, append: boolean = false) => {
     try {
       setError(null);
-      setLoading(true);
-      const data = await productService.getProducts(1, 100);
-      setProducts(data.results || []);
+      const isInitial = !query && !append && page === 1;
+      if (isInitial) {
+        setLoading(true);
+      } else if (append) {
+        setLoadingMore(true);
+      } else {
+        setSearching(true);
+      }
+      const params: any = { page, page_size: 20 };
+      if (query && query.trim().length > 0) {
+        params.search = query.trim();
+      }
+      const data = await productService.getProducts(params);
+      const newProducts = data.results || data || [];
+      if (append) {
+        setProducts(prev => [...prev, ...newProducts]);
+      } else {
+        setProducts(newProducts);
+      }
+      setHasMore(!!data?.next);
+      setCurrentPage(page);
     } catch (e: any) {
       console.error('❌ Erreur loadProducts:', e);
       setError("Impossible de charger les produits");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+      setSearching(false);
     }
   }, []);
 
   useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
+    // Charger un brouillon s'il existe
+    (async () => {
+      const draft = await loadReceptionDraft();
+      if (Array.isArray(draft) && draft.length > 0) {
+        setReceptionItems(draft.map((it: any) => ({
+          ...it,
+          line_id: it.line_id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        })));
+      }
+      // Pas de chargement initial: UX "recherche/scan d'abord"
+      setLoading(false);
+    })();
+  }, []);
+
+  // Sauvegarder le brouillon à chaque changement
+  useEffect(() => {
+    saveReceptionDraft(receptionItems);
+  }, [receptionItems]);
+
+  // Recherche serveur avec débounce (≥ 2 caractères)
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    const q = (searchQuery || '').trim();
+    if (q.length < 2) {
+      setProducts([]);
+      return;
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      loadProducts(q, 1, false);
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchQuery, loadProducts]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadProducts();
+    const q = (searchQuery || '').trim();
+    if (q.length >= 2) {
+      await loadProducts(q, 1, false);
+    } else {
+      setProducts([]);
+    }
     setRefreshing(false);
   };
 
   const openReceptionModal = (product: Product) => {
     setSelectedProduct(product);
     setReceivedQuantity('');
-    setUnitPrice(product.purchase_price.toString());
+    setUnitPrice(((product as any).purchase_price ?? 0).toString());
     setNotes('');
     setReceptionModalVisible(true);
   };
@@ -120,24 +240,40 @@ export default function ReceptionScreen({ navigation }: any) {
       notes: notes.trim()
     };
 
-    // Vérifier si le produit est déjà dans la réception
     const existingIndex = receptionItems.findIndex(item => item.product.id === selectedProduct.id);
     
     if (existingIndex >= 0) {
-      // Mettre à jour l'item existant
       const updatedItems = [...receptionItems];
-      updatedItems[existingIndex] = receptionItem;
+      const existing = updatedItems[existingIndex];
+      const newQty = existing.received_quantity + quantity;
+      updatedItems[existingIndex] = {
+        ...existing,
+        received_quantity: newQty,
+        unit_price: price,
+        total_price: newQty * price,
+        notes: notes.trim() || existing.notes,
+      };
       setReceptionItems(updatedItems);
     } else {
-      // Ajouter un nouvel item
       setReceptionItems(prev => [...prev, receptionItem]);
     }
 
     closeReceptionModal();
   };
 
-  const removeFromReception = (productId: number) => {
-    setReceptionItems(prev => prev.filter(item => item.product.id !== productId));
+  const removeReceptionLine = (lineId: string) => {
+    setReceptionItems(prev => prev.filter(item => item.line_id !== lineId));
+  };
+
+  const updateReceptionQuantity = (productId: number, quantityText: string) => {
+    const cleaned = quantityText.replace(/[^0-9]/g, '');
+    const newQty = parseInt(cleaned || '');
+    if (!newQty || newQty <= 0) {
+      // Ignorer entrées vides/invalides, on ne met pas 0
+      setReceptionItems(prev => prev.map(it => it.product.id === productId ? { ...it, received_quantity: 1, total_price: (it.unit_price || 0) * 1 } : it));
+      return;
+    }
+    setReceptionItems(prev => prev.map(it => it.product.id === productId ? { ...it, received_quantity: newQty, total_price: (it.unit_price || 0) * newQty } : it));
   };
 
   const validateReception = async () => {
@@ -154,11 +290,10 @@ export default function ReceptionScreen({ navigation }: any) {
     try {
       let successCount = 0;
       let errorCount = 0;
-      const receptionId = Date.now(); // ID fictif de réception basé sur le timestamp
+      const receptionId = Date.now();
 
       for (const item of receptionItems) {
         try {
-          // Utiliser le contexte 'reception' pour l'ajout de stock
           await productService.addStockForReception(
             item.product.id,
             item.received_quantity,
@@ -173,16 +308,17 @@ export default function ReceptionScreen({ navigation }: any) {
       }
 
       if (successCount > 0) {
-        const totalValue = receptionItems.reduce((sum, item) => sum + item.total_price, 0);
+        const totalValue = receptionItems.reduce((sum, item) => sum + (item.total_price || 0), 0);
         
         Alert.alert(
           'Réception validée',
-          `${successCount} produits réceptionnés avec succès${errorCount > 0 ? `\n${errorCount} erreurs` : ''}\n\nValeur totale: ${totalValue.toFixed(2)} FCFA`,
+          `${successCount} produits réceptionnés avec succès${errorCount > 0 ? `\n${errorCount} erreurs` : ''}\n\nValeur totale: ${formatFCFA(totalValue)}`,
           [
             {
               text: 'OK',
               onPress: () => {
                 setReceptionItems([]);
+                clearReceptionDraft();
                 setSupplierName('');
                 loadProducts();
               }
@@ -197,7 +333,9 @@ export default function ReceptionScreen({ navigation }: any) {
     }
   };
 
+  // Les produits sont filtrés côté API; filtre local de secours
   const filteredProducts = products.filter(product =>
+    !searchQuery ||
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     product.cug.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -217,9 +355,81 @@ export default function ReceptionScreen({ navigation }: any) {
       in_stock: 'En stock',
       low_stock: 'Stock faible',
       out_of_stock: 'Rupture',
-      backorder: 'Backorder',
+      backorder: 'Stock négatif',
     };
     return labelMap[status] || 'Indéterminé';
+  };
+
+  const loadMoreProducts = async () => {
+    if (hasMore && !loadingMore) {
+      await loadProducts(searchQuery, currentPage + 1, true);
+    }
+  };
+
+  const onScanDetected = async (code: string) => {
+    try {
+      // Fermer pour permettre l'ouverture du clavier sur la quantité
+      setScannerVisible(false);
+      const data = await productService.scanProduct(code);
+      const raw = (data as any)?.product || data;
+
+      // Préférer charger le détail complet pour garantir toutes les propriétés
+      const productId = raw?.id || raw?.product_id || raw?.product?.id;
+      if (productId) {
+        try {
+          const full = await productService.getProduct(productId);
+          if (full?.id) {
+            // Ajouter ou incrémenter directement dans la liste scannée
+            const prod = full as Product;
+            const price = Number((prod as any).purchase_price || 0) || 0;
+            const inc = Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
+            const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            setReceptionItems(prev => ([
+              {
+                product: prod,
+                received_quantity: inc,
+                unit_price: price,
+                total_price: inc * price,
+                notes: '',
+                line_id: newLineId,
+                from_search: false,
+              },
+              ...prev,
+            ]));
+            setFocusedLineId(newLineId);
+            return;
+          }
+        } catch {}
+        // Si getProduct échoue, tenter avec l'objet brut si nom présent
+        if (raw?.name) {
+          const prod = raw as Product;
+          const price = Number((prod as any).purchase_price || 0) || 0;
+          const inc = Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
+          const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          setReceptionItems(prev => ([
+            {
+              product: prod,
+              received_quantity: inc,
+              unit_price: price,
+              total_price: inc * price,
+              notes: '',
+              line_id: newLineId,
+              from_search: false,
+            },
+            ...prev,
+          ]));
+          setFocusedLineId(newLineId);
+          return;
+        }
+      }
+
+      // Fallback: EAN inconnu => afficher un modal avec OK pour relancer
+      setUnknownCode(String(code));
+      setUnknownModalVisible(true);
+    } catch (e) {
+      setUnknownCode(String(code));
+      setUnknownModalVisible(true);
+    }
   };
 
   const renderProduct = ({ item }: { item: Product }) => {
@@ -227,82 +437,45 @@ export default function ReceptionScreen({ navigation }: any) {
     
     return (
       <TouchableOpacity
-        style={[styles.productCard, isInReception && styles.productCardInReception]}
-        onPress={() => openReceptionModal(item)}
+        style={styles.searchResultRow}
+        onPress={() => {
+          const price = Number((item as any).purchase_price || 0) || 0;
+          const inc = 1;
+          const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          setReceptionItems(prev => ([
+            {
+              product: item,
+              received_quantity: inc,
+              unit_price: price,
+              total_price: inc * price,
+              notes: '',
+              line_id: newLineId,
+              from_search: true,
+            },
+            ...prev,
+          ]));
+          setFocusedLineId(newLineId);
+          setSearchQuery('');
+          setProducts([]);
+        }}
       >
-        <View style={styles.productHeader}>
-          <View style={styles.productInfo}>
-            <Text style={styles.productName}>{item.name}</Text>
-            <Text style={styles.productCug}>{item.cug}</Text>
-            <Text style={styles.productCategory}>
-              {item.category_name} - {item.brand_name}
-            </Text>
-            <Text style={styles.productPrice}>
-              Prix d'achat: {item.purchase_price.toFixed(2)} FCFA
-            </Text>
-          </View>
-          <View style={styles.productStock}>
-            <Text style={styles.stockQuantity}>{item.quantity}</Text>
-            <View style={[styles.stockBadge, { backgroundColor: getStockStatusColor(item.stock_status) }]}>
-              <Text style={styles.stockBadgeText}>
-                {getStockStatusLabel(item.stock_status)}
-              </Text>
-            </View>
-          </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.searchResultName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.searchResultMeta}>{item.cug} • {item.category_name} • {item.brand_name}</Text>
         </View>
-        {isInReception && (
-          <View style={styles.receptionIndicator}>
-            <Ionicons name="checkmark-circle" size={16} color={theme.colors.success[500]} />
-            <Text style={styles.receptionText}>Dans la réception</Text>
-          </View>
-        )}
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.searchResultQty}>{item.quantity}</Text>
+          <Text style={styles.searchResultPrice}>{formatFCFA((item as any).purchase_price)}</Text>
+        </View>
       </TouchableOpacity>
     );
   };
-
-  const renderReceptionItem = ({ item }: { item: ReceptionItem }) => (
-    <View style={styles.receptionItem}>
-      <View style={styles.receptionItemHeader}>
-        <View style={styles.receptionItemInfo}>
-          <Text style={styles.receptionItemName}>{item.product.name}</Text>
-          <Text style={styles.receptionItemCug}>{item.product.cug}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.removeButton}
-          onPress={() => removeFromReception(item.product.id)}
-        >
-          <Ionicons name="close-circle" size={20} color={theme.colors.error[500]} />
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.receptionItemDetails}>
-        <View style={styles.receptionDetail}>
-          <Text style={styles.receptionDetailLabel}>Quantité:</Text>
-          <Text style={styles.receptionDetailValue}>{item.received_quantity}</Text>
-        </View>
-        <View style={styles.receptionDetail}>
-          <Text style={styles.receptionDetailLabel}>Prix unitaire:</Text>
-          <Text style={styles.receptionDetailValue}>{item.unit_price.toFixed(2)} FCFA</Text>
-        </View>
-        <View style={styles.receptionDetail}>
-          <Text style={styles.receptionDetailLabel}>Total:</Text>
-          <Text style={[styles.receptionDetailValue, styles.totalPrice]}>
-            {item.total_price.toFixed(2)} FCFA
-          </Text>
-        </View>
-      </View>
-      
-      {item.notes && (
-        <Text style={styles.receptionNotes}>Notes: {item.notes}</Text>
-      )}
-    </View>
-  );
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary[500]} />
+          <ActivityIndicator size="large" color={actionColors.primary} />
           <Text style={styles.loadingText}>Chargement des produits...</Text>
         </View>
       </SafeAreaView>
@@ -330,10 +503,18 @@ export default function ReceptionScreen({ navigation }: any) {
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
+        {searching && (
+          <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+        )}
+        <TouchableOpacity onPress={() => setScannerVisible(true)}>
+          <Ionicons name="qr-code-outline" size={22} color={theme.colors.neutral[600]} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.content}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -341,18 +522,101 @@ export default function ReceptionScreen({ navigation }: any) {
         {error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadProducts}>
+            <TouchableOpacity style={styles.retryButton} onPress={() => loadProducts((searchQuery || '').trim(), 1, false)}>
               <Text style={styles.retryText}>Réessayer</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
-            <FlatList
-              data={filteredProducts}
-              renderItem={renderProduct}
-              keyExtractor={(item) => item.id.toString()}
-              scrollEnabled={false}
-            />
+            {/* Écran d'accueil avant tout scan */}
+            {receptionItems.length === 0 && (searchQuery || '').trim().length === 0 && (
+              <View style={styles.welcomeContainer}>
+                <Ionicons name="qr-code-outline" size={64} color={theme.colors.primary[500]} />
+                <Text style={styles.welcomeTitle}>Prêt à scanner</Text>
+                <Text style={styles.welcomeText}>Scannez un produit ou utilisez la recherche par nom/CUG.
+                </Text>
+                <TouchableOpacity style={styles.welcomeButton} onPress={() => setScannerVisible(true)}>
+                  <Ionicons name="scan-outline" size={18} color={theme.colors.text.inverse} />
+                  <Text style={styles.welcomeButtonText}>Commencer le scan</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Résultats de recherche par nom/CUG */}
+            {products.length > 0 && (
+              <>
+                {searching && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 6 }}>
+                    <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                    <Text style={{ marginLeft: 8, color: theme.colors.text.secondary }}>Recherche...</Text>
+                  </View>
+                )}
+                <FlatList
+                  data={filteredProducts}
+                  renderItem={renderProduct}
+                  keyExtractor={(item) => item.id.toString()}
+                  scrollEnabled={false}
+                  keyboardShouldPersistTaps="handled"
+                />
+                {hasMore && (
+                  <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreProducts} disabled={loadingMore}>
+                    {loadingMore ? (
+                      <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                    ) : (
+                      <Text style={styles.loadMoreText}>Charger plus</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+            {receptionItems.length > 0 && (
+              <View style={styles.scannedSection}>
+                <View style={styles.scannedHeader}>
+                  <Text style={styles.scannedTitle}>Produits scannés</Text>
+                  <Text style={styles.scannedMeta}>
+                    {receptionItems.length} produit(s) • {formatFCFA(receptionItems.reduce((s, it) => s + (it.total_price || 0), 0))}
+                  </Text>
+                </View>
+                <FlatList
+                  data={receptionItems}
+                  keyExtractor={(item) => item.line_id || `rec-${item.product.id}-${Math.random()}`}
+                  renderItem={({ item }) => (
+                    <View
+                      style={styles.scannedItemRow}
+                      onLayout={(e) => {
+                        rowPositionsRef.current[item.line_id] = e.nativeEvent.layout.y;
+                      }}
+                    >
+                      <View style={styles.scannedItemInfo}>
+                        <Text style={styles.scannedItemName} numberOfLines={1}>{item.product.name}</Text>
+                        <Text style={styles.scannedItemCug}>{item.product.cug}</Text>
+                      </View>
+                      <View style={styles.scannedItemRight}>
+                        <TextInput
+                          style={styles.scannedQtyInput}
+                          value={qtyDraft[item.line_id] ?? String(item.received_quantity)}
+                          onChangeText={(t) => setDraftQuantity(item.line_id, t)}
+                          keyboardType="numeric"
+                          placeholder="Qté"
+                          autoFocus={focusedLineId === item.line_id}
+                          onFocus={() => {
+                            const y = rowPositionsRef.current[item.line_id] ?? 0;
+                            scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+                          }}
+                          onSubmitEditing={() => { commitReceptionQuantity(item.line_id); setFocusedLineId(null); }}
+                          onEndEditing={() => { commitReceptionQuantity(item.line_id); setFocusedLineId(null); }}
+                        />
+                      </View>
+                      <TouchableOpacity style={styles.scannedRemoveBtn} onPress={() => removeReceptionLine(item.line_id)}>
+                        <Ionicons name="close" size={16} color={theme.colors.error[600]} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  scrollEnabled={false}
+                />
+              </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -380,15 +644,6 @@ export default function ReceptionScreen({ navigation }: any) {
               <Text style={styles.validateButtonText}>Valider</Text>
             </TouchableOpacity>
           </View>
-          
-          <FlatList
-            data={receptionItems}
-            renderItem={renderReceptionItem}
-            keyExtractor={(item) => item.product.id.toString()}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.receptionList}
-          />
         </View>
       )}
 
@@ -408,7 +663,7 @@ export default function ReceptionScreen({ navigation }: any) {
                 Stock actuel: {selectedProduct?.quantity}
               </Text>
               <Text style={styles.modalInfoText}>
-                Prix d'achat: {selectedProduct?.purchase_price.toFixed(2)} FCFA
+                Prix d'achat: {formatFCFA((selectedProduct as any)?.purchase_price)}
               </Text>
             </View>
             
@@ -452,6 +707,53 @@ export default function ReceptionScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* Modal code inconnu */}
+      <Modal
+        visible={unknownModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setUnknownModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Code inconnu</Text>
+            <Text style={styles.modalInfoText}>Aucun produit trouvé pour: {unknownCode}</Text>
+            <Text style={[styles.modalInfoText, { marginTop: 8 }]}>Astuce: il arrive que le téléphone lise mal un code-barres. Réessayez en ajustant l’angle et la distance.</Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButtonConfirm, { flex: 1 }]}
+                onPress={() => { setUnknownModalVisible(false); setScannerVisible(true); }}
+              >
+                <Text style={styles.modalButtonConfirmText}>Réessayer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButtonCancel, { flex: 1 }]}
+                onPress={() => setUnknownModalVisible(false)}
+              >
+                <Text style={styles.modalButtonCancelText}>Fermer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal scanner */}
+      <Modal
+        visible={scannerVisible}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setScannerVisible(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: 'black' }}>
+          <BarcodeScanner
+            visible={scannerVisible}
+            onScan={(code: string) => onScanDetected(code)}
+            onClose={() => setScannerVisible(false)}
+            onSearchChange={(t: string) => setSearchQuery(t)}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -468,7 +770,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     backgroundColor: theme.colors.background.secondary,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border.primary,
+    borderBottomColor: theme.colors.neutral[200],
   },
   backButton: {
     padding: theme.spacing.sm,
@@ -492,7 +794,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background.secondary,
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
-    borderColor: theme.colors.border.primary,
+    borderColor: theme.colors.neutral[200],
+    gap: theme.spacing.sm,
   },
   searchInput: {
     flex: 1,
@@ -524,7 +827,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   retryButton: {
-    backgroundColor: theme.colors.primary[500],
+    backgroundColor: actionColors.primary,
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.md,
@@ -533,13 +836,95 @@ const styles = StyleSheet.create({
     color: theme.colors.text.inverse,
     fontWeight: '600',
   },
+  scannedSection: {
+    marginTop: theme.spacing.md,
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    paddingVertical: 4,
+  },
+  scannedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+  },
+  scannedTitle: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
+  },
+  scannedMeta: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.text.secondary,
+  },
+  scannedItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 10,
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    marginHorizontal: theme.spacing.md,
+    marginVertical: 6,
+  },
+  scannedItemInfo: {
+    flex: 1,
+    paddingRight: theme.spacing.sm,
+  },
+  scannedItemName: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text.primary,
+    fontWeight: '600',
+  },
+  scannedItemCug: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.text.tertiary,
+  },
+  scannedItemRight: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  scannedQtyInput: {
+    minWidth: 52,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[300],
+    borderRadius: 8,
+    textAlign: 'center',
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text.primary,
+    backgroundColor: theme.colors.background.secondary,
+  },
+  scanQtyInput: {
+    width: 70,
+    marginHorizontal: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[300],
+    borderRadius: 8,
+    textAlign: 'center',
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text.primary,
+    backgroundColor: theme.colors.background.secondary,
+  },
+  scannedRemoveBtn: {
+    marginLeft: theme.spacing.sm,
+    padding: 4,
+  },
   productCard: {
     backgroundColor: theme.colors.background.secondary,
     borderRadius: theme.borderRadius.md,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.sm,
     borderWidth: 1,
-    borderColor: theme.colors.border.primary,
+    borderColor: theme.colors.neutral[200],
   },
   productCardInReception: {
     borderColor: theme.colors.success[500],
@@ -599,7 +984,7 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
     paddingTop: theme.spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border.primary,
+    borderTopColor: theme.colors.neutral[200],
   },
   receptionText: {
     marginLeft: theme.spacing.xs,
@@ -607,10 +992,25 @@ const styles = StyleSheet.create({
     color: theme.colors.success[600],
     fontWeight: '600',
   },
+  loadMoreButton: {
+    alignSelf: 'center',
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+    backgroundColor: theme.colors.background.secondary,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+  },
+  loadMoreText: {
+    color: theme.colors.text.primary,
+    fontWeight: '600',
+  },
   receptionSummary: {
     backgroundColor: theme.colors.background.secondary,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border.primary,
+    borderTopColor: theme.colors.neutral[200],
     paddingVertical: theme.spacing.md,
   },
   supplierContainer: {
@@ -628,7 +1028,7 @@ const styles = StyleSheet.create({
   supplierInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: theme.colors.border.primary,
+    borderColor: theme.colors.neutral[200],
     borderRadius: theme.borderRadius.sm,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
@@ -648,7 +1048,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
   },
   validateButton: {
-    backgroundColor: theme.colors.primary[500],
+    backgroundColor: actionColors.primary,
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.md,
@@ -667,7 +1067,7 @@ const styles = StyleSheet.create({
     marginRight: theme.spacing.sm,
     width: 280,
     borderWidth: 1,
-    borderColor: theme.colors.border.primary,
+    borderColor: theme.colors.neutral[200],
   },
   receptionItemHeader: {
     flexDirection: 'row',
@@ -756,7 +1156,7 @@ const styles = StyleSheet.create({
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: theme.colors.border.primary,
+    borderColor: theme.colors.neutral[200],
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
@@ -778,7 +1178,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
-    borderColor: theme.colors.border.primary,
+    borderColor: theme.colors.neutral[200],
     alignItems: 'center',
   },
   modalButtonCancelText: {
@@ -789,11 +1189,74 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.primary[500],
+    backgroundColor: actionColors.primary,
     alignItems: 'center',
   },
   modalButtonConfirmText: {
     color: theme.colors.text.inverse,
     fontWeight: '600',
   },
+  welcomeContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    marginBottom: theme.spacing.md,
+  },
+  welcomeTitle: {
+    marginTop: theme.spacing.sm,
+    fontSize: theme.fontSize.lg,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  welcomeText: {
+    marginTop: theme.spacing.xs,
+    marginHorizontal: theme.spacing.lg,
+    textAlign: 'center',
+    color: theme.colors.text.secondary,
+  },
+  welcomeButton: {
+    marginTop: theme.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.primary[500],
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+  },
+  welcomeButtonText: {
+    color: theme.colors.text.inverse,
+    fontWeight: '700',
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  searchResultName: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  searchResultMeta: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.text.tertiary,
+    marginTop: 2,
+  },
+  searchResultQty: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text.secondary,
+    fontWeight: '600',
+  },
+  searchResultPrice: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.info[700],
+  }
 });

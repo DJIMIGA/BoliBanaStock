@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import {
   ReceiptPrintModal
 } from '../components';
 import { useContinuousScanner } from '../hooks';
+import { loadSalesCartDraft, saveSalesCartDraft, clearSalesCartDraft } from '../utils/draftStorage';
 import { useUserPermissions } from '../hooks/useUserPermissions';
 import { productService, saleService, customerService } from '../services/api';
 import { sanitizeBarcode, validateBarcode, areSimilarBarcodes, validateBarcodeQuality } from '../utils/barcodeUtils';
@@ -31,6 +32,35 @@ export default function CashRegisterScreen({ navigation }: any) {
   const [showScanner, setShowScanner] = useState(false);
   const [loading, setLoading] = useState(false);
   const scanner = useContinuousScanner('sales');
+  // Charger brouillon panier au montage
+  useEffect(() => {
+    (async () => {
+      const draft = await loadSalesCartDraft();
+      if (Array.isArray(draft) && draft.length > 0) {
+        // Réinjecter dans le scanner: on n'a pas d'API publique pour set, on reconstruit via addToScanList
+        try {
+          for (const it of draft) {
+            // it doit contenir au moins barcode/productId/productName/unitPrice/quantity
+            scanner.addToScanList(it.barcode || String(it.productId || ''), {
+              productId: it.productId,
+              productName: it.productName,
+              unitPrice: it.unitPrice,
+              quantity: it.quantity,
+              supplier: it.supplier,
+              site: it.site,
+              notes: it.notes,
+            });
+          }
+        } catch {}
+      }
+    })();
+  }, []);
+
+  // Sauvegarder brouillon panier à chaque changement
+  useEffect(() => {
+    saveSalesCartDraft(scanner.scanList);
+  }, [scanner.scanList]);
+
   const { userInfo, isSuperuser } = useUserPermissions();
   
   // États pour le nouveau workflow de paiement
@@ -128,7 +158,7 @@ export default function CashRegisterScreen({ navigation }: any) {
       
       if (product) {
         // Vérifier cohérence du site côté client si possible
-        const userSiteId = userInfo?.site_configuration ?? null;
+        const userSiteId = userInfo?.site_configuration_id ?? null;
         const productSiteId = (product as any)?.site_configuration ?? null;
         if (!isSuperuser && userSiteId && productSiteId && userSiteId !== productSiteId) {
           Alert.alert(
@@ -332,8 +362,17 @@ export default function CashRegisterScreen({ navigation }: any) {
         }
       }
       
+      // Sauvegarder les valeurs avant de vider la liste
+      const totalItems = scanner.getTotalItems();
+      const totalValue = scanner.getTotalValue();
+      
+      // ✅ Vider automatiquement la liste après une vente réussie (mode silencieux)
+      resetPaymentState();
+      scanner.clearList(true); // true = vidage silencieux sans confirmation
+      clearSalesCartDraft();
+      
       // Message de succès adapté au mode de paiement
-      let successMessage = `Vente #${sale.id} enregistrée avec succès !\n\n${scanner.getTotalItems()} articles\nTotal: ${scanner.getTotalValue().toLocaleString()} FCFA`;
+      let successMessage = `Vente #${sale.id} enregistrée avec succès !\n\n${totalItems} articles\nTotal: ${totalValue.toLocaleString()} FCFA`;
       
       if (paymentMethod === 'cash' && changeAmount > 0) {
         successMessage += `\nMonnaie rendue: ${changeAmount.toLocaleString()} FCFA`;
@@ -349,11 +388,8 @@ export default function CashRegisterScreen({ navigation }: any) {
         successMessage,
         [
           {
-            text: 'Nouvelle vente',
-            onPress: () => {
-              resetPaymentState();
-              scanner.clearList();
-            }
+            text: 'OK',
+            style: 'default'
           },
           {
             text: '🖨️ Imprimer ticket',

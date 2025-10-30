@@ -58,7 +58,7 @@ interface ProductDetail {
 
 interface StockMovement {
   id: number;
-  type: 'in' | 'out' | 'adjustment';
+  type: 'in' | 'out' | 'adjustment' | 'backorder';
   quantity: number;
   stock_before?: number;
   stock_after?: number;
@@ -193,6 +193,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       case 'in': return 'arrow-down-circle';
       case 'out': return 'arrow-up-circle';
       case 'adjustment': return 'swap-horizontal';
+      case 'backorder': return 'alert-circle';
       default: return 'help-circle';
     }
   };
@@ -202,6 +203,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       case 'in': return theme.colors.success[500];
       case 'out': return theme.colors.error[500];
       case 'adjustment': return theme.colors.warning[500];
+      case 'backorder': return theme.colors.warning[600];
       default: return theme.colors.neutral[500];
     }
   };
@@ -211,6 +213,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       case 'in': return 'Entrée';
       case 'out': return 'Sortie';
       case 'adjustment': return 'Ajustement';
+      case 'backorder': return 'Stock négatif';
       default: return 'Mouvement';
     }
   };

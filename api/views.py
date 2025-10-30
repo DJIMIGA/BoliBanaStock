@@ -636,8 +636,11 @@ class ProductViewSet(viewsets.ModelViewSet):
         transactions_query = Transaction.objects.filter(product=product)
         
         if not request.user.is_superuser and user_site:
-            # Filtrer par site pour les utilisateurs normaux
-            transactions_query = transactions_query.filter(site_configuration=user_site)
+            # Filtrer par site pour les utilisateurs normaux (transactions récentes et historiques)
+            from django.db.models import Q
+            transactions_query = transactions_query.filter(
+                Q(site_configuration=user_site) | Q(product__site_configuration=user_site)
+            )
         
         transactions = (
             transactions_query
@@ -813,18 +816,18 @@ class ProductViewSet(viewsets.ModelViewSet):
                     {'error': f'Vente avec ID {sale_id} non trouvée'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            # Créer la transaction
-            Transaction.objects.create(
-                product=product,
-                type=transaction_type,
-                quantity=quantity,
-                unit_price=product.purchase_price,
-                notes=context_notes,
-                user=request.user,
-                site_configuration=user_site,
-                sale=sale
-            )
+
+        # Créer la transaction systématiquement, avec association vente si présente
+        Transaction.objects.create(
+            product=product,
+            type=transaction_type,
+            quantity=quantity,
+            unit_price=product.purchase_price,
+            notes=context_notes,
+            user=request.user,
+            site_configuration=user_site,
+            sale=sale
+        )
         
         # Message adaptatif selon le stock final
         if product.quantity < 0:
@@ -1494,19 +1497,23 @@ class TransactionViewSet(viewsets.ModelViewSet):
     ordering = ['-transaction_date']
     
     def get_queryset(self):
-        """Filtrer les transactions par site de l'utilisateur"""
-        user_site = self.request.user.site_configuration
+        """Filtrer les transactions par site de l'utilisateur.
+        Inclut à la fois les transactions marquées avec site_configuration
+        et les anciennes transactions liées via product.site_configuration."""
+        user_site = getattr(self.request.user, 'site_configuration', None)
         
         if self.request.user.is_superuser:
-            # Superuser voit tout
-            return Transaction.objects.select_related('product', 'user').all()
-        else:
-            # Utilisateur normal voit seulement son site
-            if not user_site:
-                return Transaction.objects.none()
-            return Transaction.objects.filter(
-                product__site_configuration=user_site
-            ).select_related('product', 'user')
+            return Transaction.objects.select_related('product', 'user', 'sale').all()
+        
+        if not user_site:
+            return Transaction.objects.none()
+        
+        from django.db.models import Q
+        return (
+            Transaction.objects.filter(
+                Q(site_configuration=user_site) | Q(product__site_configuration=user_site)
+            ).select_related('product', 'user', 'sale')
+        )
     
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

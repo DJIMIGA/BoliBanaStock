@@ -50,6 +50,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Dimensions, StatusBar, Alert 
 import { CameraView, CameraType, BarcodeScanningResult, Camera } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
+ 
 
 const { width, height } = Dimensions.get('window');
 
@@ -57,13 +58,15 @@ interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
   onClose: () => void;
   visible: boolean;
+  onSearchChange?: (text: string) => void;
 }
 
-const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visible }) => {
+const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visible, onSearchChange }) => {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
   const [scannerDisabled, setScannerDisabled] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  
 
   useEffect(() => {
     if (visible) {
@@ -97,19 +100,19 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visibl
     // Envoyer le code scanné
     onScan(scanResult.data);
     
-    // Fermer le scanner immédiatement
-    onClose();
-    
-    // Garder le scanner désactivé pendant 3 secondes
+    // Réactiver après 1s pour éviter les doubles scans
     setTimeout(() => {
       setScannerDisabled(false);
-    }, 3000);
+      setScanned(false);
+    }, 1000);
   };
 
   const resetScanner = () => {
     setScanned(false);
     setScannerDisabled(false);
   };
+
+  
 
   if (!visible) return null;
   if (hasPermission === null) {
@@ -160,11 +163,11 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visibl
             </Text>
           </View>
         </View>
-        <View style={styles.controlsContainer}>
-          <TouchableOpacity style={styles.controlButton} onPress={onClose}>
+        <View style={styles.controlsContainer} pointerEvents="box-none">
+          <TouchableOpacity style={[styles.controlButton, styles.controlLeft]} onPress={onClose}>
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton} onPress={resetScanner}>
+          <TouchableOpacity style={[styles.controlButton, styles.controlRight]} onPress={resetScanner}>
             <Ionicons name="refresh" size={28} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -277,11 +280,29 @@ const styles = StyleSheet.create({
   },
   controlsContainer: {
     position: 'absolute',
-    top: 50,
-    right: 20,
+    bottom: 40,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    gap: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 40,
+    zIndex: 3,
   },
+  controlLeft: {
+    backgroundColor: 'rgba(255,0,0,0.5)'
+  },
+  controlRight: {
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  },
+  searchBarContainer: {
+    display: 'none',
+  },
+  searchInput: {},
+  resultsContainer: {},
+  resultRow: {},
+  resultName: {},
+  resultMeta: {},
   controlButton: {
     width: 44,
     height: 44,

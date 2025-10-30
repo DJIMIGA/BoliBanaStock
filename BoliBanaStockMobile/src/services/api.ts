@@ -1405,6 +1405,37 @@ export const creditTransactionService = {
   },
 };
 
+// Service pour les transactions
+export const transactionService = {
+  // Récupérer toutes les transactions
+  getTransactions: async (params?: {
+    type?: string;
+    product?: number;
+    context?: 'sale' | 'reception' | 'inventory' | 'manual' | 'return' | 'correction' | 'all';
+    page?: number;
+    page_size?: number;
+  }) => {
+    try {
+      const response = await api.get('/transactions/', { params });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API transactions:', error);
+      throw error;
+    }
+  },
+
+  // Récupérer une transaction spécifique
+  getTransaction: async (id: number) => {
+    try {
+      const response = await api.get(`/transactions/${id}/`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erreur API transaction:', error);
+      throw error;
+    }
+  },
+};
+
 // Services pour le dashboard
 export const dashboardService = {
   getStats: async () => {

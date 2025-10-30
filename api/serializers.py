@@ -429,14 +429,47 @@ class TransactionSerializer(serializers.ModelSerializer):
     """Serializer pour les transactions"""
     product_name = serializers.CharField(source='product.name', read_only=True)
     type_display = serializers.CharField(source='get_type_display', read_only=True)
+    sale_id = serializers.IntegerField(source='sale.id', read_only=True)
+    sale_reference = serializers.SerializerMethodField()
+    is_sale_transaction = serializers.SerializerMethodField()
+    context = serializers.SerializerMethodField()
+    
+    def get_sale_reference(self, obj):
+        if obj.sale:
+            return f"Vente #{obj.sale.id}"
+        return None
+    
+    def get_is_sale_transaction(self, obj):
+        return obj.sale is not None
+    
+    def get_context(self, obj):
+        """Détermine le contexte métier à partir des notes ou du lien sale"""
+        if obj.sale:
+            return 'sale'
+        
+        if not obj.notes:
+            return 'manual'
+        
+        notes_lower = obj.notes.lower()
+        if 'réception' in notes_lower or 'reception' in notes_lower:
+            return 'reception'
+        elif 'inventaire' in notes_lower or 'inventory' in notes_lower:
+            return 'inventory'
+        elif 'retour' in notes_lower or 'return' in notes_lower:
+            return 'return'
+        elif 'correction' in notes_lower or 'ajustement' in notes_lower:
+            return 'correction'
+        else:
+            return 'manual'
     
     class Meta:
         model = Transaction
         fields = [
             'id', 'type', 'type_display', 'product', 'product_name', 'quantity', 'transaction_date',
-            'notes', 'unit_price', 'total_amount', 'user', 'created_at'
+            'notes', 'unit_price', 'total_amount', 'user',
+            'sale_id', 'sale_reference', 'is_sale_transaction', 'context'
         ]
-        read_only_fields = ['id', 'transaction_date', 'created_at']
+        read_only_fields = ['id', 'transaction_date']
 
 
 class SaleItemSerializer(serializers.ModelSerializer):

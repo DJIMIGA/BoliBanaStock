@@ -33,7 +33,7 @@ interface UseContinuousScannerReturn {
   updateQuantity: (itemId: string, newQuantity: number) => void;
   removeItem: (itemId: string) => void;
   validateList: () => void;
-  clearList: () => void;
+  clearList: (silent?: boolean) => void;
   getTotalItems: () => number;
   getTotalValue: () => number;
   getProductCount: () => number;
@@ -244,10 +244,20 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
     );
   }, [scanList, context]);
 
-  // Vider la liste
-  const clearList = useCallback(() => {
+  // Vider la liste (avec option pour éviter la confirmation)
+  const clearList = useCallback((silent: boolean = false) => {
     if (scanList.length === 0) return;
     
+    // Si silent === true, vider directement sans confirmation (pour la caisse)
+    if (silent) {
+      setScanList([]);
+      // Nettoyer aussi les références anti-rafale
+      lastScanTimeByBarcodeRef.current = {};
+      barcodeLocksRef.current.clear();
+      return;
+    }
+    
+    // Sinon, demander confirmation (pour les autres contextes)
     Alert.alert(
       'Vider la liste',
       'Voulez-vous vraiment vider toute la liste ?',
@@ -256,7 +266,11 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
         { 
           text: 'Vider', 
           style: 'destructive',
-          onPress: () => setScanList([])
+          onPress: () => {
+            setScanList([]);
+            lastScanTimeByBarcodeRef.current = {};
+            barcodeLocksRef.current.clear();
+          }
         }
       ]
     );

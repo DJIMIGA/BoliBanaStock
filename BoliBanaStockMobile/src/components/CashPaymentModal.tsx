@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
+import { generateQuickAmounts } from '../utils/currencyUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -78,6 +79,11 @@ export default function CashPaymentModal({
   };
 
   const isAmountValid = parseFloat(amountGiven) >= totalAmount;
+
+  // Générer les montants rapides respectant les coupures FCFA
+  const quickAmounts = useMemo(() => {
+    return generateQuickAmounts(totalAmount);
+  }, [totalAmount]);
 
   return (
     <Modal
@@ -148,7 +154,7 @@ export default function CashPaymentModal({
           <View style={styles.quickAmountsSection}>
             <Text style={styles.quickAmountsLabel}>Montants rapides</Text>
             <View style={styles.quickAmountsContainer}>
-              {[totalAmount, totalAmount + 1000, totalAmount + 2000, totalAmount + 5000].map((amount) => (
+              {quickAmounts.map((amount) => (
                 <TouchableOpacity
                   key={amount}
                   style={styles.quickAmountButton}

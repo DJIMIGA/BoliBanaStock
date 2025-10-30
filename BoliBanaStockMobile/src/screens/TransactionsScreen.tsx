@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
+import { transactionService, saleService } from '../services/api';
 
 interface Transaction {
   id: number;
@@ -20,6 +21,10 @@ interface Transaction {
   quantity: number;
   transaction_date: string;
   notes?: string;
+  context?: 'sale' | 'reception' | 'inventory' | 'manual' | 'return' | 'correction';
+  sale_id?: number;
+  sale_reference?: string;
+  is_sale_transaction?: boolean;
 }
 
 interface Sale {
@@ -40,21 +45,36 @@ interface SaleItem {
   total_price: number;
 }
 
-type TabType = 'sales' | 'receptions' | 'movements' | 'reports';
+type FilterContext = 'all' | 'sale' | 'reception' | 'inventory' | 'manual' | 'return' | 'correction';
 
 export default function TransactionsScreen({ navigation }: any) {
-  const [activeTab, setActiveTab] = useState<TabType>('sales');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterContext>('all');
 
   const loadData = async () => {
     try {
       setLoading(true);
-      // TODO: Implémenter les appels API
-      setTransactions([]);
-      setSales([]);
+      
+      // Charger les transactions
+      const transactionsData = await transactionService.getTransactions({
+        page: 1,
+        page_size: 30, // économie de data
+      });
+      
+      // Adapter selon le format de la réponse (liste ou pagination)
+      const transactionsList = Array.isArray(transactionsData) 
+        ? transactionsData 
+        : transactionsData.results || transactionsData.transactions || [];
+      
+      setTransactions(transactionsList);
+      
+      // Charger les ventes récentes (économie de data)
+      const salesData = await saleService.getSales({ page: 1, page_size: 30 });
+      const salesList = Array.isArray(salesData) ? salesData : salesData.results || salesData.sales || [];
+      setSales(salesList);
     } catch (error: any) {
       console.error('❌ Erreur chargement données:', error);
     } finally {
@@ -72,6 +92,75 @@ export default function TransactionsScreen({ navigation }: any) {
     loadData();
   }, []);
 
+  // Filtrer les transactions selon le contexte actif
+  const getFilteredTransactions = () => {
+    if (activeFilter === 'all') {
+      return transactions;
+    }
+    return transactions.filter(t => t.context === activeFilter);
+  };
+
+  // Obtenir les informations du filtre
+  const getFilterInfo = (context: FilterContext) => {
+    const filters = {
+      all: { label: 'Tous', icon: 'apps-outline', color: theme.colors.neutral[500] },
+      sale: { label: 'Ventes', icon: 'cart-outline', color: theme.colors.primary[500] },
+      reception: { label: 'Réceptions', icon: 'arrow-down-circle-outline', color: theme.colors.success[500] },
+      inventory: { label: 'Inventaire', icon: 'clipboard-outline', color: theme.colors.info[500] },
+      manual: { label: 'Manuel', icon: 'hand-left-outline', color: theme.colors.neutral[600] },
+      return: { label: 'Retours', icon: 'return-up-back-outline', color: theme.colors.warning[500] },
+      correction: { label: 'Corrections', icon: 'create-outline', color: theme.colors.error[500] },
+    };
+    return filters[context] || filters.all;
+  };
+
+  // Helpers pour regroupement par date
+  const toDateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const isSameDay = (a: Date, b: Date) => toDateOnly(a).getTime() === toDateOnly(b).getTime();
+  const getDateLabel = (iso: string) => {
+    const d = new Date(iso);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    if (isSameDay(d, today)) return 'Aujourd\'hui';
+    if (isSameDay(d, yesterday)) return 'Hier';
+    return d.toLocaleDateString('fr-FR');
+  };
+
+  type FeedItem = { kind: 'header'; id: string; label: string } | { kind: 'sale'; id: string; dateISO: string; item: Sale } | { kind: 'transaction'; id: string; dateISO: string; item: Transaction };
+
+  const buildUnifiedFeed = (): FeedItem[] => {
+    const saleItems: FeedItem[] = (sales || []).map((s) => ({
+      kind: 'sale',
+      id: `sale-${s.id}`,
+      dateISO: (s as any).sale_date || (s as any).date,
+      item: s,
+    }));
+
+    const txItems: FeedItem[] = (transactions || []).map((t) => ({
+      kind: 'transaction',
+      id: `txn-${t.id}`,
+      dateISO: (t as any).transaction_date,
+      item: t,
+    }));
+
+    const merged = [...saleItems, ...txItems].filter(x => !!x.dateISO);
+    merged.sort((a, b) => new Date(b.dateISO).getTime() - new Date(a.dateISO).getTime());
+
+    // Insérer des entêtes de date
+    const withHeaders: FeedItem[] = [];
+    let lastLabel: string | null = null;
+    for (const it of merged) {
+      const label = getDateLabel(it.dateISO);
+      if (label !== lastLabel) {
+        withHeaders.push({ kind: 'header', id: `hdr-${it.id}`, label });
+        lastLabel = label;
+      }
+      withHeaders.push(it);
+    }
+    return withHeaders;
+  };
+
   const getTransactionIcon = (type: string) => {
     switch (type) {
       case 'in':
@@ -80,6 +169,10 @@ export default function TransactionsScreen({ navigation }: any) {
         return 'arrow-up-circle';
       case 'loss':
         return 'close-circle';
+      case 'adjustment':
+        return 'swap-horizontal';
+      case 'backorder':
+        return 'alert-circle';
       default:
         return 'swap-horizontal';
     }
@@ -93,6 +186,10 @@ export default function TransactionsScreen({ navigation }: any) {
         return theme.colors.error[500];
       case 'loss':
         return theme.colors.warning[500];
+      case 'adjustment':
+        return theme.colors.warning[500];
+      case 'backorder':
+        return theme.colors.warning[600];
       default:
         return theme.colors.neutral[500];
     }
@@ -106,6 +203,10 @@ export default function TransactionsScreen({ navigation }: any) {
         return 'Sortie';
       case 'loss':
         return 'Perte';
+      case 'adjustment':
+        return 'Ajustement';
+      case 'backorder':
+        return 'Stock négatif';
       default:
         return 'Transaction';
     }
@@ -137,44 +238,63 @@ export default function TransactionsScreen({ navigation }: any) {
     });
   };
 
-  const renderTransaction = ({ item }: { item: Transaction }) => (
-    <View style={styles.transactionCard}>
-      <View style={styles.transactionHeader}>
-        <View style={styles.transactionInfo}>
-          <Text style={styles.productName} numberOfLines={1}>
-            {item.product_name}
-          </Text>
-          <Text style={styles.transactionDate}>
-            {new Date(item.transaction_date).toLocaleDateString('fr-FR')}
-          </Text>
+  const renderTransaction = ({ item }: { item: Transaction }) => {
+    const filterInfo = item.context ? getFilterInfo(item.context) : null;
+    
+    return (
+      <View style={styles.transactionCard}>
+        <View style={styles.transactionHeader}>
+          <View style={styles.transactionInfo}>
+            <Text style={styles.productName} numberOfLines={1}>
+              {item.product_name}
+            </Text>
+            <Text style={styles.transactionDate}>
+              {new Date(item.transaction_date).toLocaleDateString('fr-FR')}
+            </Text>
+            {item.sale_reference && (
+              <View style={styles.saleBadge}>
+                <Ionicons name="cart" size={12} color={theme.colors.primary[600]} />
+                <Text style={styles.saleBadgeText}>{item.sale_reference}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.transactionType}>
+            <Ionicons 
+              name={getTransactionIcon(item.type)} 
+              size={24} 
+              color={getTransactionColor(item.type)} 
+            />
+            <Text style={[styles.typeLabel, { color: getTransactionColor(item.type) }]}>
+              {getTransactionLabel(item.type)}
+            </Text>
+          </View>
         </View>
-        <View style={styles.transactionType}>
-          <Ionicons 
-            name={getTransactionIcon(item.type)} 
-            size={24} 
-            color={getTransactionColor(item.type)} 
-          />
-          <Text style={[styles.typeLabel, { color: getTransactionColor(item.type) }]}>
-            {getTransactionLabel(item.type)}
-          </Text>
-        </View>
-      </View>
-      
-      <View style={styles.transactionFooter}>
-        <View style={styles.quantityContainer}>
-          <Ionicons name="cube-outline" size={16} color={theme.colors.neutral[600]} />
-          <Text style={styles.quantityText}>
-            {item.quantity} unités
-          </Text>
-        </View>
-        {item.notes && (
-          <Text style={styles.notesText} numberOfLines={2}>
-            {item.notes}
-          </Text>
+        
+        {filterInfo && (
+          <View style={styles.contextBadge}>
+            <Ionicons name={filterInfo.icon as any} size={14} color={filterInfo.color} />
+            <Text style={[styles.contextBadgeText, { color: filterInfo.color }]}>
+              {filterInfo.label}
+            </Text>
+          </View>
         )}
+        
+        <View style={styles.transactionFooter}>
+          <View style={styles.quantityContainer}>
+            <Ionicons name="cube-outline" size={16} color={theme.colors.neutral[600]} />
+            <Text style={styles.quantityText}>
+              {item.quantity} unités
+            </Text>
+          </View>
+          {item.notes && (
+            <Text style={styles.notesText} numberOfLines={2}>
+              {item.notes}
+            </Text>
+          )}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderSale = ({ item }: { item: Sale }) => (
     <TouchableOpacity
@@ -184,7 +304,7 @@ export default function TransactionsScreen({ navigation }: any) {
       <View style={styles.saleHeader}>
         <View style={styles.saleInfo}>
           <Text style={styles.saleId}>Vente #{item.id}</Text>
-          <Text style={styles.saleDate}>{formatDate(item.date)}</Text>
+          <Text style={styles.saleDate}>{formatDate((item as any).sale_date || (item as any).date)}</Text>
           <Text style={styles.customerName}>{item.customer_name}</Text>
         </View>
         <View style={styles.saleStatus}>
@@ -215,124 +335,110 @@ export default function TransactionsScreen({ navigation }: any) {
     </TouchableOpacity>
   );
 
-  const TabButton = ({ title, value, icon }: { title: string; value: TabType; icon: string }) => (
-    <TouchableOpacity
-      style={[styles.tabButton, activeTab === value && styles.tabButtonActive]}
-      onPress={() => setActiveTab(value)}
-    >
-      <Ionicons 
-        name={icon as any} 
-        size={24} 
-        color={activeTab === value ? 'white' : theme.colors.primary[500]} 
-      />
-      <Text style={[styles.tabText, activeTab === value && styles.tabTextActive]}>
-        {title}
-      </Text>
-    </TouchableOpacity>
-  );
+  // Plus d'onglets: on garde uniquement les filtres contextuels
+
+  const FilterButton = ({ context }: { context: FilterContext }) => {
+    const filterInfo = getFilterInfo(context);
+    const isActive = activeFilter === context;
+    
+    return (
+      <TouchableOpacity
+        style={[styles.filterButton, isActive && styles.filterButtonActive]}
+        onPress={() => setActiveFilter(context)}
+      >
+        <Ionicons 
+          name={filterInfo.icon as any} 
+          size={18} 
+          color={isActive ? 'white' : filterInfo.color} 
+        />
+        <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+          {filterInfo.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   const renderTabContent = () => {
-    switch (activeTab) {
-      case 'sales':
-        return (
-          <FlatList
-            data={sales}
-            renderItem={renderSale}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={styles.listContainer}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons name="cart-outline" size={64} color={theme.colors.neutral[400]} />
-                <Text style={styles.emptyText}>Aucune vente trouvée</Text>
-                <Text style={styles.emptySubtext}>
-                  Les ventes apparaîtront ici une fois que vous commencerez à utiliser la caisse
-                </Text>
-              </View>
-            }
-          />
-        );
-      
-      case 'receptions':
-        return (
-          <FlatList
-            data={transactions.filter(t => t.type === 'in')}
-            renderItem={renderTransaction}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={styles.listContainer}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons name="arrow-down-circle-outline" size={64} color={theme.colors.neutral[400]} />
-                <Text style={styles.emptyText}>Aucune réception trouvée</Text>
-                <Text style={styles.emptySubtext}>
-                  Les réceptions de stock apparaîtront ici
-                </Text>
-              </View>
-            }
-          />
-        );
-      
-      case 'movements':
-        return (
-          <FlatList
-            data={transactions.filter(t => t.type !== 'in')}
-            renderItem={renderTransaction}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={styles.listContainer}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons name="swap-horizontal-outline" size={64} color={theme.colors.neutral[400]} />
-                <Text style={styles.emptyText}>Aucun mouvement trouvé</Text>
-                <Text style={styles.emptySubtext}>
-                  Les mouvements de stock apparaîtront ici
-                </Text>
-              </View>
-            }
-          />
-        );
-      
-      case 'reports':
-        return (
-          <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-            <View style={styles.reportsContainer}>
-              <View style={styles.reportCard}>
-                <Ionicons name="bar-chart-outline" size={48} color={theme.colors.primary[500]} />
-                <Text style={styles.reportTitle}>Rapport des ventes</Text>
-                <Text style={styles.reportDescription}>
-                  Analysez vos performances de vente
-                </Text>
-              </View>
-              
-              <View style={styles.reportCard}>
-                <Ionicons name="cube-outline" size={48} color={theme.colors.secondary[500]} />
-                <Text style={styles.reportTitle}>Rapport de stock</Text>
-                <Text style={styles.reportDescription}>
-                  État détaillé de votre inventaire
-                </Text>
-              </View>
-              
-              <View style={styles.reportCard}>
-                <Ionicons name="cash-outline" size={48} color={theme.colors.success[500]} />
-                <Text style={styles.reportTitle}>Rapport financier</Text>
-                <Text style={styles.reportDescription}>
-                  Bilan et analyse financière
-                </Text>
-              </View>
+    // Si filtre 'Ventes', afficher la liste des ventes pour une meilleure lisibilité
+    if (activeFilter === 'sale') {
+      return (
+        <FlatList
+          data={sales}
+          renderItem={renderSale}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.listContainer}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="cart-outline" size={64} color={theme.colors.neutral[400]} />
+              <Text style={styles.emptyText}>Aucune vente trouvée</Text>
+              <Text style={styles.emptySubtext}>
+                Les ventes apparaîtront ici
+              </Text>
             </View>
-          </ScrollView>
-        );
-      
-      default:
-        return null;
+          }
+        />
+      );
     }
+
+    // Si filtre 'Tous', flux unifié (ventes + transactions) trié par date, avec en-têtes de jour
+    if (activeFilter === 'all') {
+      const feed = buildUnifiedFeed();
+      return (
+        <FlatList
+          data={feed}
+          keyExtractor={(it) => it.id}
+          renderItem={({ item }) => {
+            if (item.kind === 'header') {
+              return (
+                <View style={styles.dateHeader}>
+                  <Text style={styles.dateHeaderText}>{item.label}</Text>
+                </View>
+              );
+            }
+            if (item.kind === 'sale') {
+              return renderSale({ item: item.item });
+            }
+            return renderTransaction({ item: item.item });
+          }}
+          contentContainerStyle={styles.listContainer}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="swap-horizontal-outline" size={64} color={theme.colors.neutral[400]} />
+              <Text style={styles.emptyText}>Aucune donnée</Text>
+              <Text style={styles.emptySubtext}>Aucune vente ou transaction à afficher</Text>
+            </View>
+          }
+        />
+      );
+    }
+
+    // Sinon, afficher les transactions filtrées
+    return (
+      <FlatList
+        data={getFilteredTransactions()}
+        renderItem={renderTransaction}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="swap-horizontal-outline" size={64} color={theme.colors.neutral[400]} />
+            <Text style={styles.emptyText}>Aucune transaction trouvée</Text>
+            <Text style={styles.emptySubtext}>
+              Les transactions apparaîtront ici
+            </Text>
+          </View>
+        }
+      />
+    );
   };
 
   if (loading) {
@@ -348,23 +454,29 @@ export default function TransactionsScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+      {/* Titre */}
+      <View style={styles.simpleHeader}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>Transactions</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('CashRegister')}>
-          <Ionicons name="add-circle" size={24} color={theme.colors.primary[500]} />
-        </TouchableOpacity>
+        <View style={styles.headerRightPlaceholder} />
       </View>
-
-      {/* Onglets */}
-      <View style={styles.tabsContainer}>
-        <TabButton title="Ventes" value="sales" icon="cart-outline" />
-        <TabButton title="Réceptions" value="receptions" icon="arrow-down-circle-outline" />
-        <TabButton title="Mouvements" value="movements" icon="swap-horizontal-outline" />
-        <TabButton title="Rapports" value="reports" icon="bar-chart-outline" />
+      {/* Filtres par contexte */}
+      <View style={styles.filtersContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersScrollContent}
+        >
+          <FilterButton context="all" />
+          <FilterButton context="sale" />
+          <FilterButton context="reception" />
+          <FilterButton context="inventory" />
+          <FilterButton context="manual" />
+          <FilterButton context="return" />
+          <FilterButton context="correction" />
+        </ScrollView>
       </View>
 
       {/* Contenu des onglets */}
@@ -443,6 +555,20 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 20,
+  },
+  dateHeader: {
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    marginTop: 8,
+    marginBottom: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.neutral[100],
+    borderRadius: 8,
+  },
+  dateHeaderText: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    fontWeight: '700',
   },
   transactionCard: {
     backgroundColor: theme.colors.background.primary,
@@ -601,5 +727,88 @@ const styles = StyleSheet.create({
     color: theme.colors.text.secondary,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  filtersContainer: {
+    backgroundColor: theme.colors.background.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+    paddingVertical: 12,
+  },
+  simpleHeader: {
+    backgroundColor: theme.colors.background.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    ...theme.shadows.sm,
+  },
+  headerRightPlaceholder: {
+    width: 24,
+    height: 24,
+  },
+  filtersScrollContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: theme.colors.neutral[100],
+    borderWidth: 1.5,
+    borderColor: theme.colors.neutral[300],
+    marginRight: 8,
+    gap: 6,
+  },
+  filterButtonActive: {
+    backgroundColor: theme.colors.primary[500],
+    borderColor: theme.colors.primary[600],
+  },
+  filterText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.text.secondary,
+  },
+  filterTextActive: {
+    color: 'white',
+    fontWeight: '700',
+  },
+  contextBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: theme.colors.neutral[50],
+    gap: 4,
+  },
+  contextBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  saleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: theme.colors.primary[50],
+    gap: 4,
+  },
+  saleBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
   },
 });
