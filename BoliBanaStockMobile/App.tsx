@@ -20,6 +20,7 @@ import {
   ProductDetailScreen,
   ScanProductScreen,
   CashRegisterScreen,
+  SalesScreen,
   SaleDetailScreen,
   ConfigurationScreen,
   SettingsScreen,
@@ -32,6 +33,7 @@ import {
   ReceptionScreen,
   DeliveryScreen,
   ReportsScreen,
+  SalesReportScreen,
   TransactionsScreen,
   AddProductScreen,
   TestScannerScreen,
@@ -51,66 +53,72 @@ import {
 } from './src/screens';
 import { RootStackParamList } from './src/types';
 import theme, { actionColors } from './src/utils/theme';
+import { useDraftStatus } from './src/hooks/useDraftStatus';
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
-const MainTabs = () => (
-  <Tab.Navigator
-    initialRouteName="Dashboard"
-    screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: actionColors.primary,
-      tabBarInactiveTintColor: theme.colors.neutral[400],
-      tabBarStyle: { backgroundColor: theme.colors.background.primary },
-    }}
-  >
-    <Tab.Screen
-      name="Dashboard"
-      component={DashboardScreen}
-      options={{
-        title: 'Accueil',
-        tabBarLabel: 'Accueil',
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="home-outline" size={size} color={color} />
-        ),
+const MainTabs = () => {
+  const draftStatus = useDraftStatus();
+
+  return (
+    <Tab.Navigator
+      initialRouteName="Dashboard"
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: actionColors.primary,
+        tabBarInactiveTintColor: theme.colors.neutral[400],
+        tabBarStyle: { backgroundColor: theme.colors.background.primary },
       }}
-    />
-    <Tab.Screen
-      name="Products"
-      component={ProductsScreen}
-      options={{
-        title: 'Produits',
-        tabBarLabel: 'Produits',
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="cube-outline" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="CashRegister"
-      component={CashRegisterScreen}
-      options={{
-        title: 'Caisse',
-        tabBarLabel: 'Caisse',
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="calculator-outline" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="CustomerList"
-      component={CustomerListScreen}
-      options={{
-        title: 'Clients',
-        tabBarLabel: 'Clients',
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="people-outline" size={size} color={color} />
-        ),
-      }}
-    />
-  </Tab.Navigator>
-);
+    >
+      <Tab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{
+          title: 'Accueil',
+          tabBarLabel: 'Accueil',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Products"
+        component={ProductsScreen}
+        options={{
+          title: 'Produits',
+          tabBarLabel: 'Produits',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cube-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="CashRegister"
+        component={CashRegisterScreen}
+        options={{
+          title: 'Caisse',
+          tabBarLabel: 'Caisse',
+          tabBarBadge: draftStatus.hasSalesCartDraft ? '' : undefined,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calculator-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="CustomerList"
+        component={CustomerListScreen}
+        options={{
+          title: 'Clients',
+          tabBarLabel: 'Clients',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people-outline" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading } = useSelector((state: RootState) => state.auth);
@@ -147,6 +155,7 @@ const AppContent: React.FC = () => {
           {/* Écrans secondaires accessibles depuis les onglets */}
           <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
           <Stack.Screen name="ScanProduct" component={ScanProductScreen} />
+          <Stack.Screen name="Sales" component={SalesScreen} />
           <Stack.Screen name="SaleDetail" component={SaleDetailScreen} />
           <Stack.Screen name="Configuration" component={ConfigurationScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
@@ -159,6 +168,7 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="Reception" component={ReceptionScreen} />
           <Stack.Screen name="Delivery" component={DeliveryScreen} />
           <Stack.Screen name="Reports" component={ReportsScreen} />
+          <Stack.Screen name="SalesReport" component={SalesReportScreen} />
           <Stack.Screen name="AddProduct" component={AddProductScreen} />
           <Stack.Screen name="TestScanner" component={TestScannerScreen} />
           <Stack.Screen name="LabelPreview" component={LabelPreviewScreen} />

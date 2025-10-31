@@ -281,13 +281,13 @@ export default function TransactionsScreen({ navigation }: any) {
         
         <View style={styles.transactionFooter}>
           <View style={styles.quantityContainer}>
-            <Ionicons name="cube-outline" size={16} color={theme.colors.neutral[600]} />
+            <Ionicons name="cube-outline" size={14} color={theme.colors.neutral[600]} />
             <Text style={styles.quantityText}>
               {item.quantity} unités
             </Text>
           </View>
           {item.notes && (
-            <Text style={styles.notesText} numberOfLines={2}>
+            <Text style={styles.notesText} numberOfLines={1}>
               {item.notes}
             </Text>
           )}
@@ -573,26 +573,26 @@ const styles = StyleSheet.create({
   transactionCard: {
     backgroundColor: theme.colors.background.primary,
     borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
+    padding: 12,
+    marginBottom: 8,
     ...theme.shadows.md,
   },
   transactionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   transactionInfo: {
     flex: 1,
   },
   productName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: theme.colors.text.primary,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   transactionDate: {
-    fontSize: 12,
+    fontSize: 11,
     color: theme.colors.neutral[600],
   },
   transactionType: {
@@ -607,22 +607,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 4,
   },
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   quantityText: {
-    fontSize: 14,
+    fontSize: 12,
     color: theme.colors.neutral[600],
-    marginLeft: 5,
+    marginLeft: 4,
   },
   notesText: {
-    fontSize: 12,
+    fontSize: 11,
     color: theme.colors.neutral[500],
     flex: 1,
-    marginLeft: 10,
-    fontStyle: 'italic',
+    marginLeft: 8,
+    textAlign: 'right',
   },
   saleCard: {
     backgroundColor: theme.colors.background.primary,

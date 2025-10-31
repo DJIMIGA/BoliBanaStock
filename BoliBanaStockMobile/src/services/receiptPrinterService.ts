@@ -51,6 +51,7 @@ export interface ReceiptData {
     last_name: string;
   };
   customer?: {
+    id?: number;
     name: string;
     first_name: string;
     phone: string;
@@ -222,6 +223,16 @@ class ReceiptPrinterService {
     try {
       const { sale, site, seller, customer, items } = receiptData;
       
+      // DEBUG: Afficher les informations du client
+      console.log('🧾 [PRINT] Customer dans receiptData:', customer);
+      console.log('🧾 [PRINT] Customer présent:', customer ? 'OUI' : 'NON');
+      if (customer) {
+        console.log('🧾 [PRINT] Customer ID:', customer.id);
+        console.log('🧾 [PRINT] Customer name:', customer.name);
+        console.log('🧾 [PRINT] Customer first_name:', customer.first_name);
+      }
+      console.log('🧾 [PRINT] Payment method:', sale.payment_method);
+      
       if (!this.BluetoothEscposPrinter) {
         console.log('🔵 Mode simulation: Impression ticket');
         console.log('🧾 Ticket:', { 
@@ -254,8 +265,34 @@ class ReceiptPrinterService {
       await this.BluetoothEscposPrinter.printText(`Date: ${new Date(sale.sale_date).toLocaleString('fr-FR')}\n`);
       await this.BluetoothEscposPrinter.printText(`Vendeur: ${seller.username}\n`);
       
+      // DEBUG: Afficher les informations de debug sur le ticket
+      await this.BluetoothEscposPrinter.printText('================================\n');
+      await this.BluetoothEscposPrinter.printText('          DEBUG INFO\n');
+      await this.BluetoothEscposPrinter.printText('================================\n');
+      await this.BluetoothEscposPrinter.printText(`Customer present: ${customer ? 'OUI' : 'NON'}\n`);
       if (customer) {
-        await this.BluetoothEscposPrinter.printText(`Client: ${customer.name} ${customer.first_name || ''}\n`);
+        await this.BluetoothEscposPrinter.printText(`Customer ID: ${customer.id || 'N/A'}\n`);
+        await this.BluetoothEscposPrinter.printText(`Customer name: ${customer.name || 'N/A'}\n`);
+        await this.BluetoothEscposPrinter.printText(`Customer first_name: ${customer.first_name || 'N/A'}\n`);
+        await this.BluetoothEscposPrinter.printText(`Customer phone: ${customer.phone || 'N/A'}\n`);
+      }
+      await this.BluetoothEscposPrinter.printText(`Payment method: ${sale.payment_method}\n`);
+      await this.BluetoothEscposPrinter.printText('================================\n');
+      
+      // Afficher le client (même si null, afficher quelque chose pour le crédit)
+      if (customer && (customer.name || customer.first_name)) {
+        const customerName = [customer.name, customer.first_name].filter(Boolean).join(' ').trim();
+        await this.BluetoothEscposPrinter.printText(`Client: ${customerName}\n`);
+        if (customer.phone) {
+          await this.BluetoothEscposPrinter.printText(`Tel: ${customer.phone}\n`);
+        }
+      } else if (sale.payment_method === 'credit') {
+        // Pour les ventes à crédit sans client ou client sans nom, afficher un avertissement
+        if (customer && customer.id) {
+          await this.BluetoothEscposPrinter.printText(`Client: ID #${customer.id} (Nom non spécifié)\n`);
+        } else {
+          await this.BluetoothEscposPrinter.printText(`Client: Non spécifié (Crédit)\n`);
+        }
       } else {
         await this.BluetoothEscposPrinter.printText('Client: Anonyme\n');
       }
@@ -463,7 +500,37 @@ class ReceiptPrinterService {
           <div><strong>Ticket:</strong> ${sale.reference}</div>
           <div><strong>Date:</strong> ${saleDate}</div>
           <div><strong>Vendeur:</strong> ${seller.username}</div>
-          <div><strong>Client:</strong> ${customer ? `${customer.name} ${customer.first_name || ''}` : 'Anonyme'}</div>
+          <div><strong>Client:</strong> ${(() => {
+            if (customer && (customer.name || customer.first_name)) {
+              const customerName = [customer.name, customer.first_name].filter(Boolean).join(' ').trim();
+              return `${customerName}${customer.phone ? ` (${customer.phone})` : ''}`;
+            } else if (sale.payment_method === 'credit') {
+              if (customer && customer.id) {
+                return `ID #${customer.id} (Nom non spécifié)`;
+              }
+              return 'Non spécifié (Crédit)';
+            }
+            return 'Anonyme';
+          })()}</div>
+        </div>
+        
+        <!-- DEBUG SECTION - À retirer en production -->
+        <div style="background: #FFE082; padding: 15px; margin: 10px 0; font-size: 11px; border: 2px solid #FF6F00; border-radius: 5px;">
+          <strong style="color: #E65100; font-size: 13px;">🐛 DEBUG INFO:</strong><br/>
+          <div style="margin-top: 5px;">
+            <span style="color: #BF360C;">Customer présent:</span> <strong style="color: ${customer ? '#1B5E20' : '#B71C1C'}">${customer ? '✅ OUI' : '❌ NON'}</strong><br/>
+            ${customer ? `
+              <span style="color: #BF360C;">Customer ID:</span> <strong>${customer.id || 'N/A'}</strong><br/>
+              <span style="color: #BF360C;">Customer name:</span> <strong style="color: #1B5E20">${customer.name || 'N/A'}</strong><br/>
+              <span style="color: #BF360C;">Customer first_name:</span> <strong style="color: #1B5E20">${customer.first_name || 'N/A'}</strong><br/>
+              <span style="color: #BF360C;">Customer phone:</span> <strong>${customer.phone || 'N/A'}</strong><br/>
+            ` : ''}
+            <span style="color: #BF360C;">Payment method:</span> <strong>${sale.payment_method}</strong><br/>
+            <div style="margin-top: 8px; padding: 8px; background: #FFF9C4; border: 1px solid #FBC02D; border-radius: 3px;">
+              <span style="color: #BF360C;">Customer data (JSON):</span><br/>
+              <code style="font-size: 9px; color: #424242;">${customer ? JSON.stringify(customer, null, 2).replace(/\n/g, '<br/>') : 'null'}</code>
+            </div>
+          </div>
         </div>
         
         <div class="separator"></div>

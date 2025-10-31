@@ -15,6 +15,7 @@ import { useDispatch } from 'react-redux';
 import { logout } from '../store/slices/authSlice';
 import { AppDispatch } from '../store';
 import { useAuthError } from '../hooks/useAuthError';
+import { useDraftStatus } from '../hooks/useDraftStatus';
 import theme, { stockColors, actionColors } from '../utils/theme';
 
 interface DashboardStats {
@@ -42,6 +43,7 @@ interface Configuration {
 export default function DashboardScreen({ navigation }: any) {
   const dispatch = useDispatch<AppDispatch>();
   const { handleApiError } = useAuthError();
+  const draftStatus = useDraftStatus();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,9 +124,16 @@ export default function DashboardScreen({ navigation }: any) {
     </TouchableOpacity>
   );
 
-  const ActionButton = ({ title, icon, onPress, color }: any) => (
+  const ActionButton = ({ title, icon, onPress, color, hasPending }: any) => (
     <TouchableOpacity style={[styles.actionButton, { backgroundColor: color }]} onPress={onPress}>
-      <Ionicons name={icon} size={24} color="white" />
+      <View style={styles.actionButtonContent}>
+        <Ionicons name={icon} size={24} color="white" />
+        {hasPending && (
+          <View style={styles.actionBadge}>
+            <Ionicons name="ellipse" size={6} color={theme.colors.warning[500]} />
+          </View>
+        )}
+      </View>
       <Text style={styles.actionText}>{title}</Text>
     </TouchableOpacity>
   );
@@ -217,12 +226,14 @@ export default function DashboardScreen({ navigation }: any) {
               icon="list-outline"
               color={actionColors.primary}
               onPress={() => navigation.navigate('Inventory')}
+              hasPending={draftStatus.hasInventoryDraft}
             />
             <ActionButton
               title="Réception"
               icon="cube-outline"
               color={actionColors.info}
               onPress={() => navigation.navigate('Reception')}
+              hasPending={draftStatus.hasReceptionDraft}
             />
             <ActionButton
               title="Rapports"
@@ -395,6 +406,20 @@ const styles = StyleSheet.create({
     width: '48%',
     alignItems: 'center',
     ...theme.shadows.md,
+  },
+  actionButtonContent: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -6,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 2,
+    ...theme.shadows.sm,
   },
   actionText: {
     color: theme.colors.text.inverse,

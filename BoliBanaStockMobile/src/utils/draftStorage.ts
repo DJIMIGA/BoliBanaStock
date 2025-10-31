@@ -6,7 +6,22 @@ const SALES_KEY = '@bbstock:sales_cart_draft';
 
 export async function saveReceptionDraft(items: any[]) {
   try {
+    console.log('🔍 [DRAFT] Sauvegarde brouillon réception:', items?.length || 0, 'items');
+    if (items && items.length > 0) {
+      items.forEach((it: any, index: number) => {
+        console.log(`🔍 [DRAFT] Item ${index} à sauvegarder:`, {
+          line_id: it.line_id,
+          product_id: it.product?.id,
+          product_name: it.product?.name,
+          notes: it.notes,
+          notes_type: typeof it.notes,
+          notes_length: it.notes?.length || 0,
+          notes_starts_with_prefix: it.notes?.toLowerCase()?.startsWith('réception marchandise') || false
+        });
+      });
+    }
     await AsyncStorage.setItem(RECEPTION_KEY, JSON.stringify(items || []));
+    console.log('🔍 [DRAFT] Brouillon réception sauvegardé avec succès');
   } catch (e) {
     console.warn('saveReceptionDraft failed', e);
   }

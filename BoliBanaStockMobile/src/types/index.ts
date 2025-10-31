@@ -167,6 +167,7 @@ export type RootStackParamList = {
   UpdateStock: { productId: number };
   Profile: undefined;
   Reports: undefined;
+  SalesReport: undefined;
   Inventory: undefined;
   Delivery: undefined;
   LowStock: undefined;

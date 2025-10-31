@@ -696,19 +696,64 @@ class ProductViewSet(viewsets.ModelViewSet):
         quantity = request.data.get('quantity')
         notes = request.data.get('notes', 'Ajout de stock')
         
+        # Log des données brutes reçues
+        logger.info(f"🔍 [BACKEND] add_stock - Requête complète: {request.data}")
+        logger.info(f"🔍 [BACKEND] add_stock - Product ID: {product.id}, Quantity: {quantity}")
+        logger.info(f"🔍 [BACKEND] add_stock - Notes brutes (request.data.get): '{notes}'")
+        logger.info(f"🔍 [BACKEND] add_stock - Notes type: {type(notes)}, Notes repr: {repr(notes)}")
+        
         # Nouveaux paramètres de contexte métier
         context = request.data.get('context', 'manual')  # 'reception', 'inventory', 'manual'
         context_id = request.data.get('context_id')     # ID du contexte
+        
+        logger.info(f"🔍 [BACKEND] add_stock - Context: '{context}', Context ID: {context_id}")
         
         # Gestion du contexte métier
         context_notes = notes
         
         if context == 'reception':
-            context_notes = f'Réception marchandise - {notes}'
+            logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Notes reçues (type={type(notes)}): '{notes}'")
+            logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Notes None? {notes is None}")
+            logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Notes strip: '{notes.strip() if notes else None}'")
+            logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Notes bool: {bool(notes and notes.strip())}")
+            if notes and notes.strip():
+                notes_stripped = notes.strip()
+                notes_lower = notes_stripped.lower()
+                starts_with_prefix = notes_lower.startswith('réception marchandise')
+                logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Notes stripped: '{notes_stripped}'")
+                logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Notes lower: '{notes_lower}'")
+                logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Starts with prefix? {starts_with_prefix}")
+                logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Prefix check string: 'réception marchandise'")
+                logger.info(f"🔍 [BACKEND] add_stock RECEPTION - Prefix check result: {notes_lower[:22]} == 'réception marchandise'")
+                # Éviter la duplication si les notes commencent déjà par "Réception marchandise"
+                if starts_with_prefix:
+                    context_notes = notes_stripped
+                    logger.info(f"🔍 [BACKEND] add_stock RECEPTION - ✅ Utilisation notes telles quelles: '{context_notes}'")
+                else:
+                    context_notes = f'Réception marchandise - {notes_stripped}'
+                    logger.info(f"🔍 [BACKEND] add_stock RECEPTION - ✅ Ajout préfixe: '{context_notes}'")
+            else:
+                context_notes = 'Réception marchandise'
+                logger.info(f"🔍 [BACKEND] add_stock RECEPTION - ✅ Notes vides, préfixe par défaut: '{context_notes}'")
+            logger.info(f"🔍 [BACKEND] add_stock RECEPTION - 📝 context_notes FINAL: '{context_notes}'")
         elif context == 'inventory':
-            context_notes = f'Ajustement inventaire - {notes}'
+            if notes and notes.strip():
+                # Éviter la duplication si les notes commencent déjà par "Ajustement inventaire"
+                if notes.strip().lower().startswith('ajustement inventaire'):
+                    context_notes = notes.strip()
+                else:
+                    context_notes = f'Ajustement inventaire - {notes.strip()}'
+            else:
+                context_notes = 'Ajustement inventaire'
         elif context == 'manual':
-            context_notes = f'Ajout manuel - {notes}'
+            if notes and notes.strip():
+                # Éviter la duplication si les notes commencent déjà par "Ajout manuel"
+                if notes.strip().lower().startswith('ajout manuel'):
+                    context_notes = notes.strip()
+                else:
+                    context_notes = f'Ajout manuel - {notes.strip()}'
+            else:
+                context_notes = 'Ajout manuel'
         
         if not quantity or quantity <= 0:
             return Response(
@@ -727,7 +772,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             product.save()
             
             # Créer la transaction
-            Transaction.objects.create(
+            logger.info(f"🔍 [BACKEND] Transaction.objects.create - notes à sauvegarder: '{context_notes}'")
+            transaction_obj = Transaction.objects.create(
                 product=product,
                 type='in',
                 quantity=quantity,
@@ -736,6 +782,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                 user=request.user,
                 site_configuration=getattr(request.user, 'site_configuration', None)
             )
+            logger.info(f"🔍 [BACKEND] Transaction créée - ID: {transaction_obj.id}, notes sauvegardées (depuis DB): '{transaction_obj.notes}'")
+            # Vérifier si les notes ont changé après sauvegarde
+            transaction_obj.refresh_from_db()
+            logger.info(f"🔍 [BACKEND] Transaction après refresh - notes: '{transaction_obj.notes}'")
         
         return Response({
             'success': True,
@@ -869,11 +919,32 @@ class ProductViewSet(viewsets.ModelViewSet):
         context_notes = notes
         
         if context == 'inventory':
-            context_notes = f'Ajustement inventaire - {notes}'
+            if notes and notes.strip():
+                # Éviter la duplication si les notes commencent déjà par "Ajustement inventaire"
+                if notes.strip().lower().startswith('ajustement inventaire'):
+                    context_notes = notes.strip()
+                else:
+                    context_notes = f'Ajustement inventaire - {notes.strip()}'
+            else:
+                context_notes = 'Ajustement inventaire'
         elif context == 'correction':
-            context_notes = f'Correction stock - {notes}'
+            if notes and notes.strip():
+                # Éviter la duplication si les notes commencent déjà par "Correction stock"
+                if notes.strip().lower().startswith('correction stock'):
+                    context_notes = notes.strip()
+                else:
+                    context_notes = f'Correction stock - {notes.strip()}'
+            else:
+                context_notes = 'Correction stock'
         elif context == 'manual':
-            context_notes = f'Ajustement manuel - {notes}'
+            if notes and notes.strip():
+                # Éviter la duplication si les notes commencent déjà par "Ajustement manuel"
+                if notes.strip().lower().startswith('ajustement manuel'):
+                    context_notes = notes.strip()
+                else:
+                    context_notes = f'Ajustement manuel - {notes.strip()}'
+            else:
+                context_notes = 'Ajustement manuel'
         
         if new_quantity is None or new_quantity < 0:
             return Response(
@@ -1559,6 +1630,12 @@ class SaleViewSet(viewsets.ModelViewSet):
             site_configuration=user_site,
             seller=self.request.user
         )
+        
+        # Debug: Vérifier que le client est bien enregistré
+        import logging
+        logger = logging.getLogger(__name__)
+        customer_id_from_data = self.request.data.get('customer')
+        logger.info(f'🔍 [SALE] Création vente #{sale.id} - customer_id envoyé: {customer_id_from_data}, customer enregistré: {sale.customer_id}, payment_method: {self.request.data.get("payment_method")}')
         
         # Traiter les articles de la vente
         items_data = self.request.data.get('items', [])
@@ -3136,6 +3213,11 @@ class ReceiptPrintAPIView(APIView):
                             {'error': 'Vente non trouvée ou non autorisée'},
                             status=status.HTTP_404_NOT_FOUND
                         )
+                
+                # Debug: Vérifier que la vente a bien un customer_id
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f'🔍 [RECEIPT] Vente récupérée #{sale.id} - customer_id: {sale.customer_id}, customer chargé: {sale.customer is not None}')
             except Sale.DoesNotExist:
                 return Response(
                     {'error': 'Vente non trouvée'},
@@ -3184,14 +3266,43 @@ class ReceiptPrintAPIView(APIView):
             }
             
             # Informations client si défini
+            # Vérifier d'abord si customer_id est présent même si customer n'est pas chargé
+            customer_id = getattr(sale, 'customer_id', None)
+            
+            # Debug: Afficher les informations de la vente
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f'🔍 [RECEIPT] Vente #{sale.id} - customer_id: {customer_id}, customer chargé: {sale.customer is not None}, payment_method: {sale.payment_method}')
+            
             if sale.customer:
                 receipt_data['customer'] = {
-                    'name': sale.customer.name,
-                    'first_name': sale.customer.first_name,
-                    'phone': sale.customer.phone,
-                    'email': sale.customer.email,
+                    'id': sale.customer.id,
+                    'name': sale.customer.name or '',
+                    'first_name': sale.customer.first_name or '',
+                    'phone': sale.customer.phone or '',
+                    'email': sale.customer.email or '',
                     'credit_balance': float(sale.customer.credit_balance) if hasattr(sale.customer, 'credit_balance') else 0,
                 }
+                logger.info(f'✅ [RECEIPT] Client trouvé: ID={sale.customer.id}, name="{sale.customer.name}", first_name="{sale.customer.first_name}"')
+            elif customer_id:
+                # Si customer_id existe mais customer n'est pas chargé, le récupérer
+                from apps.inventory.models import Customer
+                try:
+                    customer = Customer.objects.get(id=customer_id)
+                    receipt_data['customer'] = {
+                        'id': customer.id,
+                        'name': customer.name or '',
+                        'first_name': customer.first_name or '',
+                        'phone': customer.phone or '',
+                        'email': customer.email or '',
+                        'credit_balance': float(customer.credit_balance) if hasattr(customer, 'credit_balance') else 0,
+                    }
+                    logger.info(f'✅ [RECEIPT] Client récupéré manuellement: ID={customer.id}, name="{customer.name}", first_name="{customer.first_name}"')
+                except Customer.DoesNotExist:
+                    logger.warning(f'⚠️ [RECEIPT] Client ID {customer_id} non trouvé pour la vente #{sale.id}')
+            else:
+                # Log pour déboguer si le client n'est pas présent
+                logger.warning(f'⚠️ [RECEIPT] Vente #{sale.id} n\'a pas de client associé. Payment method: {sale.payment_method}')
             
             # Articles de la vente
             for item in sale.items.all():

@@ -485,11 +485,19 @@ class SaleItemSerializer(serializers.ModelSerializer):
 class SaleSerializer(serializers.ModelSerializer):
     """Serializer pour les ventes"""
     items = SaleItemSerializer(many=True, read_only=True)
+    customer_name = serializers.SerializerMethodField()
+    date = serializers.DateTimeField(source='sale_date', read_only=True)
+    
+    def get_customer_name(self, obj):
+        """Retourne le nom complet du client ou 'Anonyme' si pas de client"""
+        if obj.customer:
+            return f"{obj.customer.name or ''} {obj.customer.first_name or ''}".strip() or 'Client sans nom'
+        return 'Anonyme'
     
     class Meta:
         model = Sale
         fields = [
-            'id', 'customer', 'sale_date', 'total_amount', 'payment_method', 'status',
+            'id', 'customer', 'customer_name', 'sale_date', 'date', 'total_amount', 'payment_method', 'status',
             'notes', 'created_at', 'updated_at', 'items'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

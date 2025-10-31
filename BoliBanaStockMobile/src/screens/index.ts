@@ -22,6 +22,7 @@ export { default as ProductDetailScreen } from './ProductDetailScreen';
 export { default as ProductsScreen } from './ProductsScreen';
 export { default as ProfileScreen } from './ProfileScreen';
 export { default as ReportsScreen } from './ReportsScreen';
+export { default as SalesReportScreen } from './SalesReportScreen';
 export { default as SaleDetailScreen } from './SaleDetailScreen';
 export { default as SalesScreen } from './SalesScreen';
 export { default as ScanProductScreen } from './ScanProductScreen';

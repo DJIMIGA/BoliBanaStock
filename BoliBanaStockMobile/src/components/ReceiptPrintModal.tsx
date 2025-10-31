@@ -58,6 +58,16 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
       
       const receiptData: ReceiptData = receiptResponse.receipt;
       
+      // DEBUG: Afficher les données reçues dans la console
+      console.log('🧾 [RECEIPT] Données complètes reçues:', JSON.stringify(receiptData, null, 2));
+      console.log('🧾 [RECEIPT] Customer dans receiptData:', receiptData.customer);
+      console.log('🧾 [RECEIPT] Customer présent:', receiptData.customer ? 'OUI' : 'NON');
+      if (receiptData.customer) {
+        console.log('🧾 [RECEIPT] Customer name:', receiptData.customer.name);
+        console.log('🧾 [RECEIPT] Customer first_name:', receiptData.customer.first_name);
+        console.log('🧾 [RECEIPT] Customer phone:', receiptData.customer.phone);
+      }
+      
       // Si aucune imprimante n'est connectée, proposer de découvrir
       if (!receiptPrinterService.isConnected()) {
         await discoverAndConnectPrinter();
@@ -113,6 +123,16 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
       }
       
       const receiptData: ReceiptData = receiptResponse.receipt;
+      
+      // DEBUG: Afficher les données reçues dans la console
+      console.log('🧾 [RECEIPT PDF] Données complètes reçues:', JSON.stringify(receiptData, null, 2));
+      console.log('🧾 [RECEIPT PDF] Customer dans receiptData:', receiptData.customer);
+      console.log('🧾 [RECEIPT PDF] Customer présent:', receiptData.customer ? 'OUI' : 'NON');
+      if (receiptData.customer) {
+        console.log('🧾 [RECEIPT PDF] Customer name:', receiptData.customer.name);
+        console.log('🧾 [RECEIPT PDF] Customer first_name:', receiptData.customer.first_name);
+        console.log('🧾 [RECEIPT PDF] Customer phone:', receiptData.customer.phone);
+      }
       
       // Générer le PDF
       const pdfUri = await receiptPrinterService.generateReceiptPDF(receiptData);

@@ -760,18 +760,28 @@ export const productService = {
   },
 
   addStockForReception: async (productId: number, quantity: number, receptionId?: number, notes?: string) => {
-    return productService.addStock(productId, quantity, {
+    const cleanNotes = notes || '';
+    console.log('🔍 [API] addStockForReception - Notes reçues:', {
+      productId,
+      notes_received: notes,
+      notes_clean: cleanNotes,
+      notes_is_empty: !cleanNotes || cleanNotes.trim() === '',
+      notes_starts_with_prefix: cleanNotes.toLowerCase().startsWith('réception marchandise')
+    });
+    const result = await productService.addStock(productId, quantity, {
       context: 'reception',
       contextId: receptionId,
-      notes: notes || 'Réception marchandise'
+      notes: cleanNotes
     });
+    console.log('🔍 [API] addStockForReception - Réponse:', result);
+    return result;
   },
 
   adjustStockForInventory: async (productId: number, quantity: number, inventoryId?: number, notes?: string) => {
     return productService.adjustStock(productId, quantity, {
       context: 'inventory',
       contextId: inventoryId,
-      notes: notes || 'Ajustement inventaire'
+      notes: notes || ''
     });
   },
 

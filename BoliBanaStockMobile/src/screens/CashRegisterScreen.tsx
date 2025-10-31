@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,9 @@ import {
   ScrollView,
   Alert,
   Dimensions,
+  TextInput,
+  ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,10 +31,24 @@ import { sanitizeBarcode, validateBarcode, areSimilarBarcodes, validateBarcodeQu
 
 const { width } = Dimensions.get('window');
 
+interface Product {
+  id: number;
+  name: string;
+  cug: string;
+  quantity: number;
+  selling_price: number;
+  category_name: string;
+  brand_name: string;
+}
+
 export default function CashRegisterScreen({ navigation }: any) {
   const [showScanner, setShowScanner] = useState(false);
   const [loading, setLoading] = useState(false);
   const scanner = useContinuousScanner('sales');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   // Charger brouillon panier au montage
   useEffect(() => {
     (async () => {
@@ -87,6 +104,65 @@ export default function CashRegisterScreen({ navigation }: any) {
   const similarCodesCacheRef = useRef<Record<string, { productId: string; timestamp: number }>>({});
 
   const normalize = (code: string) => String(code || '').trim();
+
+  const loadProducts = useCallback(async (query?: string, page: number = 1) => {
+    try {
+      setSearching(true);
+      const params: any = { page, page_size: 20 };
+      if (query && query.trim().length > 0) {
+        params.search = query.trim();
+      }
+      const data = await productService.getProducts(params);
+      const newProducts = data.results || data || [];
+      setProducts(newProducts);
+    } catch (e: any) {
+      console.error('❌ Erreur loadProducts:', e);
+      setProducts([]);
+    } finally {
+      setSearching(false);
+    }
+  }, []);
+
+  // Recherche serveur avec débounce (≥ 2 caractères)
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    const q = (searchQuery || '').trim();
+    if (q.length < 2) {
+      setProducts([]);
+      return;
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      loadProducts(q, 1);
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchQuery, loadProducts]);
+
+  const handleProductSelect = (product: Product) => {
+    const barcode = product.cug || String(product.id);
+    const unitPrice = typeof product.selling_price === 'number' ? product.selling_price : parseFloat(String(product.selling_price || 0));
+    const scannedProduct = {
+      id: product.id.toString(),
+      productId: product.id.toString(),
+      barcode: barcode,
+      productName: product.name,
+      quantity: 1,
+      unitPrice: unitPrice,
+      totalPrice: unitPrice,
+      scannedAt: new Date(),
+      customer: 'Client en cours',
+      notes: `Sélectionné depuis la recherche - CUG: ${product.cug}`,
+      stock: product.quantity,
+      category: product.category_name || 'Non catégorisé',
+      brand: product.brand_name || 'Non définie'
+    };
+    scanner.addToScanList(barcode, scannedProduct);
+    setSearchQuery('');
+    setProducts([]);
+  };
 
   const handleScan = async (rawBarcode: string) => {
     const { sanitized, isNumeric, length } = sanitizeBarcode(rawBarcode);
@@ -301,7 +377,8 @@ export default function CashRegisterScreen({ navigation }: any) {
   const handleCustomerSelect = (customer: any) => {
     setSelectedCustomer(customer);
     setCustomerSelectorModalVisible(false);
-    processSale('credit');
+    // Passer directement le customer à processSale car setSelectedCustomer est asynchrone
+    processSale('credit', customer);
   };
 
   const handleCustomerCreate = () => {
@@ -311,7 +388,8 @@ export default function CashRegisterScreen({ navigation }: any) {
   const handleCustomerCreated = (customer: any) => {
     setSelectedCustomer(customer);
     setCustomerFormModalVisible(false);
-    processSale('credit');
+    // Passer directement le customer à processSale car setSelectedCustomer est asynchrone
+    processSale('credit', customer);
   };
 
   const handlePrintReceipt = (saleId: number) => {
@@ -319,12 +397,15 @@ export default function CashRegisterScreen({ navigation }: any) {
     setReceiptPrintModalVisible(true);
   };
 
-  const processSale = async (paymentMethod: 'cash' | 'credit' | 'sarali') => {
+  const processSale = async (paymentMethod: 'cash' | 'credit' | 'sarali', customerOverride?: any) => {
     setLoading(true);
     try {
+      // Utiliser customerOverride si fourni (pour éviter les problèmes de state asynchrone)
+      const customer = customerOverride || selectedCustomer;
+      
       // Préparer les données de la vente
       const saleData: any = {
-        customer: selectedCustomer?.id || null,
+        customer: customer?.id || null,
         notes: 'Vente via caisse mobile',
         items: scanner.scanList.map(item => ({
           product_id: parseInt(item.productId),
@@ -374,11 +455,14 @@ export default function CashRegisterScreen({ navigation }: any) {
       // Message de succès adapté au mode de paiement
       let successMessage = `Vente #${sale.id} enregistrée avec succès !\n\n${totalItems} articles\nTotal: ${totalValue.toLocaleString()} FCFA`;
       
+      // Utiliser customerOverride si fourni (pour éviter les problèmes de state asynchrone)
+      const customerForDisplay = customerOverride || selectedCustomer;
+      
       if (paymentMethod === 'cash' && changeAmount > 0) {
         successMessage += `\nMonnaie rendue: ${changeAmount.toLocaleString()} FCFA`;
-      } else if (paymentMethod === 'credit') {
-        successMessage += `\nClient: ${selectedCustomer.name} ${selectedCustomer.first_name || ''}`;
-        successMessage += `\nNouveau solde: ${selectedCustomer.credit_balance_formatted}`;
+      } else if (paymentMethod === 'credit' && customerForDisplay) {
+        successMessage += `\nClient: ${customerForDisplay.name} ${customerForDisplay.first_name || ''}`;
+        successMessage += `\nNouveau solde: ${customerForDisplay.credit_balance_formatted}`;
       } else if (paymentMethod === 'sarali') {
         successMessage += `\nRéférence Sarali: ${saraliReference}`;
       }
@@ -445,6 +529,25 @@ export default function CashRegisterScreen({ navigation }: any) {
     );
   };
 
+  const renderProduct = ({ item }: { item: Product }) => {
+    const price = typeof item.selling_price === 'number' ? item.selling_price : parseFloat(String(item.selling_price || 0));
+    return (
+      <TouchableOpacity
+        style={styles.searchResultRow}
+        onPress={() => handleProductSelect(item)}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={styles.searchResultName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.searchResultMeta}>{item.cug} • {item.category_name} • {item.brand_name}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.searchResultQty}>{item.quantity}</Text>
+          <Text style={styles.searchResultPrice}>{price.toLocaleString()} FCFA</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header avec actions intégrées */}
@@ -454,65 +557,104 @@ export default function CashRegisterScreen({ navigation }: any) {
         </TouchableOpacity>
         <Text style={styles.title}>Caisse</Text>
         <View style={styles.headerActions}>
-          {scanner.scanList.length > 0 && (
+          {/* Boutons Ventes et Rapports - visibles seulement quand la caisse est vide */}
+          {scanner.scanList.length === 0 && (
             <>
               <TouchableOpacity 
-                style={styles.headerValidateButton}
-                onPress={handleValidateSale}
+                style={styles.headerActionButton}
+                onPress={() => navigation.navigate('Sales')}
               >
-                <Ionicons name="checkmark-circle" size={20} color="white" />
-                <Text style={styles.headerValidateText}>Valider</Text>
+                <Ionicons name="receipt-outline" size={20} color={theme.colors.primary[500]} />
               </TouchableOpacity>
-              
               <TouchableOpacity 
-                style={styles.headerClearButton}
-                onPress={() => {
-                  Alert.alert(
-                    'Vider le panier',
-                    'Voulez-vous vraiment vider le panier ?',
-                    [
-                      { text: 'Annuler', style: 'cancel' },
-                      { 
-                        text: 'Vider', 
-                        style: 'destructive', 
-                        onPress: () => scanner.clearList() 
-                      }
-                    ]
-                  );
-                }}
+                style={styles.headerActionButton}
+                onPress={() => navigation.navigate('SalesReport')}
               >
-                <Ionicons name="trash-outline" size={20} color={theme.colors.error[500]} />
-                <Text style={styles.headerClearText}>Vider</Text>
+                <Ionicons name="bar-chart-outline" size={20} color={theme.colors.primary[500]} />
               </TouchableOpacity>
             </>
           )}
           
-          <TouchableOpacity 
-            style={styles.scanButton}
-            onPress={() => setShowScanner(true)}
-          >
-            <Ionicons name="scan-outline" size={24} color={theme.colors.primary[500]} />
-          </TouchableOpacity>
+          {/* Boutons conditionnels - visible seulement avec des articles */}
+          {scanner.scanList.length > 0 && (
+            <>
+              <TouchableOpacity 
+                style={styles.headerClearButton}
+                onPress={() => {
+                  scanner.clearList();
+                  clearSalesCartDraft();
+                }}
+              >
+                <Ionicons name="trash-outline" size={18} color={theme.colors.error[500]} />
+                <Text style={styles.headerClearText}>Vider</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.headerValidateButton}
+                onPress={handleValidateSale}
+              >
+                <Ionicons name="checkmark-circle" size={22} color="white" />
+                <Text style={styles.headerValidateText}>Valider</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
 
-      <View style={styles.content}>
-        {/* Total discret en haut à droite */}
-        <View style={styles.totalSection}>
-          <View style={styles.totalContainer}>
-            <Text style={styles.totalAmount}>
-              {scanner.getTotalValue().toLocaleString()} FCFA
-            </Text>
-            <Text style={styles.itemsCount}>
-              {scanner.getTotalItems()} article{scanner.getTotalItems() > 1 ? 's' : ''}
-            </Text>
-          </View>
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color={theme.colors.neutral[500]} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Rechercher un produit..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searching && (
+          <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+        )}
+        <TouchableOpacity onPress={() => setShowScanner(true)}>
+          <Ionicons name="qr-code-outline" size={22} color={theme.colors.neutral[600]} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Résultats de recherche */}
+      {products.length > 0 && searchQuery.trim().length >= 2 && (
+        <View style={styles.searchResultsContainer}>
+          <FlatList
+            data={products}
+            renderItem={renderProduct}
+            keyExtractor={(item) => item.id.toString()}
+            keyboardShouldPersistTaps="handled"
+            style={styles.searchResultsList}
+          />
         </View>
+      )}
+
+      <View style={styles.content}>
+        {/* Écran d'accueil avant tout scan */}
+        {scanner.scanList.length === 0 && (searchQuery || '').trim().length === 0 && products.length === 0 && (
+          <View style={styles.welcomeContainer}>
+            <Ionicons name="cash-outline" size={48} color={theme.colors.primary[500]} />
+            <Text style={styles.welcomeTitle}>Prêt à scanner</Text>
+            <Text style={styles.welcomeText}>Scannez un produit ou utilisez la recherche par nom/CUG pour commencer une vente.</Text>
+            <TouchableOpacity style={styles.welcomeButton} onPress={() => setShowScanner(true)}>
+              <Ionicons name="scan-outline" size={16} color={theme.colors.text.inverse} />
+              <Text style={styles.welcomeButtonText}>Commencer le scan</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Liste des articles scannés */}
         <View style={styles.articlesSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Articles</Text>
+            <Text style={styles.sectionTitle}>
+              Articles {scanner.scanList.length > 0 && `(${scanner.getTotalItems()})`}
+            </Text>
+            {scanner.scanList.length > 0 && (
+              <Text style={styles.sectionTotal}>
+                {scanner.getTotalValue().toLocaleString()} FCFA
+              </Text>
+            )}
           </View>
           
           <ScrollView style={styles.articlesList} showsVerticalScrollIndicator={false}>
@@ -526,11 +668,9 @@ export default function CashRegisterScreen({ navigation }: any) {
               scanner.scanList.map((item) => (
                 <View key={item.id} style={styles.articleCard}>
                   <View style={styles.articleInfo}>
-                    <Text style={styles.articleName} numberOfLines={2}>
+                    <Text style={styles.articleName} numberOfLines={1}>
                       {item.productName}
                     </Text>
-                    <Text style={styles.productIdDebug}>ID: {item.productId}</Text>
-                    <Text style={styles.articleBarcode}>{item.barcode}</Text>
                   </View>
                   
                   <View style={styles.articleActions}>
@@ -664,17 +804,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  headerActionButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: theme.colors.primary[50],
+  },
   headerValidateButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.success[500],
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 4,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
   },
   headerValidateText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: 'white',
   },
@@ -682,8 +827,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.error[100],
-    borderRadius: 16,
-    paddingHorizontal: 12,
+    borderRadius: 14,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     gap: 4,
   },
@@ -701,31 +846,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  totalSection: {
-    alignItems: 'flex-end',
-    marginBottom: 16,
-  },
-
-  totalContainer: {
-    backgroundColor: theme.colors.primary[500],
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 120,
-    ...theme.shadows.sm,
-  },
-  totalAmount: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 1,
-  },
-  itemsCount: {
-    fontSize: 9,
-    color: 'white',
-    opacity: 0.8,
-  },
   articlesSection: {
     flex: 1,
     marginBottom: 20,
@@ -734,12 +854,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: theme.colors.text.primary,
+  },
+  sectionTotal: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: theme.colors.primary[600],
   },
   validateButton: {
     flexDirection: 'row',
@@ -758,6 +883,46 @@ const styles = StyleSheet.create({
   },
   articlesList: {
     flex: 1,
+  },
+  welcomeContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    marginBottom: theme.spacing.sm,
+    marginHorizontal: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+  },
+  welcomeTitle: {
+    marginTop: theme.spacing.xs,
+    fontSize: theme.fontSize.md,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  welcomeText: {
+    marginTop: 4,
+    marginHorizontal: theme.spacing.md,
+    textAlign: 'center',
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text.secondary,
+  },
+  welcomeButton: {
+    marginTop: theme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.colors.primary[500],
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 8,
+    borderRadius: theme.borderRadius.md,
+  },
+  welcomeButtonText: {
+    color: theme.colors.text.inverse,
+    fontWeight: '700',
+    fontSize: theme.fontSize.sm,
   },
   emptyCart: {
     alignItems: 'center',
@@ -779,28 +944,17 @@ const styles = StyleSheet.create({
   articleCard: {
     backgroundColor: theme.colors.background.primary,
     borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
+    padding: 8,
+    marginBottom: 6,
     ...theme.shadows.sm,
   },
   articleInfo: {
-    marginBottom: 10,
+    marginBottom: 6,
   },
   articleName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: theme.colors.text.primary,
-    marginBottom: 3,
-  },
-  articleBarcode: {
-    fontSize: 11,
-    color: theme.colors.text.secondary,
-    fontFamily: 'monospace',
-  },
-  productIdDebug: {
-    fontSize: 10,
-    color: theme.colors.text.tertiary,
-    marginBottom: 2,
   },
   articleActions: {
     flexDirection: 'row',
@@ -846,6 +1000,63 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 12,
     backgroundColor: theme.colors.error[100],
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    gap: theme.spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: theme.spacing.sm,
+    fontSize: theme.fontSize.md,
+    color: theme.colors.text.primary,
+  },
+  searchResultsContainer: {
+    maxHeight: 200,
+    backgroundColor: theme.colors.background.primary,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.neutral[200],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  searchResultsList: {
+    maxHeight: 200,
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  searchResultName: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 2,
+  },
+  searchResultMeta: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.text.secondary,
+  },
+  searchResultQty: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.text.secondary,
+    marginBottom: 2,
+  },
+  searchResultPrice: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
   },
 
 });

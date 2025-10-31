@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Dimensions,
   Animated,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
@@ -46,6 +47,10 @@ export default function CustomerSelectorModal({
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextPage, setNextPage] = useState<string | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
   const slideAnim = React.useRef(new Animated.Value(height)).current;
 
   useEffect(() => {
@@ -55,49 +60,125 @@ export default function CustomerSelectorModal({
         duration: 300,
         useNativeDriver: true,
       }).start();
-      loadCustomers();
+      // Réinitialiser la recherche et charger les clients
+      setSearchQuery('');
+      setCustomers([]);
+      setFilteredCustomers([]);
+      setPageNumber(1);
+      setHasMore(false);
+      setNextPage(null);
+      loadCustomers(1, false, '');
     } else {
       Animated.timing(slideAnim, {
         toValue: height,
         duration: 300,
         useNativeDriver: true,
       }).start();
+      // Réinitialiser la recherche quand le modal se ferme
+      setSearchQuery('');
+      setCustomers([]);
+      setFilteredCustomers([]);
+      setPageNumber(1);
+      setHasMore(false);
+      setNextPage(null);
     }
   }, [visible]);
 
+  // Debounce pour la recherche côté serveur
   useEffect(() => {
-    // Filtrer les clients selon la recherche
-    if (searchQuery.trim()) {
-      const filtered = customers.filter(customer => {
-        const fullName = `${customer.name} ${customer.first_name || ''}`.toLowerCase();
-        const phone = customer.phone?.toLowerCase() || '';
-        const query = searchQuery.toLowerCase();
-        
-        return fullName.includes(query) || phone.includes(query);
-      });
-      setFilteredCustomers(filtered);
-    } else {
-      setFilteredCustomers(customers);
-    }
-  }, [searchQuery, customers]);
+    const searchTimeout = setTimeout(() => {
+      // Réinitialiser la pagination lors d'une nouvelle recherche
+      setCustomers([]);
+      setFilteredCustomers([]);
+      setPageNumber(1);
+      setHasMore(false);
+      setNextPage(null);
+      
+      // Charger avec recherche
+      loadCustomers(1, false, searchQuery);
+    }, 500); // Attendre 500ms après la fin de la saisie
 
-  const loadCustomers = async () => {
+    return () => clearTimeout(searchTimeout);
+  }, [searchQuery, loadCustomers]);
+
+  const loadCustomers = useCallback(async (page: number = 1, append: boolean = false, search: string = '') => {
     try {
-      setLoading(true);
-      const data = await customerService.getCustomers();
-      setCustomers(data);
-      setFilteredCustomers(data);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      const params: any = {
+        page: page,
+        page_size: 20, // Nombre de clients par page
+      };
+
+      // Si recherche, utiliser la recherche côté serveur
+      if (search.trim()) {
+        params.search = search.trim();
+      }
+
+      const data = await customerService.getCustomers(params);
+      
+      // S'assurer que data est un tableau
+      // L'API Django REST peut retourner un objet avec {count, next, previous, results: []}
+      let customersArray: Customer[] = [];
+      let hasMoreData = false;
+      let nextPageUrl: string | null = null;
+      
+      if (Array.isArray(data)) {
+        customersArray = data;
+        hasMoreData = false;
+      } else if (data && typeof data === 'object') {
+        // Cas de pagination Django REST Framework
+        if (Array.isArray(data.results)) {
+          customersArray = data.results;
+          hasMoreData = !!data.next;
+          nextPageUrl = data.next || null;
+        } else if (Array.isArray(data.data)) {
+          customersArray = data.data;
+          hasMoreData = !!data.next;
+          nextPageUrl = data.next || null;
+        } else {
+          console.warn('⚠️ [CustomerSelectorModal] Structure de données inattendue');
+        }
+      }
+      
+      if (append) {
+        // Ajouter les nouveaux clients à la liste existante
+        setCustomers(prev => [...prev, ...customersArray]);
+        setFilteredCustomers(prev => [...prev, ...customersArray]);
+      } else {
+        // Remplacer la liste
+        setCustomers(customersArray);
+        setFilteredCustomers(customersArray);
+      }
+      
+      setHasMore(hasMoreData);
+      setNextPage(nextPageUrl);
+      if (!hasMoreData) {
+        setPageNumber(1);
+      } else {
+        setPageNumber(page);
+      }
     } catch (error) {
-      console.error('Erreur lors du chargement des clients:', error);
-      Alert.alert(
-        'Erreur',
-        'Impossible de charger la liste des clients.',
-        [{ text: 'OK' }]
-      );
+      console.error('❌ [CustomerSelectorModal] Erreur lors du chargement des clients:', error);
+      if (!append) {
+        // En cas d'erreur, initialiser avec un tableau vide seulement si c'est le premier chargement
+        setCustomers([]);
+        setFilteredCustomers([]);
+        Alert.alert(
+          'Erreur',
+          'Impossible de charger la liste des clients.',
+          [{ text: 'OK' }]
+        );
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  };
+  }, []);
 
   const handleSelectCustomer = (customer: Customer) => {
     if (!customer.is_active) {
@@ -118,47 +199,62 @@ export default function CustomerSelectorModal({
     onClose();
   };
 
-  const renderCustomerItem = ({ item }: { item: Customer }) => (
-    <TouchableOpacity
-      style={[
-        styles.customerItem,
-        !item.is_active && styles.customerItemInactive
-      ]}
-      onPress={() => handleSelectCustomer(item)}
-      disabled={!item.is_active}
-    >
-      <View style={styles.customerInfo}>
-        <Text style={[
-          styles.customerName,
-          !item.is_active && styles.customerNameInactive
-        ]}>
-          {item.name} {item.first_name}
-        </Text>
-        {item.phone && (
-          <Text style={styles.customerPhone}>{item.phone}</Text>
-        )}
-      </View>
-      
-      <View style={styles.customerCredit}>
-        {item.has_credit_debt ? (
-          <View style={styles.debtBadge}>
-            <Ionicons name="warning" size={16} color="white" />
-            <Text style={styles.debtText}>
-              {item.credit_debt_amount.toLocaleString()} FCFA
+  const renderCustomerItem = ({ item, index }: { item: Customer; index: number }) => {
+    if (!item) {
+      return null;
+    }
+    
+    try {
+      return (
+        <TouchableOpacity
+          style={[
+            styles.customerItem,
+            !item.is_active && styles.customerItemInactive
+          ]}
+          onPress={() => handleSelectCustomer(item)}
+          disabled={!item.is_active}
+        >
+          <View style={styles.customerInfo}>
+            <Text style={[
+              styles.customerName,
+              !item.is_active && styles.customerNameInactive
+            ]}>
+              {item.name || ''} {item.first_name || ''}
             </Text>
+            {item.phone && (
+              <Text style={styles.customerPhone}>{item.phone}</Text>
+            )}
           </View>
-        ) : (
-          <Text style={styles.noDebtText}>Aucune dette</Text>
-        )}
-      </View>
-      
-      <Ionicons 
-        name="chevron-forward" 
-        size={20} 
-        color={item.is_active ? theme.colors.text.secondary : theme.colors.neutral[400]} 
-      />
-    </TouchableOpacity>
-  );
+          
+          <View style={styles.customerCredit}>
+            {item.has_credit_debt ? (
+              <View style={styles.debtBadge}>
+                <Ionicons name="warning" size={16} color="white" />
+                <Text style={styles.debtText}>
+                  {item.credit_debt_amount?.toLocaleString() || '0'} FCFA
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.noDebtText}>Aucune dette</Text>
+            )}
+          </View>
+          
+          <Ionicons 
+            name="chevron-forward" 
+            size={20} 
+            color={item.is_active ? theme.colors.text.secondary : theme.colors.neutral[400]} 
+          />
+        </TouchableOpacity>
+      );
+    } catch (error) {
+      console.error('❌ [CustomerSelectorModal] Erreur dans renderCustomerItem:', error);
+      return (
+        <View style={styles.customerItem}>
+          <Text>Erreur d'affichage</Text>
+        </View>
+      );
+    }
+  };
 
   return (
     <Modal
@@ -211,12 +307,42 @@ export default function CustomerSelectorModal({
               </View>
             ) : filteredCustomers.length > 0 ? (
               <FlatList
-                data={filteredCustomers}
-                renderItem={renderCustomerItem}
-                keyExtractor={(item) => item.id.toString()}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.listContent}
-              />
+                  data={filteredCustomers}
+                  renderItem={renderCustomerItem}
+                  keyExtractor={(item, index) => {
+                    return item?.id ? `customer-${item.id}` : `customer-index-${index}`;
+                  }}
+                  extraData={filteredCustomers.length}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.listContent}
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <Text style={styles.emptyText}>Aucun client à afficher</Text>
+                    </View>
+                  }
+                  ListFooterComponent={
+                    loadingMore ? (
+                      <View style={styles.loadingMoreContainer}>
+                        <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                        <Text style={styles.loadingMoreText}>Chargement...</Text>
+                      </View>
+                    ) : hasMore ? (
+                      <TouchableOpacity
+                        style={styles.loadMoreButton}
+                        onPress={() => loadCustomers(pageNumber + 1, true, searchQuery)}
+                      >
+                        <Text style={styles.loadMoreText}>Charger plus</Text>
+                      </TouchableOpacity>
+                    ) : null
+                  }
+                  onEndReached={() => {
+                    if (hasMore && !loadingMore && !loading) {
+                      loadCustomers(pageNumber + 1, true, searchQuery);
+                    }
+                  }}
+                  onEndReachedThreshold={0.5}
+                  removeClippedSubviews={false}
+                />
             ) : (
               <View style={styles.emptyContainer}>
                 <Ionicons name="people-outline" size={48} color={theme.colors.neutral[400]} />
@@ -260,7 +386,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingBottom: 34, // Safe area bottom
-    maxHeight: height * 0.9,
+    maxHeight: height * 0.95, // Augmenté à 95% de la hauteur
+    minHeight: height * 0.7, // Hauteur minimale à 70%
   },
   header: {
     flexDirection: 'row',
@@ -280,7 +407,7 @@ const styles = StyleSheet.create({
   },
   searchSection: {
     padding: 20,
-    paddingBottom: 0,
+    paddingBottom: 12,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -301,7 +428,8 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
     padding: 20,
-    paddingTop: 0,
+    paddingTop: 12,
+    minHeight: 300, // Augmenté la hauteur minimale pour plus d'espace
   },
   listContent: {
     paddingBottom: 20,
@@ -379,6 +507,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.text.secondary,
     textAlign: 'center',
+  },
+  loadingMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+  },
+  loadMoreButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: theme.colors.primary[100],
+    borderRadius: 8,
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
   },
   footer: {
     padding: 20,

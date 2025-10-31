@@ -56,7 +56,6 @@ export default function ReceptionScreen({ navigation }: any) {
   const [unitPrice, setUnitPrice] = useState('');
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [supplierName, setSupplierName] = useState('');
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [focusedLineId, setFocusedLineId] = useState<string | null>(null);
@@ -67,6 +66,7 @@ export default function ReceptionScreen({ navigation }: any) {
   const [unknownCode, setUnknownCode] = useState<string>('');
   const scrollRef = useRef<ScrollView>(null);
   const rowPositionsRef = useRef<Record<string, number>>({});
+  const qtyInputRefs = useRef<Record<string, any>>({});
 
   const setDraftQuantity = (lineId: string, text: string) => {
     setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9]/g, '') }));
@@ -117,7 +117,7 @@ export default function ReceptionScreen({ navigation }: any) {
       setError(null);
       const isInitial = !query && !append && page === 1;
       if (isInitial) {
-        setLoading(true);
+      setLoading(true);
       } else if (append) {
         setLoadingMore(true);
       } else {
@@ -150,7 +150,19 @@ export default function ReceptionScreen({ navigation }: any) {
     // Charger un brouillon s'il existe
     (async () => {
       const draft = await loadReceptionDraft();
+      console.log('🔍 [RECEPTION] Brouillon chargé depuis AsyncStorage:', draft);
       if (Array.isArray(draft) && draft.length > 0) {
+        draft.forEach((it: any, index: number) => {
+          console.log(`🔍 [RECEPTION] Brouillon item ${index}:`, {
+            line_id: it.line_id,
+            product_id: it.product?.id,
+            product_name: it.product?.name,
+            notes: it.notes,
+            notes_type: typeof it.notes,
+            notes_length: it.notes?.length || 0,
+            notes_starts_with_prefix: it.notes?.toLowerCase().startsWith('réception marchandise') || false
+          });
+        });
         setReceptionItems(draft.map((it: any) => ({
           ...it,
           line_id: it.line_id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -282,10 +294,6 @@ export default function ReceptionScreen({ navigation }: any) {
       return;
     }
 
-    if (!supplierName.trim()) {
-      Alert.alert('Erreur', 'Veuillez saisir le nom du fournisseur');
-      return;
-    }
 
     try {
       let successCount = 0;
@@ -294,11 +302,21 @@ export default function ReceptionScreen({ navigation }: any) {
 
       for (const item of receptionItems) {
         try {
+          const notesToSend = item.notes || '';
+          console.log('🔍 [RECEPTION] Notes avant envoi:', {
+            line_id: item.line_id,
+            product_id: item.product.id,
+            product_name: item.product.name,
+            notes_original: item.notes,
+            notes_to_send: notesToSend,
+            notes_length: notesToSend.length,
+            notes_starts_with_prefix: notesToSend.toLowerCase().startsWith('réception marchandise')
+          });
           await productService.addStockForReception(
             item.product.id,
             item.received_quantity,
             receptionId,
-            `${supplierName} - ${item.notes || 'Réception marchandise'}`
+            notesToSend
           );
           successCount++;
         } catch (error) {
@@ -319,7 +337,6 @@ export default function ReceptionScreen({ navigation }: any) {
               onPress: () => {
                 setReceptionItems([]);
                 clearReceptionDraft();
-                setSupplierName('');
                 loadProducts();
               }
             }
@@ -462,11 +479,11 @@ export default function ReceptionScreen({ navigation }: any) {
         <View style={{ flex: 1 }}>
           <Text style={styles.searchResultName} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.searchResultMeta}>{item.cug} • {item.category_name} • {item.brand_name}</Text>
-        </View>
+          </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.searchResultQty}>{item.quantity}</Text>
           <Text style={styles.searchResultPrice}>{formatFCFA((item as any).purchase_price)}</Text>
-        </View>
+            </View>
       </TouchableOpacity>
     );
   };
@@ -492,7 +509,43 @@ export default function ReceptionScreen({ navigation }: any) {
           <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Réception</Text>
-        <View style={styles.headerRight} />
+        <View style={styles.headerRight}>
+          {receptionItems.length > 0 && (
+            <>
+              <TouchableOpacity 
+                style={styles.headerClearButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Vider la liste',
+                    'Voulez-vous vraiment vider la liste de réception ?',
+                    [
+                      { text: 'Annuler', style: 'cancel' },
+                      { 
+                        text: 'Vider', 
+                        style: 'destructive', 
+                        onPress: () => {
+                          setReceptionItems([]);
+                          clearReceptionDraft();
+                        }
+                      }
+                    ]
+                  );
+                }}
+              >
+                <Ionicons name="trash-outline" size={18} color={theme.colors.error[500]} />
+                <Text style={styles.headerClearText}>Vider</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.headerValidateButton}
+                onPress={validateReception}
+              >
+                <Ionicons name="checkmark-circle" size={22} color="white" />
+                <Text style={styles.headerValidateText}>Valider</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
       </View>
 
       <View style={styles.searchContainer}>
@@ -551,13 +604,13 @@ export default function ReceptionScreen({ navigation }: any) {
                     <Text style={{ marginLeft: 8, color: theme.colors.text.secondary }}>Recherche...</Text>
                   </View>
                 )}
-                <FlatList
-                  data={filteredProducts}
-                  renderItem={renderProduct}
-                  keyExtractor={(item) => item.id.toString()}
-                  scrollEnabled={false}
+            <FlatList
+              data={filteredProducts}
+              renderItem={renderProduct}
+              keyExtractor={(item) => item.id.toString()}
+              scrollEnabled={false}
                   keyboardShouldPersistTaps="handled"
-                />
+            />
                 {hasMore && (
                   <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreProducts} disabled={loadingMore}>
                     {loadingMore ? (
@@ -594,22 +647,36 @@ export default function ReceptionScreen({ navigation }: any) {
                       </View>
                       <View style={styles.scannedItemRight}>
                         <TextInput
+                          ref={(ref) => {
+                            qtyInputRefs.current[item.line_id] = ref;
+                          }}
                           style={styles.scannedQtyInput}
                           value={qtyDraft[item.line_id] ?? String(item.received_quantity)}
                           onChangeText={(t) => setDraftQuantity(item.line_id, t)}
                           keyboardType="numeric"
                           placeholder="Qté"
                           autoFocus={focusedLineId === item.line_id}
+                          selectTextOnFocus={focusedLineId === item.line_id}
                           onFocus={() => {
                             const y = rowPositionsRef.current[item.line_id] ?? 0;
                             scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+                            // Sélectionner tout le texte au focus
+                            setTimeout(() => {
+                              const ref = qtyInputRefs.current[item.line_id];
+                              if (ref) {
+                                const value = qtyDraft[item.line_id] ?? String(item.received_quantity);
+                                ref.setNativeProps({ 
+                                  selection: { start: 0, end: value.length } 
+                                });
+                              }
+                            }, 150);
                           }}
                           onSubmitEditing={() => { commitReceptionQuantity(item.line_id); setFocusedLineId(null); }}
                           onEndEditing={() => { commitReceptionQuantity(item.line_id); setFocusedLineId(null); }}
                         />
                       </View>
-                      <TouchableOpacity style={styles.scannedRemoveBtn} onPress={() => removeReceptionLine(item.line_id)}>
-                        <Ionicons name="close" size={16} color={theme.colors.error[600]} />
+                      <TouchableOpacity style={styles.removeBtn} onPress={() => removeReceptionLine(item.line_id)}>
+                        <Ionicons name="trash-outline" size={20} color={theme.colors.error[500]} />
                       </TouchableOpacity>
                     </View>
                   )}
@@ -621,31 +688,6 @@ export default function ReceptionScreen({ navigation }: any) {
         )}
       </ScrollView>
 
-      {receptionItems.length > 0 && (
-        <View style={styles.receptionSummary}>
-          <View style={styles.supplierContainer}>
-            <Text style={styles.supplierLabel}>Fournisseur:</Text>
-            <TextInput
-              style={styles.supplierInput}
-              value={supplierName}
-              onChangeText={setSupplierName}
-              placeholder="Nom du fournisseur"
-            />
-          </View>
-          
-          <View style={styles.receptionSummaryHeader}>
-            <Text style={styles.receptionSummaryTitle}>
-              Réception ({receptionItems.length} produits)
-            </Text>
-            <TouchableOpacity
-              style={styles.validateButton}
-              onPress={validateReception}
-            >
-              <Text style={styles.validateButtonText}>Valider</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
       {/* Modal de réception */}
       <Modal
@@ -783,7 +825,38 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headerRight: {
-    width: 40,
+    minWidth: 40,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerValidateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.success[500],
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  headerValidateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
+  headerClearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.error[100],
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  headerClearText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.error[600],
   },
   searchContainer: {
     flexDirection: 'row',
@@ -914,9 +987,11 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     backgroundColor: theme.colors.background.secondary,
   },
-  scannedRemoveBtn: {
+  removeBtn: {
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: theme.colors.error[100],
     marginLeft: theme.spacing.sm,
-    padding: 4,
   },
   productCard: {
     backgroundColor: theme.colors.background.secondary,
@@ -1006,46 +1081,6 @@ const styles = StyleSheet.create({
   loadMoreText: {
     color: theme.colors.text.primary,
     fontWeight: '600',
-  },
-  receptionSummary: {
-    backgroundColor: theme.colors.background.secondary,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.neutral[200],
-    paddingVertical: theme.spacing.md,
-  },
-  supplierContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-  },
-  supplierLabel: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
-    marginRight: theme.spacing.sm,
-  },
-  supplierInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.colors.neutral[200],
-    borderRadius: theme.borderRadius.sm,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.text.primary,
-  },
-  receptionSummaryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-  },
-  receptionSummaryTitle: {
-    fontSize: theme.fontSize.md,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
   },
   validateButton: {
     backgroundColor: actionColors.primary,

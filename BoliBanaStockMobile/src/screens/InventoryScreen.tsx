@@ -272,7 +272,7 @@ export default function InventoryScreen({ navigation }: any) {
             item.product.id,
             item.counted_quantity,
             Date.now(), // ID fictif d'inventaire basé sur le timestamp
-            item.notes || 'Inventaire physique'
+            item.notes || ''
           );
           successCount++;
         } catch (error) {
@@ -374,10 +374,10 @@ export default function InventoryScreen({ navigation }: any) {
           <Text style={styles.inventoryItemCug}>{item.product.cug}</Text>
         </View>
         <TouchableOpacity
-          style={styles.removeButton}
+          style={styles.removeBtn}
           onPress={() => removeFromInventory(item.product.id)}
         >
-          <Ionicons name="close-circle" size={20} color={theme.colors.error[500]} />
+          <Ionicons name="trash-outline" size={20} color={theme.colors.error[500]} />
         </TouchableOpacity>
       </View>
       
@@ -428,7 +428,43 @@ export default function InventoryScreen({ navigation }: any) {
           <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Inventaire</Text>
-        <View style={styles.headerRight} />
+        <View style={styles.headerRight}>
+          {inventoryItems.length > 0 && (
+            <>
+              <TouchableOpacity 
+                style={styles.headerClearButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Vider la liste',
+                    'Voulez-vous vraiment vider la liste d\'inventaire ?',
+                    [
+                      { text: 'Annuler', style: 'cancel' },
+                      { 
+                        text: 'Vider', 
+                        style: 'destructive', 
+                        onPress: () => {
+                          setInventoryItems([]);
+                          clearInventoryDraft();
+                        }
+                      }
+                    ]
+                  );
+                }}
+              >
+                <Ionicons name="trash-outline" size={18} color={theme.colors.error[500]} />
+                <Text style={styles.headerClearText}>Vider</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.headerValidateButton}
+                onPress={validateInventory}
+              >
+                <Ionicons name="checkmark-circle" size={22} color="white" />
+                <Text style={styles.headerValidateText}>Valider</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
       </View>
 
       <View style={styles.searchContainer}>
@@ -481,17 +517,28 @@ export default function InventoryScreen({ navigation }: any) {
                       keyboardType="numeric"
                     placeholder="Qté"
                     autoFocus={focusedProductId === item.product.id}
+                    selectTextOnFocus={focusedProductId === item.product.id}
                       onSubmitEditing={() => { commitInventoryQuantity(item.product.id); setFocusedProductId(null); }}
                       onEndEditing={() => { commitInventoryQuantity(item.product.id); setFocusedProductId(null); }}
                     ref={(r) => { qtyInputRefs.current[item.product.id] = r; }}
                       onFocus={() => {
                         const y = rowPositionsRef.current[item.product.id] ?? 0;
                         scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+                        // Sélectionner tout le texte au focus
+                        setTimeout(() => {
+                          const ref = qtyInputRefs.current[item.product.id];
+                          if (ref) {
+                            const value = qtyDraft[item.product.id] ?? String(item.counted_quantity);
+                            ref.setNativeProps({ 
+                              selection: { start: 0, end: value.length } 
+                            });
+                          }
+                        }, 150);
                       }}
                     />
                   </View>
-                  <TouchableOpacity style={styles.scannedRemoveBtn} onPress={() => removeFromInventory(item.product.id)}>
-                    <Ionicons name="close" size={16} color={theme.colors.error[600]} />
+                  <TouchableOpacity style={styles.removeBtn} onPress={() => removeFromInventory(item.product.id)}>
+                    <Ionicons name="trash-outline" size={20} color={theme.colors.error[500]} />
                   </TouchableOpacity>
                 </View>
               )}
@@ -551,21 +598,6 @@ export default function InventoryScreen({ navigation }: any) {
         )}
       </ScrollView>
 
-      {inventoryItems.length > 0 && (
-        <View style={styles.inventorySummary}>
-          <View style={styles.inventorySummaryHeader}>
-            <Text style={styles.inventorySummaryTitle}>
-              Inventaire ({inventoryItems.length} produits)
-            </Text>
-            <TouchableOpacity
-              style={styles.validateButton}
-              onPress={validateInventory}
-            >
-              <Text style={styles.validateButtonText}>Valider</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
       {/* Modal de comptage */}
       <Modal
@@ -768,7 +800,38 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headerRight: {
-    width: 40,
+    minWidth: 40,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerValidateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.success[500],
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  headerValidateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
+  headerClearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.error[100],
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  headerClearText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.error[600],
   },
   searchContainer: {
     flexDirection: 'row',
@@ -883,9 +946,11 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     backgroundColor: theme.colors.background.secondary,
   },
-  scannedRemoveBtn: {
+  removeBtn: {
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: theme.colors.error[100],
     marginLeft: theme.spacing.sm,
-    padding: 4,
   },
   searchResultRow: {
     flexDirection: 'row',
@@ -1031,24 +1096,6 @@ const styles = StyleSheet.create({
     color: theme.colors.success[600],
     fontWeight: '600',
   },
-  inventorySummary: {
-    backgroundColor: theme.colors.background.secondary,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.neutral[200],
-    paddingVertical: theme.spacing.md,
-  },
-  inventorySummaryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-  },
-  inventorySummaryTitle: {
-    fontSize: theme.fontSize.md,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
-  },
   validateButton: {
     backgroundColor: actionColors.primary,
     paddingHorizontal: theme.spacing.lg,
@@ -1089,9 +1136,6 @@ const styles = StyleSheet.create({
   inventoryItemCug: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.text.secondary,
-  },
-  removeButton: {
-    padding: theme.spacing.xs,
   },
   inventoryItemDetails: {
     marginBottom: theme.spacing.sm,

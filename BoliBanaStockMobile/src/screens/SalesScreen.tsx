@@ -13,8 +13,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { saleService } from '../services/api';
-import { ContinuousBarcodeScanner } from '../components';
-import { useContinuousScanner } from '../hooks';
 
 interface Sale {
   id: number;
@@ -40,8 +38,6 @@ export default function SalesScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all'); // all, completed, pending, cancelled
-  const [showScanner, setShowScanner] = useState(false);
-  const scanner = useContinuousScanner('sales');
 
   const loadSales = async () => {
     try {
@@ -60,54 +56,6 @@ export default function SalesScreen({ navigation }: any) {
     setRefreshing(true);
     await loadSales();
     setRefreshing(false);
-  };
-
-  const handleScan = (barcode: string) => {
-    // Simulation de données produit pour la vente
-    const mockProduct = {
-      id: Date.now().toString(),
-      productId: `PROD_${barcode}`,
-      barcode: barcode,
-      productName: `Produit ${barcode}`,
-      quantity: 1,
-      unitPrice: 1500,
-      totalPrice: 1500,
-      scannedAt: new Date(),
-      customer: 'Client en cours',
-      notes: 'Scanné pour vente'
-    };
-    
-    scanner.addToScanList(barcode, mockProduct);
-  };
-
-  const handleScanClose = () => {
-    setShowScanner(false);
-  };
-
-  const handleValidateSale = () => {
-    if (scanner.scanList.length === 0) {
-      Alert.alert('Panier vide', 'Veuillez scanner au moins un produit');
-      return;
-    }
-
-    Alert.alert(
-      'Vente validée',
-      `Vente créée avec ${scanner.getTotalItems()} articles pour un total de ${scanner.getTotalValue()} FCFA`,
-      [
-        { 
-          text: 'Continuer', 
-          onPress: () => {
-            // Ici on pourrait naviguer vers l'écran de finalisation de vente
-            setShowScanner(false);
-            scanner.clearList();
-          }
-        },
-        { 
-          text: 'Annuler', 
-          style: 'cancel'
-        }
-      ]
-    );
   };
 
   useEffect(() => {
@@ -263,18 +211,10 @@ export default function SalesScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.title}>Ventes</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity 
-            style={styles.scanButton}
-            onPress={() => setShowScanner(true)}
-          >
-            <Ionicons name="scan-outline" size={20} color="#4CAF50" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('NewSale')}>
-            <Ionicons name="add" size={24} color="#4CAF50" />
-          </TouchableOpacity>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Ventes</Text>
         </View>
+        <View style={styles.placeholder} />
       </View>
 
       {/* Search */}
@@ -323,20 +263,6 @@ export default function SalesScreen({ navigation }: any) {
           </View>
         }
       />
-
-      {/* Scanner continu pour les ventes */}
-      <ContinuousBarcodeScanner
-        visible={showScanner}
-        onClose={handleScanClose}
-        onScan={handleScan}
-        scanList={scanner.scanList}
-        onUpdateQuantity={scanner.updateQuantity}
-        onRemoveItem={scanner.removeItem}
-        onValidate={handleValidateSale}
-        context="sales"
-        title="Scanner de Vente"
-        showQuantityInput={true}
-      />
     </SafeAreaView>
   );
 }
@@ -365,22 +291,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  headerActions: {
-    flexDirection: 'row',
+  titleContainer: {
+    flex: 1,
     alignItems: 'center',
-    gap: 15,
-  },
-  scanButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#f0f8f0',
-    borderWidth: 1,
-    borderColor: '#4CAF50',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
+  },
+  placeholder: {
+    width: 24,
   },
   searchContainer: {
     padding: 20,
