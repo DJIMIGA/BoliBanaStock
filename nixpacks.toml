@@ -3,7 +3,8 @@ nixPkgs = ["python311", "python311Packages.pip"]
 
 [phases.install]
 cmds = [
-    "pip install --user -r requirements.txt",
+    "pip install --user --no-cache-dir -r requirements.txt",
+    "pip install --user --no-cache-dir requests>=2.31.0",
     "echo 'Python dependencies installed successfully'"
 ]
 
