@@ -133,17 +133,7 @@ class Sale(models.Model):
     )
 
     def __str__(self):
-        return f"Vente #{self.reference}"
-
-    def save(self, *args, **kwargs):
-        if not self.reference:
-            # Générer une référence unique basée sur la date et un nombre aléatoire
-            while True:
-                reference = f"V{timezone.now().strftime('%Y%m%d%H%M%S')}{models.F('id')}"
-                if not Sale.objects.filter(reference=reference).exists():
-                    self.reference = reference
-                    break
-        super().save(*args, **kwargs)
+        return f"Vente #{self.reference or self.id}"
 
     def update_totals(self):
         """Met à jour tous les totaux de la vente"""

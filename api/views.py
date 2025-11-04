@@ -7,10 +7,15 @@ from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
-from django.db.models import Q, Sum, F
+from django.db.models import Q, Sum, F, Count
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils import timezone
+from django.core.cache import cache
+import unicodedata
+import re
+import requests
+import json
 from apps.core.forms import CustomUserUpdateForm, PublicSignUpForm
 from apps.core.models import User, Configuration, Parametre, Activite
 from apps.core.views import PublicSignUpView
@@ -678,7 +683,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'notes': transaction.notes,
                 'user': transaction.user.username if transaction.user else 'Système',
                 'sale_id': transaction.sale.id if transaction.sale else None,
-                'sale_reference': f"Vente #{transaction.sale.id}" if transaction.sale else None,
+                'sale_reference': f"Vente #{transaction.sale.reference or transaction.sale.id}" if transaction.sale else None,
                 'is_sale_transaction': transaction.sale is not None,
             })
         
@@ -842,7 +847,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         if context == 'sale' and context_id:
             try:
                 sale = Sale.objects.get(id=context_id)
-                context_notes = f'Retrait pour vente #{sale.id} - {notes}'
+                context_notes = f'Retrait pour vente #{sale.reference or sale.id} - {notes}'
             except Sale.DoesNotExist:
                 return Response(
                     {'error': f'Vente avec ID {context_id} non trouvée'}, 
@@ -860,7 +865,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         if sale_id and not sale:
             try:
                 sale = Sale.objects.get(id=sale_id)
-                context_notes = f'Retrait pour vente #{sale.id} - {notes}'
+                context_notes = f'Retrait pour vente #{sale.reference or sale.id} - {notes}'
             except Sale.DoesNotExist:
                 return Response(
                     {'error': f'Vente avec ID {sale_id} non trouvée'}, 
@@ -1562,7 +1567,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
     """ViewSet pour les transactions"""
     serializer_class = TransactionSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['type', 'product', 'user']
+    filterset_fields = ['type', 'product', 'user', 'site_configuration']
     search_fields = ['product__name', 'product__cug', 'notes']
     ordering_fields = ['transaction_date', 'quantity']
     ordering = ['-transaction_date']
@@ -1573,18 +1578,32 @@ class TransactionViewSet(viewsets.ModelViewSet):
         et les anciennes transactions liées via product.site_configuration."""
         user_site = getattr(self.request.user, 'site_configuration', None)
         
-        if self.request.user.is_superuser:
-            return Transaction.objects.select_related('product', 'user', 'sale').all()
-        
-        if not user_site:
-            return Transaction.objects.none()
+        # Vérifier si un filtre par site est demandé dans les paramètres de requête
+        site_filter = self.request.query_params.get('site_configuration')
         
         from django.db.models import Q
-        return (
-            Transaction.objects.filter(
+        queryset = Transaction.objects.select_related('product', 'user', 'sale')
+        
+        if self.request.user.is_superuser:
+            # Superuser peut filtrer par site si demandé, sinon voit tout
+            if site_filter:
+                try:
+                    site_id = int(site_filter)
+                    queryset = queryset.filter(
+                        Q(site_configuration=site_id) | Q(product__site_configuration=site_id)
+                    )
+                except (ValueError, TypeError):
+                    pass  # Si le paramètre est invalide, on ignore le filtre
+            # Sinon, on retourne tout (pas de filtre)
+        else:
+            # Utilisateur normal voit seulement son site
+            if not user_site:
+                return Transaction.objects.none()
+            queryset = queryset.filter(
                 Q(site_configuration=user_site) | Q(product__site_configuration=user_site)
-            ).select_related('product', 'user', 'sale')
-        )
+            )
+        
+        return queryset
     
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -1593,7 +1612,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 class SaleViewSet(viewsets.ModelViewSet):
     """ViewSet pour les ventes"""
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['status', 'payment_method', 'customer']
+    filterset_fields = ['status', 'payment_method', 'customer', 'site_configuration']
     search_fields = ['customer__name', 'customer__first_name']
     ordering_fields = ['sale_date', 'total_amount']
     ordering = ['-sale_date']
@@ -1607,16 +1626,27 @@ class SaleViewSet(viewsets.ModelViewSet):
         """Filtrer les ventes par site de l'utilisateur"""
         user_site = getattr(self.request.user, 'site_configuration', None)
         
+        # Vérifier si un filtre par site est demandé dans les paramètres de requête
+        site_filter = self.request.query_params.get('site_configuration')
+        
+        queryset = Sale.objects.select_related('customer').prefetch_related('items')
+        
         if self.request.user.is_superuser:
-            # Superuser voit tout
-            return Sale.objects.select_related('customer').prefetch_related('items').all()
+            # Superuser peut filtrer par site si demandé, sinon voit tout
+            if site_filter:
+                try:
+                    site_id = int(site_filter)
+                    queryset = queryset.filter(site_configuration=site_id)
+                except (ValueError, TypeError):
+                    pass  # Si le paramètre est invalide, on ignore le filtre
+            # Sinon, on retourne tout (pas de filtre)
         else:
             # Utilisateur normal voit seulement son site
             if not user_site:
                 return Sale.objects.none()
-            return Sale.objects.filter(
-                site_configuration=user_site
-            ).select_related('customer').prefetch_related('items')
+            queryset = queryset.filter(site_configuration=user_site)
+        
+        return queryset
     
     def perform_create(self, serializer):
         """Créer une vente avec gestion automatique du stock"""
@@ -1625,17 +1655,43 @@ class SaleViewSet(viewsets.ModelViewSet):
         if not user_site and not self.request.user.is_superuser:
             raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
         
+        # Valider la référence Sarali AVANT de créer la vente (si mode Sarali)
+        payment_method = self.request.data.get('payment_method')
+        if payment_method == 'sarali':
+            sarali_reference = self.request.data.get('sarali_reference')
+            if not sarali_reference or not sarali_reference.strip():
+                raise ValidationError({
+                    "sarali_reference": "Référence Sarali requise pour ce mode de paiement"
+                })
+            if not CreditService.validate_sarali_reference(sarali_reference.strip()):
+                raise ValidationError({
+                    "sarali_reference": "Format de référence Sarali invalide"
+                })
+        
+        # Valider le client pour les ventes à crédit AVANT de créer la vente
+        if payment_method == 'credit':
+            from apps.inventory.models import Customer
+            customer_id = self.request.data.get('customer')
+            if not customer_id:
+                raise ValidationError({
+                    "customer": "Un client est requis pour les ventes à crédit"
+                })
+            try:
+                customer = Customer.objects.get(id=customer_id)
+                if not customer.is_active:
+                    raise ValidationError({
+                        "customer": "Ce client n'est pas actif pour les ventes à crédit"
+                    })
+            except Customer.DoesNotExist:
+                raise ValidationError({
+                    "customer": f"Client avec l'ID {customer_id} non trouvé"
+                })
+        
         # Créer la vente
         sale = serializer.save(
             site_configuration=user_site,
             seller=self.request.user
         )
-        
-        # Debug: Vérifier que le client est bien enregistré
-        import logging
-        logger = logging.getLogger(__name__)
-        customer_id_from_data = self.request.data.get('customer')
-        logger.info(f'🔍 [SALE] Création vente #{sale.id} - customer_id envoyé: {customer_id_from_data}, customer enregistré: {sale.customer_id}, payment_method: {self.request.data.get("payment_method")}')
         
         # Traiter les articles de la vente
         items_data = self.request.data.get('items', [])
@@ -1691,35 +1747,14 @@ class SaleViewSet(viewsets.ModelViewSet):
                     pass  # Garder les valeurs par défaut
         
         elif payment_method == 'sarali':
-            # Paiement Sarali - valider la référence
-            sarali_reference = self.request.data.get('sarali_reference')
-            if sarali_reference:
-                if CreditService.validate_sarali_reference(sarali_reference):
-                    sale.sarali_reference = sarali_reference
-                    sale.amount_paid = total_amount
-                    sale.payment_status = 'paid'
-                else:
-                    raise ValidationError({
-                        "sarali_reference": "Format de référence Sarali invalide"
-                    })
-            else:
-                raise ValidationError({
-                    "sarali_reference": "Référence Sarali requise pour ce mode de paiement"
-                })
+            # Paiement Sarali - la référence a déjà été validée avant la création
+            sarali_reference = self.request.data.get('sarali_reference', '').strip()
+            sale.sarali_reference = sarali_reference
+            sale.amount_paid = total_amount
+            sale.payment_status = 'paid'
         
         elif payment_method == 'credit':
-            # Paiement à crédit - vérifier le client et créer la transaction
-            if not sale.customer:
-                raise ValidationError({
-                    "customer": "Un client est requis pour les ventes à crédit"
-                })
-            
-            # Vérifier que le client est actif
-            if not sale.customer.is_active:
-                raise ValidationError({
-                    "customer": "Ce client n'est pas actif pour les ventes à crédit"
-                })
-            
+            # Paiement à crédit - le client a déjà été validé avant la création
             # Créer la transaction de crédit
             try:
                 CreditService.create_credit_sale(
@@ -1741,6 +1776,9 @@ class SaleViewSet(viewsets.ModelViewSet):
             sale.payment_status = 'paid'
         
         sale.save()
+        
+        # Rafraîchir la vente pour s'assurer d'avoir la référence générée par le signal
+        sale.refresh_from_db()
         
         return sale
 
@@ -1961,12 +1999,13 @@ class ConfigurationAPIView(APIView):
 
 
 class SitesAPIView(APIView):
-    """API pour récupérer la liste des sites (pour les superusers)"""
+    """API pour récupérer la liste des sites (uniquement pour les superusers)"""
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request):
         """Récupérer la liste des sites"""
         try:
+            # ✅ Sécurité : Seuls les superusers peuvent voir tous les sites
             if not request.user.is_superuser:
                 return Response({
                     'success': False,
@@ -3585,26 +3624,88 @@ class ProductCopyAPIView(APIView):
             if not current_site:
                 return Response({'error': 'Aucune configuration de site trouvée'}, status=400)
             
-            # Récupérer les produits du site principal (supposé être la première configuration créée)
-            # Utiliser un ordering explicite pour éviter qu'un .first() non ordonné retourne le site courant
-            main_site = Configuration.objects.order_by('id').first()
+            # ✅ Pour les superusers : permettre de choisir le site source
+            # Pour tous : si aucun site source spécifié, afficher les produits de tous les sites
+            source_site_id = request.GET.get('source_site')
+            source_site = None
             
-            if not main_site or main_site == current_site:
-                return Response({'error': 'Aucun site principal disponible pour la copie'}, status=400)
+            if source_site_id:
+                # Site source spécifique sélectionné (superusers uniquement)
+                if request.user.is_superuser:
+                    try:
+                        source_site = Configuration.objects.get(id=int(source_site_id))
+                        if source_site == current_site:
+                            return Response({'error': 'Le site source ne peut pas être le même que le site destination'}, status=400)
+                    except (ValueError, Configuration.DoesNotExist):
+                        return Response({'error': 'Site source invalide'}, status=400)
+                else:
+                    return Response({'error': 'Seuls les superusers peuvent spécifier un site source'}, status=403)
             
-            # Récupérer les produits du site principal
-            main_products = Product.objects.filter(
-                site_configuration=main_site,
-                is_active=True
-            ).select_related('category', 'brand')
+            # Récupérer les produits : soit du site source spécifique, soit de tous les sites (sauf actuel)
+            include_inactive = request.GET.get('include_inactive', 'false').lower() == 'true'
             
-            # Filtrer les produits déjà copiés
-            from apps.inventory.models import ProductCopy
-            copied_products = ProductCopy.objects.filter(
-                destination_site=current_site
-            ).values_list('original_product_id', flat=True)
+            if source_site:
+                # Produits d'un site source spécifique
+                if include_inactive:
+                    source_products = Product.objects.filter(
+                        site_configuration=source_site
+                    ).select_related('category', 'brand')
+                else:
+                    source_products = Product.objects.filter(
+                        site_configuration=source_site,
+                        is_active=True
+                    ).select_related('category', 'brand')
+                
+                # Filtrer les produits déjà copiés depuis ce site source vers le site actuel
+                from apps.inventory.models import ProductCopy
+                copied_products = ProductCopy.objects.filter(
+                    destination_site=current_site,
+                    source_site=source_site
+                ).values_list('original_product_id', flat=True)
+            else:
+                # Produits de TOUS les sites (sauf le site actuel)
+                all_sites_except_current = Configuration.objects.exclude(id=current_site.id)
+                
+                if include_inactive:
+                    source_products = Product.objects.filter(
+                        site_configuration__in=all_sites_except_current
+                    ).select_related('category', 'brand', 'site_configuration')
+                else:
+                    source_products = Product.objects.filter(
+                        site_configuration__in=all_sites_except_current,
+                        is_active=True
+                    ).select_related('category', 'brand', 'site_configuration')
+                
+                # Filtrer les produits déjà copiés depuis n'importe quel site vers le site actuel
+                from apps.inventory.models import ProductCopy
+                copied_products = ProductCopy.objects.filter(
+                    destination_site=current_site
+                ).values_list('original_product_id', flat=True)
             
-            available_products = main_products.exclude(id__in=copied_products)
+            # Log pour débogage
+            import logging
+            logger = logging.getLogger(__name__)
+            if source_site:
+                logger.info(f"🔍 ProductCopyAPIView - Site source spécifique: {source_site.id} ({source_site.site_name}), Site destination: {current_site.id} ({current_site.site_name})")
+            else:
+                logger.info(f"🔍 ProductCopyAPIView - Tous les sites (sauf actuel), Site destination: {current_site.id} ({current_site.site_name})")
+            
+            logger.info(f"📦 Produits disponibles dans le(s) site(s) source: {source_products.count()}")
+            logger.info(f"📋 Produits déjà copiés vers le site actuel: {copied_products.count()}")
+            if copied_products:
+                logger.info(f"📋 IDs des produits déjà copiés: {list(copied_products)[:10]}...")  # Limiter à 10 pour éviter les logs trop longs
+            
+            available_products = source_products.exclude(id__in=copied_products)
+            
+            logger.info(f"✅ Produits disponibles pour copie: {available_products.count()}")
+            
+            # Log supplémentaire pour débogage : statistiques par site
+            if not source_site:
+                from django.db.models import Count
+                products_by_site = source_products.values('site_configuration__site_name', 'site_configuration__id').annotate(
+                    count=Count('id')
+                )
+                logger.info(f"📊 Répartition par site: {list(products_by_site)}")
             
             # Recherche
             search_query = request.GET.get('search', '').strip()
@@ -3625,7 +3726,8 @@ class ProductCopyAPIView(APIView):
             
             # Pagination
             from django.core.paginator import Paginator
-            paginator = Paginator(available_products, 20)
+            page_size = int(request.GET.get('page_size', 50))  # ✅ Pagination optimisée (50 par défaut)
+            paginator = Paginator(available_products, page_size)
             page_number = request.GET.get('page', 1)
             page_obj = paginator.get_page(page_number)
             
@@ -3652,8 +3754,16 @@ class ProductCopyAPIView(APIView):
                     'image_url': product.image.url if product.image else None,
                     'is_active': product.is_active,
                     'created_at': product.created_at.isoformat(),
-                    'updated_at': product.updated_at.isoformat()
+                    'updated_at': product.updated_at.isoformat(),
+                    # ✅ Ajouter le site source du produit pour affichage (quand on affiche tous les sites)
+                    'site_source': {
+                        'id': product.site_configuration.id,
+                        'name': product.site_configuration.site_name
+                    } if not source_site and hasattr(product, 'site_configuration') and product.site_configuration else None
                 })
+            
+            # Log pour débogage
+            logger.info(f"📄 Page {page_obj.number}/{paginator.num_pages}, Produits sur cette page: {len(products_data)}, Total: {paginator.count}")
             
             return Response({
                 'success': True,
@@ -3678,10 +3788,25 @@ class ProductCopyAPIView(APIView):
                 return Response({'error': 'Aucun produit sélectionné pour la copie'}, status=400)
             
             current_site = request.user.site_configuration
-            # Sélection explicite du site principal (plus ancien id)
-            main_site = Configuration.objects.order_by('id').first()
             
-            if not current_site or not main_site:
+            # ✅ Pour les superusers : permettre de choisir le site source
+            # Si aucun site source spécifié, les produits peuvent venir de n'importe quel site
+            source_site_id = request.data.get('source_site')
+            source_site = None
+            
+            if source_site_id:
+                # Site source spécifique sélectionné (superusers uniquement)
+                if request.user.is_superuser:
+                    try:
+                        source_site = Configuration.objects.get(id=int(source_site_id))
+                        if source_site == current_site:
+                            return Response({'error': 'Le site source ne peut pas être le même que le site destination'}, status=400)
+                    except (ValueError, Configuration.DoesNotExist):
+                        return Response({'error': 'Site source invalide'}, status=400)
+                else:
+                    return Response({'error': 'Seuls les superusers peuvent spécifier un site source'}, status=403)
+            
+            if not current_site:
                 return Response({'error': 'Configuration de site invalide'}, status=400)
             
             from apps.inventory.models import ProductCopy
@@ -3690,17 +3815,31 @@ class ProductCopyAPIView(APIView):
             
             for product_id in product_ids:
                 try:
-                    # Récupérer le produit original
-                    original_product = Product.objects.get(
-                        id=product_id,
-                        site_configuration=main_site
-                    )
+                    # Récupérer le produit original (peut venir de n'importe quel site si source_site est None)
+                    if source_site:
+                        original_product = Product.objects.get(
+                            id=product_id,
+                            site_configuration=source_site
+                        )
+                        # Vérifier si déjà copié depuis ce site source spécifique
+                        copy_filter = {
+                            'original_product': original_product,
+                            'destination_site': current_site,
+                            'source_site': source_site
+                        }
+                    else:
+                        # Produit peut venir de n'importe quel site (sauf actuel)
+                        original_product = Product.objects.get(id=product_id)
+                        if original_product.site_configuration == current_site:
+                            errors.append(f"Le produit {product_id} appartient déjà au site actuel")
+                            continue
+                        # Vérifier si déjà copié depuis n'importe quel site
+                        copy_filter = {
+                            'original_product': original_product,
+                            'destination_site': current_site
+                        }
                     
-                    # Vérifier si déjà copié
-                    if ProductCopy.objects.filter(
-                        original_product=original_product,
-                        destination_site=current_site
-                    ).exists():
+                    if ProductCopy.objects.filter(**copy_filter).exists():
                         continue
                     
                     # Créer une copie du produit avec un CUG unique (contrainte globale)
@@ -3783,10 +3922,12 @@ class ProductCopyAPIView(APIView):
                         print(f"     - {barcode.ean} {'(principal)' if barcode.is_primary else ''} - Notes: {barcode.notes or 'Aucune'}")
                     
                     # Créer l'enregistrement de copie
+                    # Utiliser le site source du produit original si source_site n'est pas spécifié
+                    actual_source_site = source_site if source_site else original_product.site_configuration
                     ProductCopy.objects.create(
                         original_product=original_product,
                         copied_product=copied_product,
-                        source_site=main_site,
+                        source_site=actual_source_site,
                         destination_site=current_site
                     )
                     
@@ -4059,7 +4200,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['is_active']
+    filterset_fields = ['is_active', 'site_configuration']
     search_fields = ['name', 'first_name', 'phone', 'email']
     ordering_fields = ['name', 'credit_balance', 'created_at']
     ordering = ['name']
@@ -4068,14 +4209,27 @@ class CustomerViewSet(viewsets.ModelViewSet):
         """Filtrer les clients par site de l'utilisateur"""
         user_site = getattr(self.request.user, 'site_configuration', None)
         
+        # Vérifier si un filtre par site est demandé dans les paramètres de requête
+        site_filter = self.request.query_params.get('site_configuration')
+        
+        queryset = Customer.objects.all()
+        
         if self.request.user.is_superuser:
-            # Superuser voit tout
-            return Customer.objects.all()
+            # Superuser peut filtrer par site si demandé, sinon voit tout
+            if site_filter:
+                try:
+                    site_id = int(site_filter)
+                    queryset = queryset.filter(site_configuration=site_id)
+                except (ValueError, TypeError):
+                    pass  # Si le paramètre est invalide, on ignore le filtre
+            # Sinon, on retourne tout (pas de filtre)
         else:
             # Utilisateur normal voit seulement son site
             if not user_site:
                 return Customer.objects.none()
-            return Customer.objects.filter(site_configuration=user_site)
+            queryset = queryset.filter(site_configuration=user_site)
+        
+        return queryset
     
     def perform_create(self, serializer):
         """Créer un client avec gestion du site"""
@@ -4182,3 +4336,436 @@ class CreditTransactionViewSet(viewsets.ReadOnlyModelViewSet):
             return CreditTransaction.objects.filter(
                 site_configuration=user_site
             ).select_related('customer', 'sale', 'user')
+
+
+class CategoryRecommendationAPIView(APIView):
+    """
+    Vue API pour recommander des catégories basées sur le nom du produit
+    Utilise l'IA (sentence-transformers) pour améliorer les recommandations
+    Priorise les sous-catégories (level 1) par rapport aux rayons (level 0)
+    """
+    permission_classes = [IsAuthenticated]
+    
+    # Modèle IA local (gratuit, pas de clé API requise)
+    _model = None
+    _model_loaded = False
+    
+    @classmethod
+    def get_model(cls):
+        """Charge le modèle IA une seule fois (lazy loading)"""
+        if not cls._model_loaded:
+            try:
+                from sentence_transformers import SentenceTransformer
+                # Modèle multilingue léger et rapide
+                cls._model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+                cls._model_loaded = True
+                logger.info('✅ Modèle IA sentence-transformers chargé avec succès')
+            except ImportError:
+                logger.warning('⚠️ sentence-transformers non installé, utilisation du fallback')
+                cls._model = None
+                cls._model_loaded = True
+            except Exception as e:
+                logger.warning(f'⚠️ Erreur lors du chargement du modèle IA: {str(e)}, utilisation du fallback')
+                cls._model = None
+                cls._model_loaded = True
+        return cls._model
+    
+    def get_semantic_embedding(self, text):
+        """
+        Obtient un embedding sémantique du texte via sentence-transformers (local)
+        Retourne None en cas d'erreur pour utiliser le fallback
+        """
+        try:
+            if not text or len(text) < 2:
+                return None
+            
+            model = self.get_model()
+            if model:
+                # Générer l'embedding localement (rapide et gratuit)
+                embedding = model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
+                return embedding.tolist()  # Convertir en liste pour JSON
+            
+            # Fallback : API Hugging Face si le modèle local n'est pas disponible
+            HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            try:
+                response = requests.post(
+                    HF_API_URL,
+                    headers={"Content-Type": "application/json"},
+                    json={"inputs": text},
+                    timeout=3
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data, list) and len(data) > 0:
+                        return data[0] if isinstance(data[0], list) else data
+            except:
+                pass  # Fallback silencieux
+            
+            return None
+        except Exception as e:
+            logger.debug(f'⚠️ Erreur embedding IA (fallback utilisé): {str(e)}')
+            return None
+    
+    def cosine_similarity(self, vec1, vec2):
+        """Calcule la similarité cosinus entre deux vecteurs (0.0 à 1.0)"""
+        try:
+            if not vec1 or not vec2:
+                return 0.0
+            
+            # Convertir en listes si nécessaire
+            if hasattr(vec1, 'tolist'):
+                vec1 = vec1.tolist()
+            if hasattr(vec2, 'tolist'):
+                vec2 = vec2.tolist()
+            
+            if len(vec1) != len(vec2):
+                return 0.0
+            
+            # Calcul de la similarité cosinus
+            dot_product = sum(a * b for a, b in zip(vec1, vec2))
+            magnitude1 = math.sqrt(sum(a * a for a in vec1))
+            magnitude2 = math.sqrt(sum(a * a for a in vec2))
+            
+            if magnitude1 == 0 or magnitude2 == 0:
+                return 0.0
+            
+            similarity = dot_product / (magnitude1 * magnitude2)
+            # S'assurer que le résultat est entre 0 et 1
+            return max(0.0, min(1.0, similarity))
+        except Exception as e:
+            logger.debug(f'⚠️ Erreur calcul similarité cosinus: {str(e)}')
+            return 0.0
+    
+    def normalize_text(self, text):
+        """Normalise le texte pour le matching (lowercase, suppression accents)"""
+        if not text:
+            return ""
+        # Convertir en minuscules
+        text = text.lower()
+        # Supprimer les accents
+        text = unicodedata.normalize('NFD', text)
+        text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
+        return text.strip()
+    
+    def extract_keywords(self, product_name):
+        """Extrait les mots-clés significatifs du nom du produit"""
+        if not product_name:
+            return []
+        
+        # Normaliser le texte
+        normalized = self.normalize_text(product_name)
+        
+        # Liste des mots vides en français
+        stop_words = {
+            'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'des', 'et', 'ou', 'pour',
+            'avec', 'sans', 'par', 'sur', 'dans', 'vers', 'à', 'au', 'aux', 'en', 'l',
+            'ce', 'cette', 'ces', 'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'son', 'sa', 'ses',
+            'notre', 'nos', 'votre', 'vos', 'leur', 'leurs', 'du', 'des'
+        }
+        
+        # Mots-clés techniques importants (mapping vers catégories)
+        tech_keywords = {
+            'iphone': ['telephone', 'telephonie', 'high-tech', 'smartphone', 'hightech'],
+            'smartphone': ['telephone', 'telephonie', 'high-tech', 'hightech'],
+            'telephone': ['telephonie', 'high-tech', 'hightech'],
+            'tablette': ['high-tech', 'hightech', 'ordinateur'],
+            'ordinateur': ['high-tech', 'hightech', 'informatique'],
+            'laptop': ['high-tech', 'hightech', 'ordinateur'],
+            'pc': ['high-tech', 'hightech', 'ordinateur'],
+            'console': ['high-tech', 'hightech', 'gaming', 'jeux'],
+            'jeux': ['high-tech', 'hightech', 'gaming'],
+            'gaming': ['high-tech', 'hightech', 'jeux'],
+            'audio': ['high-tech', 'hightech', 'son'],
+            'video': ['high-tech', 'hightech', 'image'],
+            'ecouteurs': ['high-tech', 'hightech', 'audio'],
+            'enceintes': ['high-tech', 'hightech', 'audio'],
+            'tv': ['high-tech', 'hightech', 'television'],
+            'television': ['high-tech', 'hightech', 'video'],
+        }
+        
+        # Extraire les mots (minimum 3 caractères)
+        words = re.findall(r'\b\w{3,}\b', normalized)
+        
+        # Filtrer les mots vides
+        keywords = [w for w in words if w not in stop_words]
+        
+        # Ajouter les mots-clés techniques associés
+        expanded_keywords = list(keywords)
+        for keyword in keywords:
+            if keyword in tech_keywords:
+                expanded_keywords.extend(tech_keywords[keyword])
+        
+        # Retourner les mots-clés uniques
+        return list(set(expanded_keywords))
+    
+    def calculate_match_score(self, keywords, category_name, category_level, frequency, rayon_type=None, product_name=None, product_embedding=None, category_embedding=None):
+        """Calcule le score de correspondance pour une catégorie avec IA"""
+        if not keywords or not category_name:
+            return 0
+        
+        normalized_category = self.normalize_text(category_name)
+        score = 0
+        
+        # Mots-clés très importants (correspondance exacte donne un score élevé)
+        important_keywords = {
+            'telephonie', 'telephone', 'smartphone', 'iphone', 'high-tech', 'hightech',
+            'informatique', 'ordinateur', 'tablette', 'gaming', 'audio', 'video'
+        }
+        
+        # Score basé sur la correspondance des mots-clés
+        matched_keywords = []
+        category_normalized_no_hyphen = normalized_category.replace('-', '').replace(' ', '')
+        
+        for keyword in keywords:
+            keyword_normalized = keyword.replace('-', '')
+            if keyword in normalized_category or keyword_normalized in category_normalized_no_hyphen:
+                matched_keywords.append(keyword)
+                base_score = len(keyword) * 2
+                
+                if keyword in important_keywords or keyword_normalized in ['hightech', 'telephonie', 'telephone']:
+                    base_score *= 3
+                
+                if keyword == normalized_category or keyword_normalized == category_normalized_no_hyphen:
+                    base_score += 20
+                elif normalized_category.startswith(keyword) or category_normalized_no_hyphen.startswith(keyword_normalized):
+                    base_score += 10
+                
+                score += base_score
+        
+        # BONUS IA : Utiliser les embeddings sémantiques si disponibles
+        if product_embedding and category_embedding:
+            semantic_similarity = self.cosine_similarity(product_embedding, category_embedding)
+            # Convertir la similarité (0-1) en score (0-100)
+            # Plus la similarité est élevée, plus le score est élevé
+            semantic_bonus = semantic_similarity * 100  # Bonus IA peut ajouter jusqu'à 100 points
+            score += semantic_bonus
+            
+            # Bonus supplémentaire pour les très bonnes correspondances sémantiques (>0.7)
+            if semantic_similarity > 0.7:
+                score += 50  # Bonus important pour correspondances très fortes
+            elif semantic_similarity > 0.5:
+                score += 25  # Bonus moyen pour correspondances bonnes
+        
+        # Bonus si plusieurs mots-clés correspondent
+        if len(matched_keywords) > 1:
+            score *= 1.5
+        
+        # Bonus pour les catégories avec rayon_type correspondant
+        if rayon_type:
+            rayon_keywords = {
+                'high_tech': ['telephonie', 'telephone', 'smartphone', 'iphone', 'high-tech', 'hightech', 'informatique', 'ordinateur', 'tablette', 'gaming', 'audio', 'video'],
+                'epicerie': ['epicerie', 'biscuit', 'biscuits', 'gateau', 'gateaux', 'patisserie', 'confiserie', 'bonbon', 'cereale', 'cereales', 'chocolat', 'sucre', 'pate', 'pates', 'riz', 'conserve', 'conserves', 'sauce', 'sauces', 'huile', 'huiles', 'vinaigre', 'farine', 'farines'],
+                'petit_dejeuner': ['petit-dejeuner', 'biscuit', 'biscuits', 'gateau', 'gateaux', 'cereale', 'cereales', 'chocolat', 'sucre', 'confiture', 'miel', 'cafe', 'the', 'biscotte', 'tartine'],
+                'liquides': ['liquides', 'eau', 'soda', 'sodas', 'jus', 'boisson', 'boissons', 'cafe', 'the'],
+                'frais_libre_service': ['frais', 'libre', 'service', 'boucherie', 'charcuterie', 'poisson', 'fromage', 'laitier', 'laitiers', 'fruits', 'legumes', 'surgeles'],
+                'rayons_traditionnels': ['traditionnel', 'traditionnels', 'boucherie', 'charcuterie', 'poissonnerie', 'fromagerie', 'boulangerie', 'patisserie'],
+            }
+            for rt, keywords_list in rayon_keywords.items():
+                if rayon_type == rt:
+                    for keyword in keywords:
+                        if keyword in keywords_list:
+                            score += 30
+                            break
+        
+        # Bonus pour les sous-catégories (level 1)
+        if category_level == 1 and score > 5:
+            score *= 1.5
+        
+        # Ajouter la fréquence d'utilisation
+        score += frequency * 0.5
+        
+        return score
+    
+    def get(self, request):
+        """GET endpoint pour recommander des catégories"""
+        product_name = request.query_params.get('product_name', '').strip()
+        
+        if not product_name or len(product_name) < 2:
+            return Response({
+                'success': False,
+                'error': 'Le nom du produit doit contenir au moins 2 caractères',
+                'recommendations': []
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Vérifier le cache (TTL de 5 minutes)
+            cache_key = f'category_recommendations_{request.user.id}_{product_name.lower()}'
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                logger.info(f'✅ Recommandations servies depuis le cache pour: {product_name}')
+                return Response(cached_result)
+            
+            # Obtenir le site de l'utilisateur
+            user_site = getattr(request.user, 'site_configuration', None)
+            
+            # Utiliser le service centralisé pour obtenir les catégories accessibles
+            categories_queryset = PermissionService.get_user_accessible_resources(request.user, Category)
+            categories_queryset = categories_queryset.filter(is_active=True).select_related('parent')
+            
+            # Extraire les mots-clés du nom du produit
+            keywords = self.extract_keywords(product_name)
+            
+            if not keywords:
+                return Response({
+                    'success': True,
+                    'recommendations': [],
+                    'message': 'Aucun mot-clé significatif trouvé dans le nom du produit'
+                })
+            
+            # IA : Obtenir l'embedding sémantique du nom du produit (en background, non-bloquant)
+            product_embedding = None
+            try:
+                product_embedding = self.get_semantic_embedding(product_name)
+            except:
+                pass  # Utiliser le fallback si l'IA échoue
+            
+            # PRIORITÉ 1 : Rechercher dans les sous-catégories (level 1)
+            subcategories = categories_queryset.filter(level=1).select_related('parent')
+            
+            # Rechercher les produits similaires pour calculer la fréquence
+            products_queryset = PermissionService.get_user_accessible_resources(request.user, Product)
+            products_queryset = products_queryset.filter(is_active=True)
+            
+            # Produits avec des noms similaires
+            similar_query = Q(name__icontains=product_name[:5])  # Premiers caractères
+            if keywords:
+                similar_query |= Q(name__icontains=keywords[0])  # Premier mot-clé
+            
+            similar_products = products_queryset.filter(similar_query)[:20].select_related('category')
+            
+            # Calculer la fréquence d'utilisation des catégories
+            category_frequency = {}
+            for product in similar_products:
+                if product.category:
+                    cat_id = product.category.id
+                    category_frequency[cat_id] = category_frequency.get(cat_id, 0) + 1
+            
+            # Calculer les scores pour les sous-catégories avec IA
+            subcategory_scores = []
+            for subcat in subcategories:
+                frequency = category_frequency.get(subcat.id, 0)
+                parent_rayon_type = subcat.parent.rayon_type if subcat.parent else None
+                
+                # IA : Obtenir l'embedding de la catégorie (en cache si possible)
+                category_embedding = None
+                if product_embedding:
+                    try:
+                        cache_key_embedding = f'category_embedding_{subcat.id}'
+                        category_embedding = cache.get(cache_key_embedding)
+                        if not category_embedding:
+                            category_embedding = self.get_semantic_embedding(subcat.name)
+                            if category_embedding:
+                                cache.set(cache_key_embedding, category_embedding, 3600)  # Cache 1h
+                    except:
+                        pass
+                
+                score = self.calculate_match_score(
+                    keywords, subcat.name, subcat.level, frequency, parent_rayon_type,
+                    product_name, product_embedding, category_embedding
+                )
+                
+                if score > 0:
+                    subcategory_scores.append({
+                        'category': subcat,
+                        'score': score,
+                        'frequency': frequency
+                    })
+            
+            # TRIER par score décroissant
+            subcategory_scores.sort(key=lambda x: x['score'], reverse=True)
+            
+            # PRIORITÉ 2 : Si aucune sous-catégorie pertinente, rechercher dans les rayons (level 0)
+            rayons = categories_queryset.filter(level=0, is_rayon=True)
+            
+            rayon_scores = []
+            for rayon in rayons:
+                frequency = category_frequency.get(rayon.id, 0)
+                
+                # IA : Obtenir l'embedding de la catégorie (en cache si possible)
+                category_embedding = None
+                if product_embedding:
+                    try:
+                        cache_key_embedding = f'category_embedding_{rayon.id}'
+                        category_embedding = cache.get(cache_key_embedding)
+                        if not category_embedding:
+                            category_embedding = self.get_semantic_embedding(rayon.name)
+                            if category_embedding:
+                                cache.set(cache_key_embedding, category_embedding, 3600)  # Cache 1h
+                    except:
+                        pass
+                
+                score = self.calculate_match_score(
+                    keywords, rayon.name, rayon.level, frequency, rayon.rayon_type,
+                    product_name, product_embedding, category_embedding
+                )
+                
+                if score > 0:
+                    rayon_scores.append({
+                        'category': rayon,
+                        'score': score,
+                        'frequency': frequency
+                    })
+            
+            rayon_scores.sort(key=lambda x: x['score'], reverse=True)
+            
+            # Combiner les recommandations (sous-catégories en premier, puis rayons)
+            recommendations = []
+            
+            # Ajouter les sous-catégories (top 5)
+            for item in subcategory_scores[:5]:
+                cat = item['category']
+                recommendations.append({
+                    'id': cat.id,
+                    'name': cat.name,
+                    'level': cat.level,
+                    'is_rayon': cat.is_rayon,
+                    'rayon_type': cat.rayon_type,
+                    'parent': {
+                        'id': cat.parent.id,
+                        'name': cat.parent.name,
+                        'rayon_type': cat.parent.rayon_type
+                    } if cat.parent else None,
+                    'score': item['score'],
+                    'frequency': item['frequency']
+                })
+            
+            # Si moins de 5 sous-catégories, ajouter des rayons (max 5 total)
+            remaining_slots = max(0, 5 - len(recommendations))
+            if remaining_slots > 0:
+                for item in rayon_scores[:remaining_slots]:
+                    cat = item['category']
+                    recommendations.append({
+                        'id': cat.id,
+                        'name': cat.name,
+                        'level': cat.level,
+                        'is_rayon': cat.is_rayon,
+                        'rayon_type': cat.rayon_type,
+                        'parent': None,
+                        'score': item['score'],
+                        'frequency': item['frequency']
+                    })
+            
+            # Sérialiser avec CategorySerializer pour cohérence
+            result = {
+                'success': True,
+                'recommendations': recommendations,
+                'total': len(recommendations),
+                'product_name': product_name
+            }
+            
+            # Mettre en cache (TTL de 5 minutes = 300 secondes)
+            cache.set(cache_key, result, 300)
+            
+            # Logger pour analyse
+            logger.info(f'📊 Recommandations générées pour "{product_name}": {len(recommendations)} catégories')
+            
+            return Response(result)
+            
+        except Exception as e:
+            logger.error(f'❌ Erreur lors de la génération des recommandations: {str(e)}', exc_info=True)
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la génération des recommandations',
+                'recommendations': []
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -9,11 +9,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   FlatList,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
-import { saleService } from '../services/api';
+import { saleService, siteService } from '../services/api';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 
 interface SaleItem {
   id: number;
@@ -77,6 +79,12 @@ export default function SalesReportScreen({ navigation }: any) {
   const [dateFilter, setDateFilter] = useState<DateFilter>('today');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  
+  // ✅ Filtre par site pour les superusers
+  const { isSuperuser } = useUserPermissions();
+  const [sites, setSites] = useState<any[]>([]);
+  const [selectedSite, setSelectedSite] = useState<number | null>(null);
+  const [siteModalVisible, setSiteModalVisible] = useState(false);
 
   const formatDateForAPI = (date: Date): string => {
     // Formater la date en YYYY-MM-DD sans conversion ISO pour éviter les problèmes de fuseau horaire
@@ -190,11 +198,22 @@ export default function SalesReportScreen({ navigation }: any) {
       const startStr = formatDateForAPI(range.start);
       const endStr = formatDateForAPI(range.end);
 
-      const response = await saleService.getSales({
+      const params: any = {
         start_date: startStr,
         end_date: endStr,
         page_size: 200,
-      });
+      };
+      
+      // Ajouter le filtre par site pour les superusers
+      if (isSuperuser && selectedSite) {
+        params.site_configuration = selectedSite;
+        console.log('🔍 Filtre rapport ventes par site appliqué:', selectedSite);
+      } else {
+        console.log('🔍 Aucun filtre rapport ventes par site (superuser:', isSuperuser, ', selectedSite:', selectedSite, ')');
+      }
+      
+      console.log('📡 Paramètres rapport ventes API:', params);
+      const response = await saleService.getSales(params);
 
       const salesList = response.results || response || [];
       
@@ -226,21 +245,28 @@ export default function SalesReportScreen({ navigation }: any) {
 
         console.log('📅 Chargement ventes année précédente:', prevStartStr, 'à', prevEndStr);
 
-        const prevResponse = await saleService.getSales({
+        const prevParams: any = {
           start_date: prevStartStr,
           end_date: prevEndStr,
           page_size: 200,
-        });
+        };
+        
+        // Ajouter le filtre par site pour les superusers
+        if (isSuperuser && selectedSite) {
+          prevParams.site_configuration = selectedSite;
+          console.log('🔍 Filtre rapport ventes année précédente par site appliqué:', selectedSite);
+        }
+        
+        console.log('📡 Paramètres rapport ventes année précédente API:', prevParams);
+        const prevResponse = await saleService.getSales(prevParams);
 
         const prevSalesList = prevResponse.results || prevResponse || [];
         previousYearSales = prevSalesList.filter((sale: Sale) => {
           const saleDate = sale.sale_date || sale.date;
           return isDateInRange(saleDate, prevRange.start, prevRange.end);
         });
-        
-        console.log('✅ Ventes année précédente trouvées:', previousYearSales.length);
       } catch (error) {
-        console.error('❌ Erreur chargement ventes année précédente:', error);
+        // Erreur silencieuse lors du chargement des ventes de l'année précédente
       }
       
       setSales(salesWithItems);
@@ -345,9 +371,39 @@ export default function SalesReportScreen({ navigation }: any) {
     setProductSales(products);
   };
 
+  // ✅ Charger les sites pour les superusers
+  const loadSites = async () => {
+    if (isSuperuser) {
+      try {
+        const response = await siteService.getSites();
+        if (response.success) {
+          setSites(response.sites || []);
+        }
+      } catch (error) {
+        console.error('❌ Erreur chargement sites:', error);
+      }
+    }
+  };
+
+  const handleSiteSelect = (site: any) => {
+    const siteId = site?.id || null;
+    setSelectedSite(siteId);
+    setSiteModalVisible(false);
+    // Le useEffect se chargera de recharger les données
+  };
+
+  const clearSiteFilter = () => {
+    setSelectedSite(null);
+    // Le useEffect se chargera de recharger les données
+  };
+
   useEffect(() => {
     loadSales();
-  }, [dateFilter]);
+  }, [dateFilter, selectedSite]);
+
+  useEffect(() => {
+    loadSites();
+  }, [isSuperuser]);
 
   useEffect(() => {
     if (sales.length > 0) {
@@ -449,10 +505,7 @@ export default function SalesReportScreen({ navigation }: any) {
       >
         <View style={styles.saleHeader}>
           <View style={styles.saleIdContainer}>
-            <Text style={styles.saleId}>Vente #{item.id}</Text>
-            {item.reference && (
-              <Text style={styles.saleReference}>{item.reference}</Text>
-            )}
+            <Text style={styles.saleId}>Vente #{item.reference || item.id}</Text>
           </View>
           <View style={styles.paymentMethodBadge}>
             <Ionicons
@@ -510,6 +563,30 @@ export default function SalesReportScreen({ navigation }: any) {
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
               <Ionicons name="close-circle" size={20} color={theme.colors.neutral[500]} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* ✅ Filtre par site pour les superusers */}
+      {isSuperuser && (
+        <View style={styles.siteFilterContainer}>
+          <TouchableOpacity 
+            style={styles.siteFilterButton}
+            onPress={() => setSiteModalVisible(true)}
+          >
+            <Ionicons name="business-outline" size={16} color={theme.colors.primary[500]} />
+            <Text style={styles.siteFilterText}>
+              {selectedSite ? sites.find(s => s.id === selectedSite)?.site_name : 'Tous les sites'}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+          {selectedSite && (
+            <TouchableOpacity 
+              style={styles.clearSiteButton}
+              onPress={clearSiteFilter}
+            >
+              <Ionicons name="close-circle" size={20} color={theme.colors.error[500]} />
             </TouchableOpacity>
           )}
         </View>
@@ -800,6 +877,50 @@ export default function SalesReportScreen({ navigation }: any) {
           </>
         )}
       </ScrollView>
+
+      {/* ✅ Site Selection Modal pour les superusers */}
+      {isSuperuser && (
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={siteModalVisible}
+          onRequestClose={() => setSiteModalVisible(false)}
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setSiteModalVisible(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Sélectionner un site</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            
+            <ScrollView style={styles.modalContent}>
+              <TouchableOpacity
+                style={styles.siteOption}
+                onPress={() => handleSiteSelect(null)}
+              >
+                <Text style={styles.siteOptionText}>Tous les sites</Text>
+                {!selectedSite && <Ionicons name="checkmark" size={20} color={theme.colors.success[500]} />}
+              </TouchableOpacity>
+              
+              {sites.map((site) => (
+                <TouchableOpacity
+                  key={site.id}
+                  style={styles.siteOption}
+                  onPress={() => handleSiteSelect(site)}
+                >
+                  <View>
+                    <Text style={styles.siteOptionText}>{site.site_name}</Text>
+                    <Text style={styles.siteOptionSubtext}>{site.nom_societe}</Text>
+                  </View>
+                  {selectedSite === site.id && <Ionicons name="checkmark" size={20} color={theme.colors.success[500]} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -1195,6 +1316,79 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: theme.colors.primary[600],
+  },
+  siteFilterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: theme.colors.background.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+    gap: 8,
+  },
+  siteFilterButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    gap: 8,
+  },
+  siteFilterText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+  },
+  clearSiteButton: {
+    padding: 4,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background.primary,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  siteOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+  },
+  siteOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+  },
+  siteOptionSubtext: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
   },
 });
 

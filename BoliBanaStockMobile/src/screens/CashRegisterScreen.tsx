@@ -436,7 +436,7 @@ export default function CashRegisterScreen({ navigation }: any) {
             parseInt(item.productId), 
             item.quantity, 
             sale.id,
-            `Vente #${sale.id}`
+            `Vente #${sale.reference || sale.id}`
           );
         } catch (error) {
           console.error(`❌ Erreur retrait stock pour produit ${item.productId}:`, error);
@@ -453,7 +453,7 @@ export default function CashRegisterScreen({ navigation }: any) {
       clearSalesCartDraft();
       
       // Message de succès adapté au mode de paiement
-      let successMessage = `Vente #${sale.id} enregistrée avec succès !\n\n${totalItems} articles\nTotal: ${totalValue.toLocaleString()} FCFA`;
+      let successMessage = `Vente #${sale.reference || sale.id} enregistrée avec succès !\n\n${totalItems} articles\nTotal: ${totalValue.toLocaleString()} FCFA`;
       
       // Utiliser customerOverride si fourni (pour éviter les problèmes de state asynchrone)
       const customerForDisplay = customerOverride || selectedCustomer;

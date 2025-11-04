@@ -147,7 +147,7 @@ export default function NewSaleScreen({ navigation }: any) {
       
       Alert.alert(
         'Vente créée',
-        `Vente #${sale.id} créée avec succès\nMontant total: ${getTotalAmount().toLocaleString()} FCFA`,
+        `Vente #${sale.reference || sale.id} créée avec succès\nMontant total: ${getTotalAmount().toLocaleString()} FCFA`,
         [
           {
             text: 'Voir la vente',

@@ -8,11 +8,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
-import { transactionService, saleService } from '../services/api';
+import { transactionService, saleService, siteService } from '../services/api';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 
 interface Transaction {
   id: number;
@@ -53,44 +55,268 @@ export default function TransactionsScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterContext>('all');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
+  const [hasMoreSales, setHasMoreSales] = useState(false);
+  const [transactionPage, setTransactionPage] = useState(1);
+  const [salesPage, setSalesPage] = useState(1);
+  
+  // ✅ Filtre par site pour les superusers
+  const { isSuperuser } = useUserPermissions();
+  const [sites, setSites] = useState<any[]>([]);
+  const [selectedSite, setSelectedSite] = useState<number | null>(null);
+  const [siteModalVisible, setSiteModalVisible] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (page: number = 1, append: boolean = false) => {
     try {
-      setLoading(true);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setTransactionPage(1);
+        setSalesPage(1);
+      }
       
       // Charger les transactions
-      const transactionsData = await transactionService.getTransactions({
-        page: 1,
-        page_size: 30, // économie de data
-      });
+      const transactionParams: any = {
+        page: page,
+        page_size: 20, // économie de data
+      };
+      
+      // Ajouter le filtre par site pour les superusers
+      if (isSuperuser && selectedSite) {
+        transactionParams.site_configuration = selectedSite;
+        console.log('🔍 Filtre transactions (loadData) par site appliqué:', selectedSite);
+      } else {
+        console.log('🔍 Aucun filtre transactions (loadData) par site (superuser:', isSuperuser, ', selectedSite:', selectedSite, ')');
+      }
+      
+      console.log('📡 Paramètres transactions (loadData) API:', transactionParams);
+      const transactionsData = await transactionService.getTransactions(transactionParams);
       
       // Adapter selon le format de la réponse (liste ou pagination)
-      const transactionsList = Array.isArray(transactionsData) 
-        ? transactionsData 
-        : transactionsData.results || transactionsData.transactions || [];
+      let transactionsList: Transaction[] = [];
+      let hasMoreTx = false;
       
-      setTransactions(transactionsList);
+      if (Array.isArray(transactionsData)) {
+        transactionsList = transactionsData;
+        hasMoreTx = false;
+      } else {
+        transactionsList = transactionsData.results || transactionsData.transactions || [];
+        hasMoreTx = !!transactionsData.next;
+      }
+      
+      if (append) {
+        // Éviter les doublons en filtrant les transactions déjà présentes
+        setTransactions(prev => {
+          const existingIds = new Set(prev.map(t => t.id));
+          const newTransactions = transactionsList.filter(t => !existingIds.has(t.id));
+          return [...prev, ...newTransactions];
+        });
+      } else {
+        setTransactions(transactionsList);
+      }
+      setHasMoreTransactions(hasMoreTx);
+      if (!append) {
+        setTransactionPage(1);
+      }
       
       // Charger les ventes récentes (économie de data)
-      const salesData = await saleService.getSales({ page: 1, page_size: 30 });
-      const salesList = Array.isArray(salesData) ? salesData : salesData.results || salesData.sales || [];
-      setSales(salesList);
+      const salesParams: any = {
+        page: page,
+        page_size: 20,
+      };
+      
+      // Ajouter le filtre par site pour les superusers
+      if (isSuperuser && selectedSite) {
+        salesParams.site_configuration = selectedSite;
+        console.log('🔍 Filtre ventes (loadData) par site appliqué:', selectedSite);
+      } else {
+        console.log('🔍 Aucun filtre ventes (loadData) par site (superuser:', isSuperuser, ', selectedSite:', selectedSite, ')');
+      }
+      
+      console.log('📡 Paramètres ventes (loadData) API:', salesParams);
+      const salesData = await saleService.getSales(salesParams);
+      let salesList: Sale[] = [];
+      let hasMoreS = false;
+      
+      if (Array.isArray(salesData)) {
+        salesList = salesData;
+        hasMoreS = false;
+      } else {
+        salesList = salesData.results || salesData.sales || [];
+        hasMoreS = !!salesData.next;
+      }
+      
+      if (append) {
+        // Éviter les doublons en filtrant les ventes déjà présentes
+        setSales(prev => {
+          const existingIds = new Set(prev.map(s => s.id));
+          const newSales = salesList.filter(s => !existingIds.has(s.id));
+          return [...prev, ...newSales];
+        });
+      } else {
+        setSales(salesList);
+      }
+      setHasMoreSales(hasMoreS);
+      if (!append) {
+        setSalesPage(1);
+      }
     } catch (error: any) {
       console.error('❌ Erreur chargement données:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMoreTransactions = async () => {
+    if (!hasMoreTransactions || loadingMore || loading) return;
+    
+    const nextPage = transactionPage + 1;
+    setTransactionPage(nextPage);
+    
+    try {
+      setLoadingMore(true);
+      const transactionParams: any = {
+        page: nextPage,
+        page_size: 20,
+      };
+      
+      // Ajouter le filtre par site pour les superusers
+      if (isSuperuser && selectedSite) {
+        transactionParams.site_configuration = selectedSite;
+        console.log('🔍 Filtre transactions (loadMore) par site appliqué:', selectedSite);
+      } else {
+        console.log('🔍 Aucun filtre transactions (loadMore) par site (superuser:', isSuperuser, ', selectedSite:', selectedSite, ')');
+      }
+      
+      console.log('📡 Paramètres transactions (loadMore) API:', transactionParams);
+      const transactionsData = await transactionService.getTransactions(transactionParams);
+      
+      let transactionsList: Transaction[] = [];
+      let hasMoreTx = false;
+      
+      if (Array.isArray(transactionsData)) {
+        transactionsList = transactionsData;
+        hasMoreTx = false;
+      } else {
+        transactionsList = transactionsData.results || transactionsData.transactions || [];
+        hasMoreTx = !!transactionsData.next;
+      }
+      
+      // Éviter les doublons en filtrant les transactions déjà présentes
+      setTransactions(prev => {
+        const existingIds = new Set(prev.map(t => t.id));
+        const newTransactions = transactionsList.filter(t => !existingIds.has(t.id));
+        return [...prev, ...newTransactions];
+      });
+      setHasMoreTransactions(hasMoreTx);
+    } catch (error: any) {
+      console.error('❌ Erreur chargement transactions:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMoreSales = async () => {
+    if (!hasMoreSales || loadingMore || loading) return;
+    
+    const nextPage = salesPage + 1;
+    setSalesPage(nextPage);
+    
+    try {
+      setLoadingMore(true);
+      const salesParams: any = {
+        page: nextPage,
+        page_size: 20,
+      };
+      
+      // Ajouter le filtre par site pour les superusers
+      if (isSuperuser && selectedSite) {
+        salesParams.site_configuration = selectedSite;
+        console.log('🔍 Filtre ventes (loadData) par site appliqué:', selectedSite);
+      } else {
+        console.log('🔍 Aucun filtre ventes (loadData) par site (superuser:', isSuperuser, ', selectedSite:', selectedSite, ')');
+      }
+      
+      console.log('📡 Paramètres ventes (loadData) API:', salesParams);
+      const salesData = await saleService.getSales(salesParams);
+      
+      let salesList: Sale[] = [];
+      let hasMoreS = false;
+      
+      if (Array.isArray(salesData)) {
+        salesList = salesData;
+        hasMoreS = false;
+      } else {
+        salesList = salesData.results || salesData.sales || [];
+        hasMoreS = !!salesData.next;
+      }
+      
+      // Éviter les doublons en filtrant les ventes déjà présentes
+      setSales(prev => {
+        const existingIds = new Set(prev.map(s => s.id));
+        const newSales = salesList.filter(s => !existingIds.has(s.id));
+        return [...prev, ...newSales];
+      });
+      setHasMoreSales(hasMoreS);
+    } catch (error: any) {
+      console.error('❌ Erreur chargement ventes:', error);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(1, false);
     setRefreshing(false);
   };
 
+  // ✅ Charger les sites pour les superusers
+  const loadSites = async () => {
+    if (isSuperuser) {
+      try {
+        const response = await siteService.getSites();
+        if (response.success) {
+          setSites(response.sites || []);
+        }
+      } catch (error) {
+        console.error('❌ Erreur chargement sites:', error);
+      }
+    }
+  };
+
+  const handleSiteSelect = (site: any) => {
+    const siteId = site?.id || null;
+    setSelectedSite(siteId);
+    setSiteModalVisible(false);
+    // Réinitialiser les données
+    setTransactions([]);
+    setSales([]);
+    setTransactionPage(1);
+    setSalesPage(1);
+    // Le useEffect se chargera de recharger les données
+  };
+
+  const clearSiteFilter = () => {
+    setSelectedSite(null);
+    // Réinitialiser les données
+    setTransactions([]);
+    setSales([]);
+    setTransactionPage(1);
+    setSalesPage(1);
+    // Le useEffect se chargera de recharger les données
+  };
+
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(1, false);
+  }, [selectedSite]);
+
+  useEffect(() => {
+    loadSites();
+  }, [isSuperuser]);
 
   // Filtrer les transactions selon le contexte actif
   const getFilteredTransactions = () => {
@@ -149,12 +375,18 @@ export default function TransactionsScreen({ navigation }: any) {
 
     // Insérer des entêtes de date
     const withHeaders: FeedItem[] = [];
+    const seenHeaderLabels = new Set<string>();
     let lastLabel: string | null = null;
+    let headerIndex = 0;
     for (const it of merged) {
       const label = getDateLabel(it.dateISO);
-      if (label !== lastLabel) {
-        withHeaders.push({ kind: 'header', id: `hdr-${it.id}`, label });
+      if (label !== lastLabel && !seenHeaderLabels.has(label)) {
+        // Créer une clé unique et stable pour l'en-tête
+        const headerId = `hdr-${label}-${headerIndex}`;
+        withHeaders.push({ kind: 'header', id: headerId, label });
+        seenHeaderLabels.add(label);
         lastLabel = label;
+        headerIndex++;
       }
       withHeaders.push(it);
     }
@@ -303,7 +535,7 @@ export default function TransactionsScreen({ navigation }: any) {
     >
       <View style={styles.saleHeader}>
         <View style={styles.saleInfo}>
-          <Text style={styles.saleId}>Vente #{item.id}</Text>
+          <Text style={styles.saleId}>Vente #{item.reference || item.id}</Text>
           <Text style={styles.saleDate}>{formatDate((item as any).sale_date || (item as any).date)}</Text>
           <Text style={styles.customerName}>{item.customer_name}</Text>
         </View>
@@ -370,6 +602,27 @@ export default function TransactionsScreen({ navigation }: any) {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                <Text style={styles.loadingMoreText}>Chargement...</Text>
+              </View>
+            ) : hasMoreSales ? (
+              <TouchableOpacity
+                style={styles.loadMoreButton}
+                onPress={loadMoreSales}
+              >
+                <Text style={styles.loadMoreText}>Charger plus</Text>
+              </TouchableOpacity>
+            ) : null
+          }
+          onEndReached={() => {
+            if (hasMoreSales && !loadingMore && !loading) {
+              loadMoreSales();
+            }
+          }}
+          onEndReachedThreshold={0.5}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="cart-outline" size={64} color={theme.colors.neutral[400]} />
@@ -407,6 +660,31 @@ export default function TransactionsScreen({ navigation }: any) {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                <Text style={styles.loadingMoreText}>Chargement...</Text>
+              </View>
+            ) : (hasMoreTransactions || hasMoreSales) ? (
+              <TouchableOpacity
+                style={styles.loadMoreButton}
+                onPress={() => {
+                  if (hasMoreTransactions) loadMoreTransactions();
+                  if (hasMoreSales) loadMoreSales();
+                }}
+              >
+                <Text style={styles.loadMoreText}>Charger plus</Text>
+              </TouchableOpacity>
+            ) : null
+          }
+          onEndReached={() => {
+            if ((hasMoreTransactions || hasMoreSales) && !loadingMore && !loading) {
+              if (hasMoreTransactions) loadMoreTransactions();
+              if (hasMoreSales) loadMoreSales();
+            }
+          }}
+          onEndReachedThreshold={0.5}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="swap-horizontal-outline" size={64} color={theme.colors.neutral[400]} />
@@ -428,6 +706,27 @@ export default function TransactionsScreen({ navigation }: any) {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadingMoreContainer}>
+              <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+              <Text style={styles.loadingMoreText}>Chargement...</Text>
+            </View>
+          ) : hasMoreTransactions ? (
+            <TouchableOpacity
+              style={styles.loadMoreButton}
+              onPress={loadMoreTransactions}
+            >
+              <Text style={styles.loadMoreText}>Charger plus</Text>
+            </TouchableOpacity>
+          ) : null
+        }
+        onEndReached={() => {
+          if (hasMoreTransactions && !loadingMore && !loading) {
+            loadMoreTransactions();
+          }
+        }}
+        onEndReachedThreshold={0.5}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="swap-horizontal-outline" size={64} color={theme.colors.neutral[400]} />
@@ -462,6 +761,31 @@ export default function TransactionsScreen({ navigation }: any) {
         <Text style={styles.title}>Transactions</Text>
         <View style={styles.headerRightPlaceholder} />
       </View>
+      
+      {/* ✅ Filtre par site pour les superusers */}
+      {isSuperuser && (
+        <View style={styles.siteFilterContainer}>
+          <TouchableOpacity 
+            style={styles.siteFilterButton}
+            onPress={() => setSiteModalVisible(true)}
+          >
+            <Ionicons name="business-outline" size={16} color={theme.colors.primary[500]} />
+            <Text style={styles.siteFilterText}>
+              {selectedSite ? sites.find(s => s.id === selectedSite)?.site_name : 'Tous les sites'}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+          {selectedSite && (
+            <TouchableOpacity 
+              style={styles.clearSiteButton}
+              onPress={clearSiteFilter}
+            >
+              <Ionicons name="close-circle" size={20} color={theme.colors.error[500]} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+      
       {/* Filtres par contexte */}
       <View style={styles.filtersContainer}>
         <ScrollView 
@@ -474,13 +798,55 @@ export default function TransactionsScreen({ navigation }: any) {
           <FilterButton context="reception" />
           <FilterButton context="inventory" />
           <FilterButton context="manual" />
-          <FilterButton context="return" />
-          <FilterButton context="correction" />
         </ScrollView>
       </View>
 
       {/* Contenu des onglets */}
       {renderTabContent()}
+
+      {/* ✅ Site Selection Modal pour les superusers */}
+      {isSuperuser && (
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={siteModalVisible}
+          onRequestClose={() => setSiteModalVisible(false)}
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setSiteModalVisible(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Sélectionner un site</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            
+            <ScrollView style={styles.modalContent}>
+              <TouchableOpacity
+                style={styles.siteOption}
+                onPress={() => handleSiteSelect(null)}
+              >
+                <Text style={styles.siteOptionText}>Tous les sites</Text>
+                {!selectedSite && <Ionicons name="checkmark" size={20} color={theme.colors.success[500]} />}
+              </TouchableOpacity>
+              
+              {sites.map((site) => (
+                <TouchableOpacity
+                  key={site.id}
+                  style={styles.siteOption}
+                  onPress={() => handleSiteSelect(site)}
+                >
+                  <View>
+                    <Text style={styles.siteOptionText}>{site.site_name}</Text>
+                    <Text style={styles.siteOptionSubtext}>{site.nom_societe}</Text>
+                  </View>
+                  {selectedSite === site.id && <Ionicons name="checkmark" size={20} color={theme.colors.success[500]} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -811,5 +1177,101 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: theme.colors.primary[600],
+  },
+  loadingMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+  },
+  loadMoreButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: theme.colors.primary[100],
+    borderRadius: 8,
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
+  },
+  siteFilterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: theme.colors.background.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+    gap: 8,
+  },
+  siteFilterButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    gap: 8,
+  },
+  siteFilterText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+  },
+  clearSiteButton: {
+    padding: 4,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background.primary,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  siteOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+  },
+  siteOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+  },
+  siteOptionSubtext: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
   },
 });

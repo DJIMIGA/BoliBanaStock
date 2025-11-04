@@ -9,15 +9,17 @@
     "web": "expo start --web",
     "dev:android": "expo run:android --variant development",
     "dev:ios": "expo run:ios --variant development",
-    "build:dev": "eas build --profile development --platform android",
-    "build:preview": "eas build --profile preview --platform android",
-    "build:prod": "eas build --profile production --platform android",
-    "preview:android": "eas build --profile preview --platform android && eas submit --profile preview --platform android",
+    "build:dev": "npx eas build --profile development --platform android",
+    "build:preview": "npx eas build --profile preview --platform android",
+    "build:prod": "npx eas build --profile production --platform android",
+    "preview:android": "npx eas build --profile preview --platform android && npx eas submit --profile preview --platform android",
     "clean": "expo start --clear",
-    "reset": "expo start --clear --reset-cache"
+    "reset": "expo start --clear --reset-cache",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/art": "^1.2.0",
     "@react-native-picker/picker": "^2.11.1",
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
@@ -33,6 +35,7 @@
     "expo-print": "~15.0.7",
     "expo-sharing": "~14.0.7",
     "expo-status-bar": "~3.0.8",
+    "patch-package": "^8.0.1",
     "react": "19.1.0",
     "react-native": "0.81.4",
     "react-native-barcode-builder": "^2.0.0",
@@ -56,6 +59,7 @@
     "typescript": "~5.9.2"
   },
   "private": true,
+  "license": "MIT",
   "_comment": "🚨 DEPENDANCES CRITIQUES - MIGRATION BARCODE SCANNER",
   "_comment2": "expo-camera: ^16.1.11 - REMPLACE expo-barcode-scanner (déprécié)",
   "_comment3": "redux: ^4.2.1 - Version stable compatible React 19 (pas v5)",

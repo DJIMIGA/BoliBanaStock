@@ -451,14 +451,23 @@ class TransactionSerializer(serializers.ModelSerializer):
             return 'manual'
         
         notes_lower = obj.notes.lower()
+        
+        # Vérifier d'abord si c'est explicitement manuel
+        if 'manuel' in notes_lower or 'manual' in notes_lower:
+            return 'manual'
+        
+        # Ensuite vérifier les autres contextes
         if 'réception' in notes_lower or 'reception' in notes_lower:
             return 'reception'
         elif 'inventaire' in notes_lower or 'inventory' in notes_lower:
             return 'inventory'
         elif 'retour' in notes_lower or 'return' in notes_lower:
             return 'return'
-        elif 'correction' in notes_lower or 'ajustement' in notes_lower:
+        elif 'correction' in notes_lower:
             return 'correction'
+        # Si c'est un ajustement mais pas une correction explicite, c'est manuel
+        elif obj.type == 'adjustment':
+            return 'manual'
         else:
             return 'manual'
     
@@ -497,10 +506,10 @@ class SaleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sale
         fields = [
-            'id', 'customer', 'customer_name', 'sale_date', 'date', 'total_amount', 'payment_method', 'status',
+            'id', 'reference', 'customer', 'customer_name', 'sale_date', 'date', 'total_amount', 'payment_method', 'status',
             'notes', 'created_at', 'updated_at', 'items'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'reference', 'created_at', 'updated_at']
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -556,10 +565,10 @@ class SaleCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sale
         fields = [
-            'id', 'customer', 'total_amount', 'payment_method', 'status', 'notes',
+            'id', 'reference', 'customer', 'total_amount', 'payment_method', 'status', 'notes',
             'sarali_reference', 'amount_given', 'change_amount'
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'reference']
 
 
 class LabelTemplateSerializer(serializers.ModelSerializer):
