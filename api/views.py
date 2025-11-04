@@ -1655,20 +1655,8 @@ class SaleViewSet(viewsets.ModelViewSet):
         if not user_site and not self.request.user.is_superuser:
             raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
         
-        # Valider la référence Sarali AVANT de créer la vente (si mode Sarali)
-        payment_method = self.request.data.get('payment_method')
-        if payment_method == 'sarali':
-            sarali_reference = self.request.data.get('sarali_reference')
-            if not sarali_reference or not sarali_reference.strip():
-                raise ValidationError({
-                    "sarali_reference": "Référence Sarali requise pour ce mode de paiement"
-                })
-            if not CreditService.validate_sarali_reference(sarali_reference.strip()):
-                raise ValidationError({
-                    "sarali_reference": "Format de référence Sarali invalide"
-                })
-        
         # Valider le client pour les ventes à crédit AVANT de créer la vente
+        payment_method = self.request.data.get('payment_method')
         if payment_method == 'credit':
             from apps.inventory.models import Customer
             customer_id = self.request.data.get('customer')
@@ -1747,9 +1735,9 @@ class SaleViewSet(viewsets.ModelViewSet):
                     pass  # Garder les valeurs par défaut
         
         elif payment_method == 'sarali':
-            # Paiement Sarali - la référence a déjà été validée avant la création
+            # Paiement Sarali - la référence est optionnelle
             sarali_reference = self.request.data.get('sarali_reference', '').strip()
-            sale.sarali_reference = sarali_reference
+            sale.sarali_reference = sarali_reference if sarali_reference else None
             sale.amount_paid = total_amount
             sale.payment_status = 'paid'
         

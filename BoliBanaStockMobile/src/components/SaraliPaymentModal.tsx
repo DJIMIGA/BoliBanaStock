@@ -48,25 +48,8 @@ export default function SaraliPaymentModal({
   }, [visible]);
 
   const handleConfirm = () => {
-    if (!reference.trim()) {
-      Alert.alert(
-        'Référence requise',
-        'Veuillez saisir la référence de la transaction Sarali.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    if (reference.length < 6) {
-      Alert.alert(
-        'Référence invalide',
-        'La référence Sarali doit contenir au moins 6 caractères.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    onConfirm(reference.trim());
+    // La référence est maintenant optionnelle
+    onConfirm(reference.trim() || '');
     onClose();
   };
 
@@ -75,7 +58,7 @@ export default function SaraliPaymentModal({
     onClose();
   };
 
-  const isReferenceValid = reference.trim().length >= 6;
+  // La référence est maintenant optionnelle
 
   return (
     <Modal
@@ -124,20 +107,20 @@ export default function SaraliPaymentModal({
 
           {/* Reference Input */}
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>Référence de transaction</Text>
+            <Text style={styles.inputLabel}>Référence de transaction (optionnel)</Text>
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.referenceInput}
                 value={reference}
                 onChangeText={setReference}
-                placeholder="Ex: SAR123456789"
+                placeholder="Ex: SAR123456789 (optionnel)"
                 autoFocus
                 selectTextOnFocus
                 autoCapitalize="characters"
               />
             </View>
             <Text style={styles.inputHelp}>
-              La référence doit contenir au moins 6 caractères
+              La référence est optionnelle. Vous pouvez laisser vide si nécessaire.
             </Text>
           </View>
 
@@ -167,9 +150,8 @@ export default function SaraliPaymentModal({
           {/* Action Buttons */}
           <View style={styles.actionsContainer}>
             <TouchableOpacity
-              style={[styles.confirmButton, !isReferenceValid && styles.confirmButtonDisabled]}
+              style={styles.confirmButton}
               onPress={handleConfirm}
-              disabled={!isReferenceValid}
             >
               <Ionicons name="checkmark-circle" size={20} color="white" />
               <Text style={styles.confirmButtonText}>Confirmer</Text>
