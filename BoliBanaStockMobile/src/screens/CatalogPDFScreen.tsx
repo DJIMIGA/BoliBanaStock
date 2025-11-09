@@ -12,7 +12,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import { WebView } from 'react-native-webview';
 import { useNavigation } from '@react-navigation/native';
@@ -476,11 +475,11 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           console.log(`📥 [PREPARE_IMAGES] Téléchargement de l'image pour ${prod.name}...`);
           
           // Télécharger l'image et la convertir en base64
-          // Utiliser FileSystem pour télécharger et convertir en base64
+          // Utiliser FileSystemLegacy pour télécharger et convertir en base64
           const tempFileName = `temp_image_${prod.id}_${Date.now()}.jpg`;
-          const tempFilePath = `${FileSystem.cacheDirectory}${tempFileName}`;
+          const tempFilePath = `${FileSystemLegacy.cacheDirectory}${tempFileName}`;
           
-          const downloadResult = await FileSystem.downloadAsync(
+          const downloadResult = await FileSystemLegacy.downloadAsync(
             correctedUrl,
             tempFilePath
           );
@@ -490,8 +489,8 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           }
           
           // Lire le fichier en base64
-          const base64data = await FileSystem.readAsStringAsync(downloadResult.uri, {
-            encoding: FileSystem.EncodingType.Base64,
+          const base64data = await FileSystemLegacy.readAsStringAsync(downloadResult.uri, {
+            encoding: FileSystemLegacy.EncodingType.Base64,
           });
           
           // Déterminer le type MIME à partir de l'extension
@@ -506,7 +505,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           
           // Nettoyer le fichier temporaire
           try {
-            await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
+            await FileSystemLegacy.deleteAsync(downloadResult.uri, { idempotent: true });
           } catch (cleanupError) {
             // Ignorer les erreurs de nettoyage
           }
@@ -612,7 +611,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
     // Nettoyer le fichier de prévisualisation temporaire si nécessaire
     if (previewUri && previewUri.includes('preview_')) {
       try {
-        await FileSystem.deleteAsync(previewUri, { idempotent: true });
+        await FileSystemLegacy.deleteAsync(previewUri, { idempotent: true });
         console.log('🗑️ Fichier de prévisualisation supprimé:', previewUri);
       } catch (error) {
         console.warn('⚠️ Impossible de supprimer le fichier de prévisualisation:', error);
