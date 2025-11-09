@@ -3265,11 +3265,17 @@ class CatalogPDFAPIView(APIView):
                 if include_descriptions and product.description:
                     product_data['description'] = product.description
                 
-                if include_images and product.image:
+                if include_images:
                     # Utiliser la fonction helper pour générer l'URL correctement
                     image_url = get_product_image_url(product)
                     if image_url:
                         product_data['image_url'] = image_url
+                    else:
+                        # Logger si le produit a une image mais get_product_image_url retourne None
+                        if product.image:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"⚠️ [CATALOG_PDF] Produit {product.id} ({product.name}) a une image mais get_product_image_url retourne None. Image field: {product.image.name if product.image else 'None'}")
                 
                 catalog_data['products'].append(product_data)
             
