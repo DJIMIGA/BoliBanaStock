@@ -446,6 +446,14 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
         }
         
         // Ensuite, corriger les erreurs de frappe dans les URLs S3
+        // Corriger les erreurs de frappe dans le protocole (httpps://, htttps://, etc.)
+        if (correctedUrl.match(/^htt+p+s*:\/\//)) {
+          const originalUrl = correctedUrl;
+          correctedUrl = correctedUrl.replace(/^htt+p+s*:\/\//, 'https://');
+          if (originalUrl !== correctedUrl) {
+            console.log(`🔧 [PREPARE_IMAGES] Protocole corrigé pour ${prod.name}: ${originalUrl.substring(0, 20)}... -> ${correctedUrl.substring(0, 20)}...`);
+          }
+        }
         if (correctedUrl.includes('bolibana-stockk.s3')) {
           correctedUrl = correctedUrl.replace('bolibana-stockk.s3', 'bolibana-stock.s3');
           console.log(`🔧 [PREPARE_IMAGES] URL corrigée (double k): ${correctedUrl}`);
