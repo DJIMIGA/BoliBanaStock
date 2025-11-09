@@ -32,6 +32,8 @@ def clean_image_path(image_name):
     if not image_name:
         return image_name
     
+    original_path = image_name
+    
     # Détecter et corriger les chemins dupliqués
     # Pattern: assets/products/site-X/assets/products/site-X/filename
     pattern = r'assets/products/([^/]+)/assets/products/([^/]+)/(.+)$'
@@ -41,8 +43,10 @@ def clean_image_path(image_name):
         # Il y a une duplication, garder seulement la dernière partie
         site_id = match.group(2)  # Le site de la deuxième occurrence
         filename = match.group(3)  # Le nom du fichier
-        image_name = f'assets/products/{site_id}/{filename}'
-        print(f"🔧 [clean_image_path] Chemin dupliqué corrigé: {image_name}")
+        cleaned_path = f'assets/products/{site_id}/{filename}'
+        if cleaned_path != original_path:
+            print(f"🔧 [clean_image_path] Chemin dupliqué corrigé: {original_path} -> {cleaned_path}")
+        image_name = cleaned_path
     else:
         # Vérifier aussi les cas avec plusieurs occurrences de /assets/products/
         if image_name.count('/assets/products/') > 1:
@@ -55,8 +59,10 @@ def clean_image_path(image_name):
                 if '/' in last_part:
                     site_and_file = last_part.split('/', 1)
                     if len(site_and_file) == 2:
-                        image_name = f'assets/products/{site_and_file[0]}/{site_and_file[1]}'
-                        print(f"🔧 [clean_image_path] Chemin dupliqué corrigé (split): {image_name}")
+                        cleaned_path = f'assets/products/{site_and_file[0]}/{site_and_file[1]}'
+                        if cleaned_path != original_path:
+                            print(f"🔧 [clean_image_path] Chemin dupliqué corrigé (split): {original_path} -> {cleaned_path}")
+                        image_name = cleaned_path
     
     return image_name
 
