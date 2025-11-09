@@ -4490,14 +4490,14 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if loyalty_serializer:
             for transaction in loyalty_serializer.data:
                 transaction_date = transaction.get('transaction_date', '')
-            logger.info(f"Adding loyalty transaction: {transaction.get('id')}, type: {transaction.get('type')}, date: {transaction_date}")
-            all_transactions.append({
-                **transaction,
-                'transaction_type': 'loyalty',
-                'type_loyalty': transaction.get('type', 'earned'),
-                'date': transaction_date,
-                'formatted_balance_after_loyalty': transaction.get('formatted_balance_after', '')
-            })
+                logger.info(f"Adding loyalty transaction: {transaction.get('id')}, type: {transaction.get('type')}, date: {transaction_date}")
+                all_transactions.append({
+                    **transaction,
+                    'transaction_type': 'loyalty',
+                    'type_loyalty': transaction.get('type', 'earned'),
+                    'date': transaction_date,
+                    'formatted_balance_after_loyalty': transaction.get('formatted_balance_after', '')
+                })
         
         loyalty_count = len(loyalty_serializer.data) if loyalty_serializer else 0
         logger.info(f"Total transactions after merge: {len(all_transactions)} (Credit: {len(credit_serializer.data)}, Loyalty: {loyalty_count})")
