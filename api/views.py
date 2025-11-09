@@ -34,15 +34,37 @@ from .serializers import (
     LabelTemplateSerializer, LabelBatchSerializer, UserSerializer,
     LoginSerializer, RefreshTokenSerializer, ProductScanSerializer,
     StockUpdateSerializer, SaleCreateSerializer, LabelBatchCreateSerializer,
-    LoyaltyProgramSerializer, LoyaltyTransactionSerializer,
     LoyaltyAccountCreateSerializer, LoyaltyPointsCalculateSerializer
 )
+# Import conditionnel des serializers loyalty
+try:
+    from .serializers import LoyaltyProgramSerializer, LoyaltyTransactionSerializer
+    LOYALTY_SERIALIZERS_AVAILABLE = True
+except (ImportError, AttributeError):
+    LOYALTY_SERIALIZERS_AVAILABLE = False
+    LoyaltyProgramSerializer = None
+    LoyaltyTransactionSerializer = None
+
 from apps.inventory.models import Product, Category, Brand, Transaction, LabelTemplate, LabelBatch, LabelItem, Barcode, Customer
 from apps.inventory.utils import generate_ean13_from_cug
 from apps.sales.models import Sale, SaleItem, CreditTransaction
 from apps.sales.services import CreditService
-from apps.loyalty.models import LoyaltyProgram, LoyaltyTransaction
-from apps.loyalty.services import LoyaltyService
+# Import conditionnel de l'application loyalty
+try:
+    from apps.loyalty.models import LoyaltyProgram, LoyaltyTransaction
+    LOYALTY_APP_AVAILABLE = True
+except ImportError:
+    LOYALTY_APP_AVAILABLE = False
+    LoyaltyProgram = None
+    LoyaltyTransaction = None
+
+# Import conditionnel de LoyaltyService
+try:
+    from apps.loyalty.services import LoyaltyService
+    LOYALTY_SERVICE_AVAILABLE = True
+except ImportError:
+    LOYALTY_SERVICE_AVAILABLE = False
+    LoyaltyService = None
 from apps.core.views import ConfigurationUpdateView, ParametreListView, ParametreUpdateView
 from django.http import JsonResponse
 from django.core.files.base import ContentFile
@@ -4438,13 +4460,19 @@ class CustomerViewSet(viewsets.ModelViewSet):
         credit_serializer = CreditTransactionSerializer(credit_transactions, many=True, context={'request': request})
         
         # Récupérer les transactions de fidélité
-        loyalty_transactions = LoyaltyTransaction.objects.filter(
-            customer=customer
+        if not LOYALTY_APP_AVAILABLE:
+            loyalty_transactions = []
+        else:
+            loyalty_transactions = LoyaltyTransaction.objects.filter(
+                customer=customer
         ).select_related('sale', 'site_configuration').order_by('-transaction_date')[:limit]
-        loyalty_serializer = LoyaltyTransactionSerializer(loyalty_transactions, many=True, context={'request': request})
+            loyalty_serializer = LoyaltyTransactionSerializer(loyalty_transactions, many=True, context={'request': request}) if LOYALTY_SERIALIZERS_AVAILABLE else None
+        else:
+            loyalty_serializer = None
         
         # Debug: logger le nombre de transactions
-        logger.info(f"Customer {customer.id}: Credit transactions: {len(credit_serializer.data)}, Loyalty transactions: {len(loyalty_serializer.data)}")
+        loyalty_count = len(loyalty_serializer.data) if loyalty_serializer else 0
+        logger.info(f"Customer {customer.id}: Credit transactions: {len(credit_serializer.data)}, Loyalty transactions: {loyalty_count}")
         
         # Fusionner et trier par date (plus récent en premier)
         all_transactions = []
@@ -4459,8 +4487,9 @@ class CustomerViewSet(viewsets.ModelViewSet):
             })
         
         # Ajouter les transactions de fidélité avec un type
-        for transaction in loyalty_serializer.data:
-            transaction_date = transaction.get('transaction_date', '')
+        if loyalty_serializer:
+            for transaction in loyalty_serializer.data:
+                transaction_date = transaction.get('transaction_date', '')
             logger.info(f"Adding loyalty transaction: {transaction.get('id')}, type: {transaction.get('type')}, date: {transaction_date}")
             all_transactions.append({
                 **transaction,
@@ -4470,7 +4499,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
                 'formatted_balance_after_loyalty': transaction.get('formatted_balance_after', '')
             })
         
-        logger.info(f"Total transactions after merge: {len(all_transactions)} (Credit: {len(credit_serializer.data)}, Loyalty: {len(loyalty_serializer.data)})")
+        loyalty_count = len(loyalty_serializer.data) if loyalty_serializer else 0
+        logger.info(f"Total transactions after merge: {len(all_transactions)} (Credit: {len(credit_serializer.data)}, Loyalty: {loyalty_count})")
         
         # Trier par date décroissante en utilisant les objets datetime directement
         from datetime import datetime
@@ -4588,8 +4618,11 @@ class CustomerViewSet(viewsets.ModelViewSet):
         credit_transactions_count = customer.credit_transactions.count()
         
         # Vérifier les transactions de fidélité
-        from apps.loyalty.models import LoyaltyTransaction
-        loyalty_transactions_count = LoyaltyTransaction.objects.filter(customer=customer).count()
+        if LOYALTY_APP_AVAILABLE:
+            from apps.loyalty.models import LoyaltyTransaction
+            loyalty_transactions_count = LoyaltyTransaction.objects.filter(customer=customer).count()
+        else:
+            loyalty_transactions_count = 0
         
         # Si le client a des ventes ou commandes, on ne peut pas le supprimer
         if sales_count > 0 or orders_count > 0:

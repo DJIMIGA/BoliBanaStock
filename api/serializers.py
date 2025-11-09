@@ -1,13 +1,21 @@
 from rest_framework import serializers
 from apps.inventory.models import Product, Category, Brand, Transaction, Barcode, LabelTemplate, LabelBatch, LabelItem
 from apps.sales.models import Sale, SaleItem, Customer, CreditTransaction
-from apps.loyalty.models import LoyaltyProgram, LoyaltyTransaction
 from apps.core.models import Configuration
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import os
 import re
 from bolibanastock.local_storage import get_current_local_site_storage
+
+# Import conditionnel de l'application loyalty si elle existe
+try:
+    from apps.loyalty.models import LoyaltyProgram, LoyaltyTransaction
+    LOYALTY_APP_AVAILABLE = True
+except ImportError:
+    LOYALTY_APP_AVAILABLE = False
+    LoyaltyProgram = None
+    LoyaltyTransaction = None
 
 User = get_user_model()
 
@@ -744,37 +752,42 @@ class RefreshTokenSerializer(serializers.Serializer):
     refresh = serializers.CharField()
 
 
-class LoyaltyProgramSerializer(serializers.ModelSerializer):
-    """Serializer pour le programme de fidélité"""
-    site_name = serializers.CharField(source='site_configuration.site_name', read_only=True)
-    
-    class Meta:
-        model = LoyaltyProgram
-        fields = [
-            'id', 'site_configuration', 'site_name', 'points_per_amount', 
-            'amount_for_points', 'amount_per_point', 'is_active', 
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+if LOYALTY_APP_AVAILABLE:
+    class LoyaltyProgramSerializer(serializers.ModelSerializer):
+        """Serializer pour le programme de fidélité"""
+        site_name = serializers.CharField(source='site_configuration.site_name', read_only=True)
+        
+        class Meta:
+            model = LoyaltyProgram
+            fields = [
+                'id', 'site_configuration', 'site_name', 'points_per_amount', 
+                'amount_for_points', 'amount_per_point', 'is_active', 
+                'created_at', 'updated_at'
+            ]
+            read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class LoyaltyTransactionSerializer(serializers.ModelSerializer):
-    """Serializer pour les transactions de fidélité"""
-    type_display = serializers.CharField(source='get_type_display', read_only=True)
-    formatted_points = serializers.CharField(read_only=True)
-    formatted_balance_after = serializers.CharField(read_only=True)
-    customer_name = serializers.CharField(source='customer.__str__', read_only=True)
-    sale_reference = serializers.CharField(source='sale.reference', read_only=True)
-    
-    class Meta:
-        model = LoyaltyTransaction
-        fields = [
-            'id', 'customer', 'customer_name', 'sale', 'sale_reference', 
-            'type', 'type_display', 'points', 'formatted_points',
-            'balance_after', 'formatted_balance_after', 'transaction_date', 
-            'notes', 'site_configuration'
-        ]
-        read_only_fields = ['id', 'transaction_date']
+    class LoyaltyTransactionSerializer(serializers.ModelSerializer):
+        """Serializer pour les transactions de fidélité"""
+        type_display = serializers.CharField(source='get_type_display', read_only=True)
+        formatted_points = serializers.CharField(read_only=True)
+        formatted_balance_after = serializers.CharField(read_only=True)
+        customer_name = serializers.CharField(source='customer.__str__', read_only=True)
+        sale_reference = serializers.CharField(source='sale.reference', read_only=True)
+        
+        class Meta:
+            model = LoyaltyTransaction
+            fields = [
+                'id', 'customer', 'customer_name', 'sale', 'sale_reference', 
+                'type', 'type_display', 'points', 'formatted_points',
+                'balance_after', 'formatted_balance_after', 'transaction_date', 
+                'notes', 'site_configuration'
+            ]
+            read_only_fields = ['id', 'transaction_date']
+else:
+    # Placeholders si l'application loyalty n'est pas disponible
+    LoyaltyProgramSerializer = None
+    LoyaltyTransactionSerializer = None
 
 
 class LoyaltyAccountCreateSerializer(serializers.Serializer):
