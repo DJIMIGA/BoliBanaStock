@@ -2752,12 +2752,17 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def create_batch(self, request):
         """Créer un lot d'étiquettes"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         user_site = request.user.site_configuration
         if not user_site and not request.user.is_superuser:
+            logger.error(f"❌ [CREATE_BATCH] Aucun site configuré pour l'utilisateur {request.user.id}")
             raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
 
         # Créer un dictionnaire modifiable à partir de request.data
         request_data = dict(request.data)
+        logger.info(f"📥 [CREATE_BATCH] Données reçues: {request_data}")
         
         # Nettoyer la valeur 'channel' pour éviter les problèmes d'encodage
         if 'channel' in request_data:
@@ -2767,14 +2772,15 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
             # Forcer les valeurs valides uniquement
             valid_channels = ['escpos', 'tsc', 'pdf']
             if channel_value not in valid_channels:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Channel invalide reçu: {repr(request_data['channel'])}, valeur nettoyée: {repr(channel_value)}, utilisation de 'escpos'")
+                logger.warning(f"⚠️ [CREATE_BATCH] Channel invalide reçu: {repr(request_data['channel'])}, valeur nettoyée: {repr(channel_value)}, utilisation de 'escpos'")
                 channel_value = 'escpos'
             # Remplacer la valeur dans request_data
             request_data['channel'] = channel_value
 
         data = LabelBatchCreateSerializer(data=request_data)
+        if not data.is_valid():
+            logger.error(f"❌ [CREATE_BATCH] Erreur de validation: {data.errors}")
+            logger.error(f"❌ [CREATE_BATCH] Données reçues: {request_data}")
         data.is_valid(raise_exception=True)
         payload = data.validated_data
 
