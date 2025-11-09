@@ -1,13 +1,56 @@
 from rest_framework import serializers
 from apps.inventory.models import Product, Category, Brand, Transaction, Barcode, LabelTemplate, LabelBatch, LabelItem
 from apps.sales.models import Sale, SaleItem, Customer, CreditTransaction
+from apps.loyalty.models import LoyaltyProgram, LoyaltyTransaction
 from apps.core.models import Configuration
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import os
+import re
 from bolibanastock.local_storage import get_current_local_site_storage
 
 User = get_user_model()
+
+
+def clean_image_path(image_name):
+    """Nettoie le chemin d'image en supprimant les duplications.
+    
+    Args:
+        image_name: Le nom du chemin de l'image (ex: 'assets/products/site-18/assets/products/site-18/file.jpg')
+    
+    Returns:
+        Le chemin nettoyé (ex: 'assets/products/site-18/file.jpg')
+    """
+    if not image_name:
+        return image_name
+    
+    # Détecter et corriger les chemins dupliqués
+    # Pattern: assets/products/site-X/assets/products/site-X/filename
+    pattern = r'assets/products/([^/]+)/assets/products/([^/]+)/(.+)$'
+    match = re.search(pattern, image_name)
+    
+    if match:
+        # Il y a une duplication, garder seulement la dernière partie
+        site_id = match.group(2)  # Le site de la deuxième occurrence
+        filename = match.group(3)  # Le nom du fichier
+        image_name = f'assets/products/{site_id}/{filename}'
+        print(f"🔧 [clean_image_path] Chemin dupliqué corrigé: {image_name}")
+    else:
+        # Vérifier aussi les cas avec plusieurs occurrences de /assets/products/
+        if image_name.count('/assets/products/') > 1:
+            # Extraire seulement la dernière partie après le dernier /assets/products/
+            parts = image_name.split('/assets/products/')
+            if len(parts) > 1:
+                # Garder seulement la dernière partie
+                last_part = parts[-1]
+                # Reconstruire le chemin correct
+                if '/' in last_part:
+                    site_and_file = last_part.split('/', 1)
+                    if len(site_and_file) == 2:
+                        image_name = f'assets/products/{site_and_file[0]}/{site_and_file[1]}'
+                        print(f"🔧 [clean_image_path] Chemin dupliqué corrigé (split): {image_name}")
+    
+    return image_name
 
 
 class BarcodeSerializer(serializers.ModelSerializer):
@@ -82,7 +125,9 @@ class ProductSerializer(serializers.ModelSerializer):
                 from django.conf import settings
                 if getattr(settings, 'AWS_S3_ENABLED', False):
                     region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
-                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{image_field.name}"
+                    # Nettoyer le chemin pour éviter les duplications
+                    cleaned_path = clean_image_path(image_field.name)
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{cleaned_path}"
                 else:
                     request = self.context.get('request')
                     url = image_field.url
@@ -93,7 +138,8 @@ class ProductSerializer(serializers.ModelSerializer):
                             return request.build_absolute_uri(url)
                     media_url = getattr(settings, 'MEDIA_URL', '/media/')
                     if media_url.startswith('http'):
-                        return f"{media_url.rstrip('/')}/{image_field.name}"
+                        cleaned_path = clean_image_path(image_field.name)
+                        return f"{media_url.rstrip('/')}/{cleaned_path}"
                     return f"https://web-production-e896b.up.railway.app{url}"
             except (ValueError, AttributeError) as e:
                 print(f"⚠️ Erreur dans get_image_url: {e}")
@@ -226,7 +272,9 @@ class ProductListSerializer(serializers.ModelSerializer):
                 from django.conf import settings
                 if getattr(settings, 'AWS_S3_ENABLED', False):
                     region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
-                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{image_field.name}"
+                    # Nettoyer le chemin pour éviter les duplications
+                    cleaned_path = clean_image_path(image_field.name)
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{cleaned_path}"
                 else:
                     request = self.context.get('request')
                     url = image_field.url
@@ -237,7 +285,8 @@ class ProductListSerializer(serializers.ModelSerializer):
                             return request.build_absolute_uri(url)
                     media_url = getattr(settings, 'MEDIA_URL', '/media/')
                     if media_url.startswith('http'):
-                        return f"{media_url.rstrip('/')}/{image_field.name}"
+                        cleaned_path = clean_image_path(image_field.name)
+                        return f"{media_url.rstrip('/')}/{cleaned_path}"
                     return f"https://web-production-e896b.up.railway.app{url}"
             except (ValueError, AttributeError) as e:
                 print(f"⚠️ Erreur dans get_image_url: {e}")
@@ -435,8 +484,9 @@ class TransactionSerializer(serializers.ModelSerializer):
     context = serializers.SerializerMethodField()
     
     def get_sale_reference(self, obj):
+        """Retourne la référence de la vente, ou l'ID si la référence n'existe pas"""
         if obj.sale:
-            return f"Vente #{obj.sale.id}"
+            return obj.sale.reference or str(obj.sale.id)
         return None
     
     def get_is_sale_transaction(self, obj):
@@ -484,18 +534,30 @@ class TransactionSerializer(serializers.ModelSerializer):
 class SaleItemSerializer(serializers.ModelSerializer):
     """Serializer pour les éléments de vente"""
     product_name = serializers.CharField(source='product.name', read_only=True)
+    product_cug = serializers.CharField(source='product.cug', read_only=True)
     total_price = serializers.DecimalField(source='amount', max_digits=10, decimal_places=2, read_only=True)
+    # Marges calculées sur le prix de caisse (unit_price) plutôt que sur le prix de vente fixe
+    margin = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    total_margin = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    margin_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     
     class Meta:
         model = SaleItem
-        fields = ['id', 'sale', 'product', 'product_name', 'quantity', 'unit_price', 'amount', 'total_price']
+        fields = ['id', 'sale', 'product', 'product_name', 'product_cug', 'quantity', 'unit_price', 'amount', 'total_price', 'margin', 'total_margin', 'margin_percentage']
 
 
 class SaleSerializer(serializers.ModelSerializer):
     """Serializer pour les ventes"""
     items = SaleItemSerializer(many=True, read_only=True)
     customer_name = serializers.SerializerMethodField()
+    customer_data = serializers.SerializerMethodField()
     date = serializers.DateTimeField(source='sale_date', read_only=True)
+    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    # Marges calculées sur les prix de caisse réels
+    total_margin = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    average_margin_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    # Chiffre d'affaires basé sur les prix de caisse réels (total_amount utilise déjà unit_price)
+    revenue = serializers.DecimalField(source='total_amount', max_digits=10, decimal_places=2, read_only=True)
     
     def get_customer_name(self, obj):
         """Retourne le nom complet du client ou 'Anonyme' si pas de client"""
@@ -503,21 +565,33 @@ class SaleSerializer(serializers.ModelSerializer):
             return f"{obj.customer.name or ''} {obj.customer.first_name or ''}".strip() or 'Client sans nom'
         return 'Anonyme'
     
+    def get_customer_data(self, obj):
+        """Retourne les données complètes du client si disponible"""
+        if obj.customer:
+            return CustomerSerializer(obj.customer, context=self.context).data
+        return None
+    
     class Meta:
         model = Sale
         fields = [
-            'id', 'reference', 'customer', 'customer_name', 'sale_date', 'date', 'total_amount', 'payment_method', 'status',
-            'notes', 'created_at', 'updated_at', 'items'
+            'id', 'reference', 'customer', 'customer_name', 'customer_data', 'sale_date', 'date', 
+            'subtotal', 'total_amount', 'revenue', 'discount_amount', 'loyalty_discount_amount',
+            'loyalty_points_earned', 'loyalty_points_used',
+            'total_margin', 'average_margin_percentage',
+            'payment_method', 'status', 'notes', 'created_at', 'updated_at', 'items'
         ]
         read_only_fields = ['id', 'reference', 'created_at', 'updated_at']
 
 
 class CustomerSerializer(serializers.ModelSerializer):
-    """Serializer pour les clients avec gestion du crédit"""
+    """Serializer pour les clients avec gestion du crédit et fidélité"""
     credit_balance_formatted = serializers.CharField(source='formatted_credit_balance', read_only=True)
     has_credit_debt = serializers.BooleanField(read_only=True)
     credit_debt_amount = serializers.DecimalField(max_digits=12, decimal_places=0, read_only=True)
     recent_credit_transactions = serializers.SerializerMethodField()
+    loyalty_points = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    is_loyalty_member = serializers.BooleanField(required=False, allow_null=True)
+    loyalty_joined_at = serializers.DateTimeField(read_only=True)
     
     class Meta:
         model = Customer
@@ -525,9 +599,26 @@ class CustomerSerializer(serializers.ModelSerializer):
             'id', 'name', 'first_name', 'phone', 'email', 'address', 
             'credit_balance', 'credit_limit', 'is_active', 'created_at',
             'credit_balance_formatted', 'has_credit_debt', 'credit_debt_amount',
-            'recent_credit_transactions'
+            'recent_credit_transactions', 'loyalty_points', 'is_loyalty_member', 'loyalty_joined_at'
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'created_at', 'loyalty_points', 'loyalty_joined_at']
+    
+    def update(self, instance, validated_data):
+        """Mise à jour personnalisée pour gérer la désinscription à la fidélité"""
+        is_loyalty_member = validated_data.pop('is_loyalty_member', None)
+        
+        # Si on désinscrit le client (is_loyalty_member = False)
+        if is_loyalty_member is False and instance.is_loyalty_member:
+            instance.is_loyalty_member = False
+            # Ne pas réinitialiser les points, juste désinscrire
+            # instance.loyalty_points = Decimal('0.00')  # Optionnel : réinitialiser les points
+        
+        # Mettre à jour les autres champs
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        instance.save()
+        return instance
     
     def get_recent_credit_transactions(self, obj):
         """Retourne les 5 dernières transactions de crédit"""
@@ -541,8 +632,14 @@ class CreditTransactionSerializer(serializers.ModelSerializer):
     formatted_amount = serializers.CharField(read_only=True)
     formatted_balance_after = serializers.CharField(read_only=True)
     customer_name = serializers.CharField(source='customer.__str__', read_only=True)
-    sale_reference = serializers.CharField(source='sale.reference', read_only=True)
+    sale_reference = serializers.SerializerMethodField()
     user_name = serializers.CharField(source='user.username', read_only=True)
+    
+    def get_sale_reference(self, obj):
+        """Retourne la référence de la vente, ou l'ID si la référence n'existe pas"""
+        if obj.sale:
+            return obj.sale.reference or str(obj.sale.id)
+        return None
     
     class Meta:
         model = CreditTransaction
@@ -645,3 +742,66 @@ class LoginSerializer(serializers.Serializer):
 class RefreshTokenSerializer(serializers.Serializer):
     """Serializer pour le refresh token"""
     refresh = serializers.CharField()
+
+
+class LoyaltyProgramSerializer(serializers.ModelSerializer):
+    """Serializer pour le programme de fidélité"""
+    site_name = serializers.CharField(source='site_configuration.site_name', read_only=True)
+    
+    class Meta:
+        model = LoyaltyProgram
+        fields = [
+            'id', 'site_configuration', 'site_name', 'points_per_amount', 
+            'amount_for_points', 'amount_per_point', 'is_active', 
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class LoyaltyTransactionSerializer(serializers.ModelSerializer):
+    """Serializer pour les transactions de fidélité"""
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+    formatted_points = serializers.CharField(read_only=True)
+    formatted_balance_after = serializers.CharField(read_only=True)
+    customer_name = serializers.CharField(source='customer.__str__', read_only=True)
+    sale_reference = serializers.CharField(source='sale.reference', read_only=True)
+    
+    class Meta:
+        model = LoyaltyTransaction
+        fields = [
+            'id', 'customer', 'customer_name', 'sale', 'sale_reference', 
+            'type', 'type_display', 'points', 'formatted_points',
+            'balance_after', 'formatted_balance_after', 'transaction_date', 
+            'notes', 'site_configuration'
+        ]
+        read_only_fields = ['id', 'transaction_date']
+
+
+class LoyaltyAccountCreateSerializer(serializers.Serializer):
+    """Serializer pour créer un compte de fidélité"""
+    phone = serializers.CharField(max_length=20, required=True)
+    name = serializers.CharField(max_length=100, required=True)
+    first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+
+class LoyaltyPointsCalculateSerializer(serializers.Serializer):
+    """Serializer pour calculer les points"""
+    amount = serializers.DecimalField(max_digits=12, decimal_places=0, required=False, allow_null=True)
+    points = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+    
+    def validate(self, data):
+        """Valider qu'au moins un des deux champs est fourni"""
+        amount = data.get('amount')
+        points = data.get('points')
+        
+        if not amount and not points:
+            raise serializers.ValidationError({
+                'error': 'Vous devez fournir soit un montant (amount) soit des points (points)'
+            })
+        
+        if amount and points:
+            raise serializers.ValidationError({
+                'error': 'Vous ne pouvez fournir qu\'un seul champ à la fois : soit amount, soit points'
+            })
+        
+        return data

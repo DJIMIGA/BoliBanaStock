@@ -25,6 +25,7 @@ from apps.core.services import (
     can_user_manage_category_quick, can_user_create_category_quick, can_user_delete_category_quick
 )
 from django.db import transaction
+from decimal import Decimal
 
 from .serializers import (
     ProductSerializer, ProductListSerializer, CategorySerializer, BrandSerializer,
@@ -32,12 +33,16 @@ from .serializers import (
     CustomerSerializer, CreditTransactionSerializer,
     LabelTemplateSerializer, LabelBatchSerializer, UserSerializer,
     LoginSerializer, RefreshTokenSerializer, ProductScanSerializer,
-    StockUpdateSerializer, SaleCreateSerializer, LabelBatchCreateSerializer
+    StockUpdateSerializer, SaleCreateSerializer, LabelBatchCreateSerializer,
+    LoyaltyProgramSerializer, LoyaltyTransactionSerializer,
+    LoyaltyAccountCreateSerializer, LoyaltyPointsCalculateSerializer
 )
 from apps.inventory.models import Product, Category, Brand, Transaction, LabelTemplate, LabelBatch, LabelItem, Barcode, Customer
 from apps.inventory.utils import generate_ean13_from_cug
 from apps.sales.models import Sale, SaleItem, CreditTransaction
 from apps.sales.services import CreditService
+from apps.loyalty.models import LoyaltyProgram, LoyaltyTransaction
+from apps.loyalty.services import LoyaltyService
 from apps.core.views import ConfigurationUpdateView, ParametreListView, ParametreUpdateView
 from django.http import JsonResponse
 from django.core.files.base import ContentFile
@@ -1715,7 +1720,8 @@ class SaleViewSet(viewsets.ModelViewSet):
                         "detail": f"Produit avec l'ID {product_id} non trouvé"
                     })
         
-        # Mettre à jour le montant total de la vente
+        # Mettre à jour le sous-total et le montant total de la vente (sous-total avant réduction fidélité)
+        sale.subtotal = total_amount
         sale.total_amount = total_amount
         
         # Gérer les différents modes de paiement
@@ -1732,7 +1738,13 @@ class SaleViewSet(viewsets.ModelViewSet):
                     sale.amount_paid = total_amount
                     sale.payment_status = 'paid'
                 except (ValueError, TypeError):
-                    pass  # Garder les valeurs par défaut
+                    # En cas d'erreur, considérer comme payé si amount_given est fourni
+                    sale.amount_paid = total_amount
+                    sale.payment_status = 'paid'
+            else:
+                # Si pas de amount_given, considérer comme payé (paiement exact)
+                sale.amount_paid = total_amount
+                sale.payment_status = 'paid'
         
         elif payment_method == 'sarali':
             # Paiement Sarali - la référence est optionnelle
@@ -1763,7 +1775,117 @@ class SaleViewSet(viewsets.ModelViewSet):
             sale.amount_paid = total_amount
             sale.payment_status = 'paid'
         
+        # Gestion de la fidélité
+        # Vérifier si des points sont utilisés
+        loyalty_points_used = self.request.data.get('loyalty_points_used')
+        logger.info(f"Sale #{sale.id}: Vérification points utilisés - loyalty_points_used={loyalty_points_used}, customer={sale.customer}")
+        
+        if loyalty_points_used and sale.customer:
+            try:
+                # Convertir en Decimal pour éviter les problèmes de type avec les DecimalField
+                loyalty_points_used = Decimal(str(loyalty_points_used))
+                logger.info(f"Sale #{sale.id}: Points utilisés convertis: {loyalty_points_used}")
+                
+                if loyalty_points_used > 0:
+                    # Calculer d'abord la valeur en FCFA des points
+                    program = LoyaltyService.get_program(user_site)
+                    logger.info(f"Sale #{sale.id}: Programme fidélité récupéré: {program}")
+                    
+                    if program:
+                        calculated_discount = LoyaltyService.calculate_points_value(loyalty_points_used, user_site)
+                        logger.info(f"Sale #{sale.id}: Réduction calculée: {calculated_discount} FCFA pour {loyalty_points_used} points")
+                        
+                        # Limiter la réduction au total (ne pas permettre un total négatif)
+                        max_discount = sale.total_amount
+                        actual_discount = min(calculated_discount, max_discount)
+                        logger.info(f"Sale #{sale.id}: Réduction limitée: {actual_discount} FCFA (max: {max_discount} FCFA)")
+                        
+                        # Si la réduction est limitée, ajuster le nombre de points utilisés
+                        if calculated_discount > max_discount:
+                            # Recalculer les points utilisés pour correspondre à la réduction réelle
+                            if program.amount_per_point > 0:
+                                adjusted_points = actual_discount / program.amount_per_point
+                                original_points = loyalty_points_used
+                                loyalty_points_used = adjusted_points
+                                logger.info(f"Sale #{sale.id}: Réduction limitée de {calculated_discount} à {actual_discount} FCFA. Points ajustés de {original_points} à {adjusted_points}")
+                        
+                        # Utiliser les points ajustés comme réduction
+                        if loyalty_points_used > 0:
+                            logger.info(f"Sale #{sale.id}: Utilisation de {loyalty_points_used} points pour le client {sale.customer.id}")
+                            try:
+                                discount_amount = LoyaltyService.redeem_points(
+                                    customer=sale.customer,
+                                    sale=sale,
+                                    points=loyalty_points_used,
+                                    site_configuration=user_site,
+                                    notes=f"Points utilisés pour la vente #{sale.reference or sale.id}"
+                                )
+                                logger.info(f"Sale #{sale.id}: redeem_points retourné: {discount_amount}")
+                                
+                                # Sauvegarder les points utilisés même si discount_amount est 0 (pour traçabilité)
+                                # Le discount_amount peut être 0 si le programme n'est pas actif, mais on veut quand même enregistrer l'utilisation
+                                if discount_amount is not False:
+                                    sale.loyalty_points_used = loyalty_points_used
+                                    sale.loyalty_discount_amount = actual_discount
+                                    # Réduire le total avec la réduction fidélité (limitée)
+                                    sale.total_amount = sale.total_amount - actual_discount
+                                    # Ne pas permettre un total négatif
+                                    if sale.total_amount < 0:
+                                        sale.total_amount = 0
+                                    # Ajuster le montant payé si nécessaire
+                                    if sale.amount_paid > sale.total_amount:
+                                        sale.amount_paid = sale.total_amount
+                                    logger.info(f"Sale #{sale.id}: Points utilisés sauvegardés: {sale.loyalty_points_used}, Réduction: {sale.loyalty_discount_amount} FCFA, Total: {sale.total_amount} FCFA")
+                                else:
+                                    logger.warning(f"Sale #{sale.id}: redeem_points a retourné False (client non membre ou points insuffisants), points non sauvegardés")
+                            except Exception as e:
+                                logger.error(f"Sale #{sale.id}: Erreur lors de redeem_points: {e}", exc_info=True)
+                        else:
+                            logger.warning(f"Sale #{sale.id}: loyalty_points_used <= 0 après ajustement: {loyalty_points_used}")
+                    else:
+                        logger.warning(f"Sale #{sale.id}: Programme fidélité non trouvé")
+                else:
+                    logger.warning(f"Sale #{sale.id}: loyalty_points_used <= 0: {loyalty_points_used}")
+            except (ValueError, TypeError) as e:
+                # Ignorer les erreurs de conversion, continuer sans utiliser de points
+                logger.error(f"Sale #{sale.id}: Erreur lors du traitement des points utilisés: {e}", exc_info=True)
+        else:
+            logger.info(f"Sale #{sale.id}: Pas de points utilisés ou pas de client - loyalty_points_used={loyalty_points_used}, customer={sale.customer}")
+        
         sale.save()
+        
+        # Calculer et attribuer les points gagnés si le client est membre du programme
+        # Les points sont attribués pour toutes les ventes (cash, crédit, etc.) dès la vente
+        if sale.customer and sale.customer.is_loyalty_member:
+            # Calculer les points gagnés sur le montant total (après réduction fidélité)
+            points_earned = LoyaltyService.calculate_points_earned(
+                sale.total_amount + (sale.loyalty_discount_amount or 0),  # Montant avant réduction fidélité
+                user_site
+            )
+            logger.info(f"Sale #{sale.id}: Customer {sale.customer.id} is loyalty member, payment_status={sale.payment_status}, points_earned={points_earned}")
+            
+            if points_earned > 0:
+                # Attribuer les points (pour toutes les ventes, y compris à crédit)
+                result = LoyaltyService.earn_points(
+                    customer=sale.customer,
+                    sale=sale,
+                    points=points_earned,
+                    site_configuration=user_site,
+                    notes=f"Points gagnés lors de la vente #{sale.reference or sale.id} ({sale.get_payment_method_display()})"
+                )
+                if result:
+                    sale.loyalty_points_earned = points_earned
+                    sale.save()
+                    logger.info(f"Sale #{sale.id}: {points_earned} points attribués au client {sale.customer.id} (payment_method={sale.payment_method})")
+                else:
+                    logger.warning(f"Sale #{sale.id}: Échec de l'attribution des points au client {sale.customer.id}")
+            else:
+                logger.info(f"Sale #{sale.id}: Aucun point gagné (points_earned={points_earned})")
+        else:
+            if sale.customer:
+                logger.info(f"Sale #{sale.id}: Client {sale.customer.id} n'est pas membre du programme (is_loyalty_member={sale.customer.is_loyalty_member})")
+            else:
+                logger.info(f"Sale #{sale.id}: Pas de client associé")
         
         # Rafraîchir la vente pour s'assurer d'avoir la référence générée par le signal
         sale.refresh_from_db()
@@ -2612,13 +2734,37 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
         if not user_site and not request.user.is_superuser:
             raise ValidationError({"detail": "Aucun site configuré pour cet utilisateur"})
 
-        data = LabelBatchCreateSerializer(data=request.data)
+        # Créer un dictionnaire modifiable à partir de request.data
+        request_data = dict(request.data)
+        
+        # Nettoyer la valeur 'channel' pour éviter les problèmes d'encodage
+        if 'channel' in request_data:
+            channel_value = str(request_data['channel']).strip()
+            # Supprimer les caractères non-ASCII et les caractères invisibles
+            channel_value = ''.join(c for c in channel_value if c.isprintable() and ord(c) < 128)
+            # Forcer les valeurs valides uniquement
+            valid_channels = ['escpos', 'tsc', 'pdf']
+            if channel_value not in valid_channels:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Channel invalide reçu: {repr(request_data['channel'])}, valeur nettoyée: {repr(channel_value)}, utilisation de 'escpos'")
+                channel_value = 'escpos'
+            # Remplacer la valeur dans request_data
+            request_data['channel'] = channel_value
+
+        data = LabelBatchCreateSerializer(data=request_data)
         data.is_valid(raise_exception=True)
         payload = data.validated_data
 
         template = None
-        if payload.get('template_id'):
-            template = LabelTemplate.objects.filter(id=payload['template_id']).first()
+        # Le serializer valide 'template' mais on peut aussi récupérer depuis request_data
+        if payload.get('template'):
+            # Si c'est un ID (int), on récupère le template
+            template_id = payload['template'] if isinstance(payload['template'], int) else payload['template'].id
+            template = LabelTemplate.objects.filter(id=template_id).first()
+        elif request_data.get('template_id'):
+            # Fallback pour compatibilité
+            template = LabelTemplate.objects.filter(id=request_data['template_id']).first()
         if not template:
             template = LabelTemplate.get_default_for_site(user_site)
         if not template:
@@ -2638,7 +2784,9 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
         position = 0
         total_copies = 0
         from apps.inventory.models import Product
-        for item in payload['items']:
+        # items n'est pas dans le serializer, on le récupère depuis request_data
+        items_data = request_data.get('items', [])
+        for item in items_data:
             product = Product.objects.get(id=item['product_id'])
             copies = item.get('copies', 1)
             barcode_value = item.get('barcode_value') or ''
@@ -2916,6 +3064,49 @@ class LabelGeneratorAPIView(APIView):
             )
 
 
+def get_product_image_url(product):
+    """Retourne l'URL complète de l'image du produit.
+    Utilise la même logique que ProductSerializer.get_image_url() pour éviter les duplications de chemin.
+    """
+    from api.serializers import clean_image_path
+    
+    image_field = getattr(product, 'image', None)
+    
+    # Tenter d'utiliser l'image de l'original si ProductCopy existe et lie ce produit
+    try:
+        from apps.inventory.models import ProductCopy
+        copy = ProductCopy.objects.select_related('original_product').filter(copied_product=product).first()
+        if copy and getattr(copy.original_product, 'image', None):
+            image_field = copy.original_product.image
+    except Exception:
+        pass
+
+    if image_field:
+        try:
+            from django.conf import settings
+            if getattr(settings, 'AWS_S3_ENABLED', False):
+                region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
+                # Nettoyer le chemin pour éviter les duplications
+                cleaned_path = clean_image_path(image_field.name)
+                return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{cleaned_path}"
+            else:
+                # Fallback pour les environnements sans S3
+                url = image_field.url
+                if url.startswith('http'):
+                    return url
+                media_url = getattr(settings, 'MEDIA_URL', '/media/')
+                if media_url.startswith('http'):
+                    return f"{media_url.rstrip('/')}/{image_field.name}"
+                return f"https://web-production-e896b.up.railway.app{url}"
+        except (ValueError, AttributeError) as e:
+            print(f"⚠️ Erreur dans get_product_image_url: {e}")
+            try:
+                return image_field.url
+            except Exception:
+                return None
+    return None
+
+
 class CatalogPDFAPIView(APIView):
     """API pour générer un catalogue PDF A4"""
     permission_classes = [permissions.IsAuthenticated]
@@ -3047,7 +3238,10 @@ class CatalogPDFAPIView(APIView):
                     product_data['description'] = product.description
                 
                 if include_images and product.image:
-                    product_data['image_url'] = product.image.url
+                    # Utiliser la fonction helper pour générer l'URL correctement
+                    image_url = get_product_image_url(product)
+                    if image_url:
+                        product_data['image_url'] = image_url
                 
                 catalog_data['products'].append(product_data)
             
@@ -4230,7 +4424,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'])
     def credit_history(self, request, pk=None):
-        """Récupérer l'historique des transactions de crédit d'un client"""
+        """Récupérer l'historique des transactions de crédit et de fidélité d'un client"""
         customer = self.get_object()
         limit = request.query_params.get('limit', 20)
         
@@ -4239,13 +4433,92 @@ class CustomerViewSet(viewsets.ModelViewSet):
         except ValueError:
             limit = 20
             
-        transactions = CreditService.get_credit_history(customer, limit=limit)
-        serializer = CreditTransactionSerializer(transactions, many=True, context={'request': request})
+        # Récupérer les transactions de crédit
+        credit_transactions = CreditService.get_credit_history(customer, limit=limit)
+        credit_serializer = CreditTransactionSerializer(credit_transactions, many=True, context={'request': request})
+        
+        # Récupérer les transactions de fidélité
+        loyalty_transactions = LoyaltyTransaction.objects.filter(
+            customer=customer
+        ).select_related('sale', 'site_configuration').order_by('-transaction_date')[:limit]
+        loyalty_serializer = LoyaltyTransactionSerializer(loyalty_transactions, many=True, context={'request': request})
+        
+        # Debug: logger le nombre de transactions
+        logger.info(f"Customer {customer.id}: Credit transactions: {len(credit_serializer.data)}, Loyalty transactions: {len(loyalty_serializer.data)}")
+        
+        # Fusionner et trier par date (plus récent en premier)
+        all_transactions = []
+        
+        # Ajouter les transactions de crédit avec un type
+        for transaction in credit_serializer.data:
+            transaction_date = transaction.get('transaction_date', '')
+            all_transactions.append({
+                **transaction,
+                'transaction_type': 'credit',
+                'date': transaction_date
+            })
+        
+        # Ajouter les transactions de fidélité avec un type
+        for transaction in loyalty_serializer.data:
+            transaction_date = transaction.get('transaction_date', '')
+            logger.info(f"Adding loyalty transaction: {transaction.get('id')}, type: {transaction.get('type')}, date: {transaction_date}")
+            all_transactions.append({
+                **transaction,
+                'transaction_type': 'loyalty',
+                'type_loyalty': transaction.get('type', 'earned'),
+                'date': transaction_date,
+                'formatted_balance_after_loyalty': transaction.get('formatted_balance_after', '')
+            })
+        
+        logger.info(f"Total transactions after merge: {len(all_transactions)} (Credit: {len(credit_serializer.data)}, Loyalty: {len(loyalty_serializer.data)})")
+        
+        # Trier par date décroissante en utilisant les objets datetime directement
+        from datetime import datetime
+        from django.utils.dateparse import parse_datetime
+        
+        def get_sort_datetime(transaction):
+            """Récupère la date de transaction comme datetime pour le tri"""
+            date_str = transaction.get('transaction_date', '') or transaction.get('date', '')
+            if not date_str:
+                return datetime.min
+            
+            # Essayer de parser la date
+            try:
+                # Si c'est déjà un datetime, le retourner
+                if isinstance(date_str, datetime):
+                    return date_str
+                
+                # Parser depuis ISO format avec parse_datetime de Django
+                parsed = parse_datetime(str(date_str))
+                if parsed:
+                    return parsed
+                
+                # Essayer avec fromisoformat
+                if 'T' in str(date_str):
+                    date_str_clean = str(date_str).replace('Z', '+00:00')
+                    return datetime.fromisoformat(date_str_clean)
+            except (ValueError, AttributeError, TypeError) as e:
+                logger.warning(f"Erreur de parsing de date: {date_str}, erreur: {e}")
+                return datetime.min
+            
+            return datetime.min
+        
+        # Trier par date décroissante (si le tri échoue, garder l'ordre original)
+        try:
+            all_transactions.sort(key=get_sort_datetime, reverse=True)
+        except Exception as e:
+            logger.warning(f"Erreur lors du tri des transactions: {e}")
+            # En cas d'erreur, garder l'ordre : crédit d'abord, puis fidélité
+            pass
+        
+        # Limiter le nombre total
+        all_transactions = all_transactions[:limit]
         
         return Response({
             'customer': CustomerSerializer(customer, context={'request': request}).data,
-            'transactions': serializer.data,
-            'total_count': customer.credit_transactions.count()
+            'transactions': all_transactions,
+            'credit_count': customer.credit_transactions.count(),
+            'loyalty_count': customer.loyalty_transactions.count() if customer.is_loyalty_member else 0
         })
     
     @action(detail=True, methods=['post'])
@@ -4298,6 +4571,65 @@ class CustomerViewSet(viewsets.ModelViewSet):
         customers = CreditService.get_customers_with_debt(user_site)
         serializer = CustomerSerializer(customers, many=True, context={'request': request})
         return Response(serializer.data)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Supprimer un client avec vérification des relations"""
+        customer = self.get_object()
+        
+        # Vérifier les ventes associées
+        from apps.sales.models import Sale
+        sales_count = Sale.objects.filter(customer=customer).count()
+        
+        # Vérifier les commandes associées
+        from apps.inventory.models import Order
+        orders_count = Order.objects.filter(customer=customer).count()
+        
+        # Vérifier les transactions de crédit
+        credit_transactions_count = customer.credit_transactions.count()
+        
+        # Vérifier les transactions de fidélité
+        from apps.loyalty.models import LoyaltyTransaction
+        loyalty_transactions_count = LoyaltyTransaction.objects.filter(customer=customer).count()
+        
+        # Si le client a des ventes ou commandes, on ne peut pas le supprimer
+        if sales_count > 0 or orders_count > 0:
+            error_message = "Impossible de supprimer ce client car il est associé à "
+            errors = []
+            if sales_count > 0:
+                errors.append(f"{sales_count} vente(s)")
+            if orders_count > 0:
+                errors.append(f"{orders_count} commande(s)")
+            
+            return Response(
+                {
+                    'error': error_message + " et ".join(errors) + ".",
+                    'sales_count': sales_count,
+                    'orders_count': orders_count,
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Si le client a des transactions de crédit ou fidélité, on les supprime automatiquement
+        # (grâce à CASCADE dans les modèles)
+        # Mais on peut informer l'utilisateur
+        if credit_transactions_count > 0 or loyalty_transactions_count > 0:
+            # Les transactions seront supprimées automatiquement grâce à CASCADE
+            pass
+        
+        # Supprimer le client
+        customer.delete()
+        
+        return Response(
+            {
+                'success': True,
+                'message': 'Client supprimé avec succès',
+                'deleted_transactions': {
+                    'credit': credit_transactions_count,
+                    'loyalty': loyalty_transactions_count,
+                }
+            },
+            status=status.HTTP_200_OK
+        )
 
 
 class CreditTransactionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -4756,4 +5088,299 @@ class CategoryRecommendationAPIView(APIView):
                 'success': False,
                 'error': 'Erreur lors de la génération des recommandations',
                 'recommendations': []
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class LoyaltyProgramAPIView(APIView):
+    """API pour gérer le programme de fidélité"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer la configuration du programme de fidélité du site"""
+        try:
+            user_site = getattr(request.user, 'site_configuration', None)
+            
+            if not user_site and not request.user.is_superuser:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré pour cet utilisateur'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Si superuser, on peut passer un site_id en paramètre
+            if request.user.is_superuser:
+                site_id = request.query_params.get('site_configuration')
+                if site_id:
+                    try:
+                        from apps.core.models import Configuration
+                        user_site = Configuration.objects.get(id=int(site_id))
+                    except (ValueError, Configuration.DoesNotExist):
+                        pass
+            
+            if not user_site:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Récupérer ou créer le programme
+            program = LoyaltyService.get_program(user_site)
+            serializer = LoyaltyProgramSerializer(program, context={'request': request})
+            
+            return Response({
+                'success': True,
+                'program': serializer.data
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def put(self, request):
+        """Mettre à jour la configuration du programme de fidélité"""
+        try:
+            user_site = getattr(request.user, 'site_configuration', None)
+            
+            if not user_site and not request.user.is_superuser:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré pour cet utilisateur'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Si superuser, on peut passer un site_id en paramètre
+            if request.user.is_superuser:
+                site_id = request.data.get('site_configuration')
+                if site_id:
+                    try:
+                        from apps.core.models import Configuration
+                        user_site = Configuration.objects.get(id=int(site_id))
+                    except (ValueError, Configuration.DoesNotExist):
+                        pass
+            
+            if not user_site:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Récupérer ou créer le programme
+            program = LoyaltyService.get_program(user_site)
+            serializer = LoyaltyProgramSerializer(program, data=request.data, partial=True, context={'request': request})
+            
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'program': serializer.data,
+                    'message': 'Programme de fidélité mis à jour avec succès'
+                })
+            else:
+                return Response({
+                    'success': False,
+                    'error': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class LoyaltyAccountAPIView(APIView):
+    """API pour gérer les comptes de fidélité"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer un compte de fidélité par numéro de téléphone"""
+        try:
+            phone = request.query_params.get('phone')
+            
+            if not phone:
+                return Response({
+                    'success': False,
+                    'error': 'Le numéro de téléphone est requis'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            user_site = getattr(request.user, 'site_configuration', None)
+            
+            if not user_site and not request.user.is_superuser:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré pour cet utilisateur'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Si superuser, on peut passer un site_id en paramètre
+            if request.user.is_superuser:
+                site_id = request.query_params.get('site_configuration')
+                if site_id:
+                    try:
+                        from apps.core.models import Configuration
+                        user_site = Configuration.objects.get(id=int(site_id))
+                    except (ValueError, Configuration.DoesNotExist):
+                        pass
+            
+            if not user_site:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Rechercher le client
+            customer = LoyaltyService.get_customer_by_phone(phone, user_site)
+            
+            if not customer:
+                return Response({
+                    'success': True,
+                    'customer': None,
+                    'message': 'Aucun compte trouvé pour ce numéro'
+                })
+            
+            serializer = CustomerSerializer(customer, context={'request': request})
+            
+            return Response({
+                'success': True,
+                'customer': serializer.data
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def post(self, request):
+        """Créer un nouveau compte de fidélité (inscription rapide)"""
+        try:
+            serializer = LoyaltyAccountCreateSerializer(data=request.data)
+            
+            if not serializer.is_valid():
+                return Response({
+                    'success': False,
+                    'error': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            phone = serializer.validated_data['phone']
+            name = serializer.validated_data['name']
+            first_name = serializer.validated_data.get('first_name', '')
+            
+            user_site = getattr(request.user, 'site_configuration', None)
+            
+            if not user_site and not request.user.is_superuser:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré pour cet utilisateur'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Si superuser, on peut passer un site_id en paramètre
+            if request.user.is_superuser:
+                site_id = request.data.get('site_configuration')
+                if site_id:
+                    try:
+                        from apps.core.models import Configuration
+                        user_site = Configuration.objects.get(id=int(site_id))
+                    except (ValueError, Configuration.DoesNotExist):
+                        pass
+            
+            if not user_site:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Créer ou récupérer le compte de fidélité
+            customer = LoyaltyService.get_or_create_loyalty_account(phone, name, first_name, user_site)
+            
+            if not customer:
+                return Response({
+                    'success': False,
+                    'error': 'Impossible de créer le compte de fidélité'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            customer_serializer = CustomerSerializer(customer, context={'request': request})
+            
+            return Response({
+                'success': True,
+                'customer': customer_serializer.data,
+                'message': 'Compte de fidélité créé avec succès' if customer.is_loyalty_member else 'Client existant récupéré'
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class LoyaltyPointsAPIView(APIView):
+    """API pour calculer les points et leur valeur"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Calculer les points gagnés ou la valeur en FCFA de points"""
+        try:
+            serializer = LoyaltyPointsCalculateSerializer(data=request.data)
+            
+            if not serializer.is_valid():
+                return Response({
+                    'success': False,
+                    'error': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            user_site = getattr(request.user, 'site_configuration', None)
+            
+            if not user_site and not request.user.is_superuser:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré pour cet utilisateur'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Si superuser, on peut passer un site_id en paramètre
+            if request.user.is_superuser:
+                site_id = request.data.get('site_configuration')
+                if site_id:
+                    try:
+                        from apps.core.models import Configuration
+                        user_site = Configuration.objects.get(id=int(site_id))
+                    except (ValueError, Configuration.DoesNotExist):
+                        pass
+            
+            if not user_site:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            amount = serializer.validated_data.get('amount')
+            points = serializer.validated_data.get('points')
+            
+            if amount:
+                # Calculer les points gagnés pour un montant
+                points_earned = LoyaltyService.calculate_points_earned(amount, user_site)
+                return Response({
+                    'success': True,
+                    'amount': float(amount),
+                    'points_earned': float(points_earned),
+                    'message': f'Pour {amount} FCFA, vous gagnez {points_earned} points'
+                })
+            elif points:
+                # Calculer la valeur en FCFA de points
+                value = LoyaltyService.calculate_points_value(points, user_site)
+                return Response({
+                    'success': True,
+                    'points': float(points),
+                    'value_fcfa': float(value),
+                    'message': f'{points} points équivalent à {value} FCFA'
+                })
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Vous devez fournir soit un montant (amount) soit des points (points)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

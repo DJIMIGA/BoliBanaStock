@@ -418,6 +418,34 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
       if (prod?.image_url) {
         // Corriger les erreurs de frappe dans les URLs S3 (même approche que ProductImage)
         let correctedUrl = prod.image_url;
+        
+        // D'abord, corriger les duplications de chemin si elles existent
+        // Pattern: assets/products/site-XXX/assets/products/site-XXX/filename
+        const duplicationPattern = /assets\/products\/([^/]+)\/assets\/products\/([^/]+)\/(.+)$/;
+        const match = correctedUrl.match(duplicationPattern);
+        if (match) {
+          // Il y a une duplication, garder seulement la dernière partie
+          const siteId = match[2]; // Le site de la deuxième occurrence
+          const filename = match[3]; // Le nom du fichier
+          const baseUrl = correctedUrl.split('/assets/products/')[0]; // Partie avant assets/products
+          correctedUrl = `${baseUrl}/assets/products/${siteId}/${filename}`;
+          console.log(`🔧 [PREPARE_IMAGES] Duplication corrigée pour ${prod.name}: ${prod.image_url} -> ${correctedUrl}`);
+        } else if (correctedUrl.split('/assets/products/').length > 2) {
+          // Cas avec plusieurs occurrences de /assets/products/ mais pattern différent
+          const parts = correctedUrl.split('/assets/products/');
+          if (parts.length > 2) {
+            const baseUrl = parts[0]; // Partie avant le premier assets/products
+            const lastPart = parts[parts.length - 1]; // Dernière partie après le dernier assets/products
+            if (lastPart.includes('/')) {
+              const [siteId, ...fileParts] = lastPart.split('/');
+              const filename = fileParts.join('/');
+              correctedUrl = `${baseUrl}/assets/products/${siteId}/${filename}`;
+              console.log(`🔧 [PREPARE_IMAGES] Duplication corrigée (split) pour ${prod.name}: ${prod.image_url} -> ${correctedUrl}`);
+            }
+          }
+        }
+        
+        // Ensuite, corriger les erreurs de frappe dans les URLs S3
         if (correctedUrl.includes('bolibana-stockk.s3')) {
           correctedUrl = correctedUrl.replace('bolibana-stockk.s3', 'bolibana-stock.s3');
           console.log(`🔧 [PREPARE_IMAGES] URL corrigée (double k): ${correctedUrl}`);
@@ -430,10 +458,8 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           correctedUrl = correctedUrl.replace('bolibana-stock.s3.eeu-north-1', 'bolibana-stock.s3.eu-north-1');
           console.log(`🔧 [PREPARE_IMAGES] URL corrigée (double e): ${correctedUrl}`);
         }
-        if (correctedUrl.includes('site-18')) {
-          correctedUrl = correctedUrl.replace('site-18', 'site-default');
-          console.log(`🔧 [PREPARE_IMAGES] URL corrigée (site-18 → site-default): ${correctedUrl}`);
-        }
+        // Ne plus remplacer site-18 par site-default car cela peut créer des problèmes
+        // Le backend devrait déjà retourner les bonnes URLs
         
         // Utiliser directement l'URL corrigée (comme ProductImage)
         console.log(`🖼️ [PREPARE_IMAGES] Utilisation de l'URL directe pour ${prod.name}: ${correctedUrl}`);
