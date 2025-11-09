@@ -177,21 +177,24 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
         </div>
       ` : '<div style="text-align: center; color: #999; padding: 8px; width: 100%; display: flex; justify-content: center; align-items: center;">N/A</div>';
       
-      // Gestion des images - utiliser image_url directement (URLs corrigées, comme ProductImage)
-      const imageSrc = p.image_url;
+      // Gestion des images - utiliser image_data (base64) si disponible, sinon image_url
+      // IMPORTANT: expo-print ne peut pas charger des images depuis des URLs externes
+      // Il faut utiliser des data URIs (base64) pour les images dans le PDF
+      const imageSrc = p.image_data || p.image_url;
+      const isDataUri = !!p.image_data;
       console.log(`🔍 [BUILD_HTML] Image pour produit ${index}:`, { 
-        imageSrc: imageSrc ? imageSrc.substring(0, 50) + '...' : 'null', 
+        imageSrc: imageSrc ? (isDataUri ? 'data:image/... (base64)' : imageSrc.substring(0, 50) + '...') : 'null', 
         hasImageData: !!p.image_data, 
         hasImageUrl: !!p.image_url,
         includeImages,
-        isDataUri: false // Utilisation directe des URLs comme ProductImage
+        isDataUri
       });
       
       const imageCell = includeImages && imageSrc ? `
         <td>
           <img src="${imageSrc}" alt="${p.name || ''}" 
-               onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" 
-               onload="console.log('Image loaded successfully:', this.src);" />
+               ${isDataUri ? '' : 'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';"'}
+               ${isDataUri ? '' : 'onload="console.log(\'Image loaded successfully:\', this.src);"'} />
           <div style="display:none; color:#999; font-size:10px;">Image non disponible</div>
         </td>
       ` : (includeImages ? `<td>Aucune image</td>` : '');
@@ -466,16 +469,61 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           correctedUrl = correctedUrl.replace('bolibana-stock.s3.eeu-north-1', 'bolibana-stock.s3.eu-north-1');
           console.log(`🔧 [PREPARE_IMAGES] URL corrigée (double e): ${correctedUrl}`);
         }
-        // Ne plus remplacer site-18 par site-default car cela peut créer des problèmes
-        // Le backend devrait déjà retourner les bonnes URLs
         
-        // Utiliser directement l'URL corrigée (comme ProductImage)
-        console.log(`🖼️ [PREPARE_IMAGES] Utilisation de l'URL directe pour ${prod.name}: ${correctedUrl}`);
-        
-        productsWithImages.push({ 
-          ...prod, 
-          image_url: correctedUrl // Utiliser l'URL corrigée directement
-        });
+        // IMPORTANT: expo-print ne peut pas charger des images depuis des URLs externes
+        // Il faut convertir les images en base64 pour les inclure dans le PDF
+        try {
+          console.log(`📥 [PREPARE_IMAGES] Téléchargement de l'image pour ${prod.name}...`);
+          
+          // Télécharger l'image et la convertir en base64
+          // Utiliser FileSystem pour télécharger et convertir en base64
+          const tempFileName = `temp_image_${prod.id}_${Date.now()}.jpg`;
+          const tempFilePath = `${FileSystem.cacheDirectory}${tempFileName}`;
+          
+          const downloadResult = await FileSystem.downloadAsync(
+            correctedUrl,
+            tempFilePath
+          );
+          
+          if (downloadResult.status !== 200) {
+            throw new Error(`HTTP ${downloadResult.status}`);
+          }
+          
+          // Lire le fichier en base64
+          const base64data = await FileSystem.readAsStringAsync(downloadResult.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          
+          // Déterminer le type MIME à partir de l'extension
+          const mimeType = correctedUrl.toLowerCase().endsWith('.png') ? 'image/png' : 
+                          correctedUrl.toLowerCase().endsWith('.gif') ? 'image/gif' : 
+                          'image/jpeg';
+          
+          // Créer la data URI
+          const dataUri = `data:${mimeType};base64,${base64data}`;
+          
+          console.log(`✅ [PREPARE_IMAGES] Image convertie en base64 pour ${prod.name} (${Math.round(dataUri.length / 1024)} KB)`);
+          
+          // Nettoyer le fichier temporaire
+          try {
+            await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
+          } catch (cleanupError) {
+            // Ignorer les erreurs de nettoyage
+          }
+          
+          productsWithImages.push({ 
+            ...prod, 
+            image_url: correctedUrl, // Garder l'URL pour référence
+            image_data: dataUri // Data URI pour le PDF
+          });
+        } catch (error: any) {
+          console.error(`❌ [PREPARE_IMAGES] Erreur lors du téléchargement de l'image pour ${prod.name}:`, error.message);
+          // En cas d'erreur, garder le produit sans image_data
+          productsWithImages.push({ 
+            ...prod, 
+            image_url: correctedUrl
+          });
+        }
       } else {
         console.log(`🖼️ [PREPARE_IMAGES] Pas d'image pour ${prod.name}`);
         productsWithImages.push(prod);
