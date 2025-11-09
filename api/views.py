@@ -4462,13 +4462,12 @@ class CustomerViewSet(viewsets.ModelViewSet):
         # Récupérer les transactions de fidélité
         if not LOYALTY_APP_AVAILABLE:
             loyalty_transactions = []
+            loyalty_serializer = None
         else:
             loyalty_transactions = LoyaltyTransaction.objects.filter(
                 customer=customer
-        ).select_related('sale', 'site_configuration').order_by('-transaction_date')[:limit]
+            ).select_related('sale', 'site_configuration').order_by('-transaction_date')[:limit]
             loyalty_serializer = LoyaltyTransactionSerializer(loyalty_transactions, many=True, context={'request': request}) if LOYALTY_SERIALIZERS_AVAILABLE else None
-        else:
-            loyalty_serializer = None
         
         # Debug: logger le nombre de transactions
         loyalty_count = len(loyalty_serializer.data) if loyalty_serializer else 0
