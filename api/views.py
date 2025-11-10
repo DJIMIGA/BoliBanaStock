@@ -3211,7 +3211,9 @@ def get_product_image_base64(product):
                     # Créer la data URI
                     data_uri = f"data:{mime_type};base64,{base64_data}"
                     
-                    logger.info(f"✅ [CATALOG_PDF] Image compressée et convertie en base64 pour produit {product.id} ({product.name}) - {len(data_uri) // 1024} KB (original: {len(image_file) // 1024} KB)")
+                    # Log seulement si l'image est très grande (pour diagnostic)
+                    if len(data_uri) > 500 * 1024:  # > 500 KB
+                        logger.info(f"✅ [CATALOG_PDF] Image compressée pour produit {product.id} ({product.name}) - {len(data_uri) // 1024} KB (original: {len(image_file) // 1024} KB)")
                     return data_uri
                 except ImportError:
                     # Si PIL n'est pas disponible, utiliser l'image originale
@@ -3228,7 +3230,9 @@ def get_product_image_base64(product):
                         mime_type = 'image/jpeg'
                     
                     data_uri = f"data:{mime_type};base64,{base64_data}"
-                    logger.info(f"✅ [CATALOG_PDF] Image convertie en base64 (sans compression) pour produit {product.id} ({product.name}) - {len(data_uri) // 1024} KB")
+                    # Log seulement si l'image est très grande (pour diagnostic)
+                    if len(data_uri) > 500 * 1024:  # > 500 KB
+                        logger.info(f"✅ [CATALOG_PDF] Image convertie en base64 (sans compression) pour produit {product.id} ({product.name}) - {len(data_uri) // 1024} KB")
                     return data_uri
                 except Exception as pil_error:
                     logger.error(f"❌ [CATALOG_PDF] Erreur lors de la compression de l'image pour produit {product.id} ({product.name}): {pil_error}")

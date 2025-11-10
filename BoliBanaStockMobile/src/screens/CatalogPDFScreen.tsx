@@ -403,25 +403,17 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
 
 
   const prepareImagesForPdf = async (catalog: any) => {
-    console.log('🖼️ [PREPARE_IMAGES] includeImages:', includeImages);
-    console.log('🖼️ [PREPARE_IMAGES] catalog.products:', catalog?.products);
-    
     if (!includeImages || !Array.isArray(catalog?.products)) {
-      console.log('🖼️ [PREPARE_IMAGES] Images désactivées ou pas de produits');
       return catalog;
     }
 
-    console.log('🖼️ [PREPARE_IMAGES] Préparation des images pour le PDF...');
     const productsWithImages: any[] = [];
     
     for (const prod of catalog.products) {
-      console.log(`🖼️ [PREPARE_IMAGES] Produit: ${prod.name}, image_url: ${prod.image_url}, image_data: ${prod.image_data ? 'présent' : 'absent'}`);
-      
       // IMPORTANT: Le backend fournit maintenant image_data (base64) directement
       // Utiliser image_data si disponible, sinon essayer de télécharger depuis image_url
       if (prod?.image_data) {
         // Le backend a déjà fourni l'image en base64, l'utiliser directement
-        console.log(`✅ [PREPARE_IMAGES] Image base64 déjà fournie par le backend pour ${prod.name} (${Math.round(prod.image_data.length / 1024)} KB)`);
         productsWithImages.push(prod);
         continue;
       }
@@ -440,7 +432,6 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           const filename = match[3]; // Le nom du fichier
           const baseUrl = correctedUrl.split('/assets/products/')[0]; // Partie avant assets/products
           correctedUrl = `${baseUrl}/assets/products/${siteId}/${filename}`;
-          console.log(`🔧 [PREPARE_IMAGES] Duplication corrigée pour ${prod.name}: ${prod.image_url} -> ${correctedUrl}`);
         } else if (correctedUrl.split('/assets/products/').length > 2) {
           // Cas avec plusieurs occurrences de /assets/products/ mais pattern différent
           const parts = correctedUrl.split('/assets/products/');
@@ -451,7 +442,6 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
               const [siteId, ...fileParts] = lastPart.split('/');
               const filename = fileParts.join('/');
               correctedUrl = `${baseUrl}/assets/products/${siteId}/${filename}`;
-              console.log(`🔧 [PREPARE_IMAGES] Duplication corrigée (split) pour ${prod.name}: ${prod.image_url} -> ${correctedUrl}`);
             }
           }
         }
@@ -459,29 +449,21 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
         // Ensuite, corriger les erreurs de frappe dans les URLs S3
         // Corriger les erreurs de frappe dans le protocole (httpps://, htttps://, etc.)
         if (correctedUrl.match(/^htt+p+s*:\/\//)) {
-          const originalUrl = correctedUrl;
           correctedUrl = correctedUrl.replace(/^htt+p+s*:\/\//, 'https://');
-          if (originalUrl !== correctedUrl) {
-            console.log(`🔧 [PREPARE_IMAGES] Protocole corrigé pour ${prod.name}: ${originalUrl.substring(0, 20)}... -> ${correctedUrl.substring(0, 20)}...`);
-          }
         }
         if (correctedUrl.includes('bolibana-stockk.s3')) {
           correctedUrl = correctedUrl.replace('bolibana-stockk.s3', 'bolibana-stock.s3');
-          console.log(`🔧 [PREPARE_IMAGES] URL corrigée (double k): ${correctedUrl}`);
         }
         if (correctedUrl.includes('bolibanna-stock.s3')) {
           correctedUrl = correctedUrl.replace('bolibanna-stock.s3', 'bolibana-stock.s3');
-          console.log(`🔧 [PREPARE_IMAGES] URL corrigée (double n): ${correctedUrl}`);
         }
         if (correctedUrl.includes('bolibana-stock.s3.eeu-north-1')) {
           correctedUrl = correctedUrl.replace('bolibana-stock.s3.eeu-north-1', 'bolibana-stock.s3.eu-north-1');
-          console.log(`🔧 [PREPARE_IMAGES] URL corrigée (double e): ${correctedUrl}`);
         }
         
         // IMPORTANT: expo-print ne peut pas charger des images depuis des URLs externes
         // Essayer de télécharger et convertir en base64 seulement si image_data n'est pas disponible
         try {
-          console.log(`📥 [PREPARE_IMAGES] Téléchargement de l'image pour ${prod.name}...`);
           
           // Télécharger l'image et la convertir en base64
           // Utiliser FileSystemLegacy pour télécharger et convertir en base64
@@ -517,8 +499,6 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           // Créer la data URI
           const dataUri = `data:${mimeType};base64,${base64data}`;
           
-          console.log(`✅ [PREPARE_IMAGES] Image convertie en base64 pour ${prod.name} (${Math.round(dataUri.length / 1024)} KB)`);
-          
           // Nettoyer le fichier temporaire
           try {
             await FileSystemLegacy.deleteAsync(downloadResult.uri, { idempotent: true });
@@ -550,12 +530,10 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           });
         }
       } else {
-        console.log(`🖼️ [PREPARE_IMAGES] Pas d'image pour ${prod.name}`);
         productsWithImages.push(prod);
       }
     }
     
-    console.log('🖼️ [PREPARE_IMAGES] Produits avec images préparés:', productsWithImages.length);
     return { ...catalog, products: productsWithImages };
   };
 
@@ -570,7 +548,6 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
       // Utiliser la longueur de la chaîne en bytes (approximation UTF-8)
       const htmlSize = new TextEncoder().encode(html).length;
       const htmlSizeMB = htmlSize / (1024 * 1024);
-      console.log(`📊 [PDF] Taille du HTML: ${htmlSizeMB.toFixed(2)} MB (${html.length} caractères)`);
       
       if (htmlSizeMB > 10) {
         console.warn(`⚠️ [PDF] HTML très volumineux (${htmlSizeMB.toFixed(2)} MB), risque d'erreur de mémoire`);
@@ -581,12 +558,10 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
         );
       }
       
-      console.log('📝 [PDF] Génération du PDF...');
       const { uri } = await Print.printToFileAsync({ 
         html,
         base64: false, // Ne pas utiliser base64 pour le HTML lui-même
       });
-      console.log('✅ [PDF] PDF généré avec succès:', uri);
       setLastCatalog(catalog);
       setLastPdfUri(uri);
 
