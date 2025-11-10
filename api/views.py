@@ -3168,10 +3168,18 @@ def get_product_image_base64(product):
                 # Compresser et redimensionner l'image avant de la convertir en base64
                 # Pour éviter les erreurs de mémoire lors de la génération du PDF
                 try:
-                    from PIL import Image
+                    from PIL import Image, ImageOps
                     
                     # Ouvrir l'image depuis les bytes
                     img = Image.open(BytesIO(image_file))
+                    
+                    # Corriger l'orientation EXIF si nécessaire
+                    # Certaines images ont une orientation EXIF qui doit être appliquée
+                    try:
+                        img = ImageOps.exif_transpose(img)
+                    except Exception:
+                        # Si exif_transpose échoue, continuer sans correction
+                        pass
                     
                     # Convertir en RGB si nécessaire (pour JPEG)
                     if img.mode in ('RGBA', 'LA', 'P'):
