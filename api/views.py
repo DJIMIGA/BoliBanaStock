@@ -3142,9 +3142,11 @@ def get_product_image_url(product):
 def get_product_image_base64(product):
     """Retourne l'image du produit en base64 (data URI) pour le PDF.
     Utile car expo-print ne peut pas charger les images depuis des URLs externes.
+    Les images sont compressées et redimensionnées pour réduire la taille.
     """
     import base64
     import logging
+    from io import BytesIO
     logger = logging.getLogger(__name__)
     
     image_field = getattr(product, 'image', None)
@@ -3163,23 +3165,76 @@ def get_product_image_base64(product):
             # Lire le fichier image
             image_file = image_field.read()
             if image_file:
-                # Convertir en base64
-                base64_data = base64.b64encode(image_file).decode('utf-8')
-                
-                # Déterminer le type MIME à partir de l'extension
-                image_name = image_field.name.lower()
-                if image_name.endswith('.png'):
-                    mime_type = 'image/png'
-                elif image_name.endswith('.gif'):
-                    mime_type = 'image/gif'
-                else:
+                # Compresser et redimensionner l'image avant de la convertir en base64
+                # Pour éviter les erreurs de mémoire lors de la génération du PDF
+                try:
+                    from PIL import Image
+                    
+                    # Ouvrir l'image depuis les bytes
+                    img = Image.open(BytesIO(image_file))
+                    
+                    # Convertir en RGB si nécessaire (pour JPEG)
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                        img = background
+                    elif img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    
+                    # Redimensionner si trop grande (max 400x400 pour le PDF)
+                    max_size = (400, 400)
+                    if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
+                        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                    
+                    # Compresser l'image en JPEG avec qualité réduite
+                    output = BytesIO()
+                    img.save(output, format='JPEG', quality=75, optimize=True)
+                    output.seek(0)
+                    compressed_image = output.read()
+                    
+                    # Convertir en base64
+                    base64_data = base64.b64encode(compressed_image).decode('utf-8')
+                    
+                    # Toujours utiliser JPEG pour les images compressées
                     mime_type = 'image/jpeg'
-                
-                # Créer la data URI
-                data_uri = f"data:{mime_type};base64,{base64_data}"
-                
-                logger.info(f"✅ [CATALOG_PDF] Image convertie en base64 pour produit {product.id} ({product.name}) - {len(data_uri) // 1024} KB")
-                return data_uri
+                    
+                    # Créer la data URI
+                    data_uri = f"data:{mime_type};base64,{base64_data}"
+                    
+                    logger.info(f"✅ [CATALOG_PDF] Image compressée et convertie en base64 pour produit {product.id} ({product.name}) - {len(data_uri) // 1024} KB (original: {len(image_file) // 1024} KB)")
+                    return data_uri
+                except ImportError:
+                    # Si PIL n'est pas disponible, utiliser l'image originale
+                    logger.warning(f"⚠️ [CATALOG_PDF] PIL non disponible, utilisation de l'image originale pour produit {product.id} ({product.name})")
+                    base64_data = base64.b64encode(image_file).decode('utf-8')
+                    
+                    # Déterminer le type MIME à partir de l'extension
+                    image_name = image_field.name.lower()
+                    if image_name.endswith('.png'):
+                        mime_type = 'image/png'
+                    elif image_name.endswith('.gif'):
+                        mime_type = 'image/gif'
+                    else:
+                        mime_type = 'image/jpeg'
+                    
+                    data_uri = f"data:{mime_type};base64,{base64_data}"
+                    logger.info(f"✅ [CATALOG_PDF] Image convertie en base64 (sans compression) pour produit {product.id} ({product.name}) - {len(data_uri) // 1024} KB")
+                    return data_uri
+                except Exception as pil_error:
+                    logger.error(f"❌ [CATALOG_PDF] Erreur lors de la compression de l'image pour produit {product.id} ({product.name}): {pil_error}")
+                    # Fallback: utiliser l'image originale
+                    base64_data = base64.b64encode(image_file).decode('utf-8')
+                    image_name = image_field.name.lower()
+                    if image_name.endswith('.png'):
+                        mime_type = 'image/png'
+                    elif image_name.endswith('.gif'):
+                        mime_type = 'image/gif'
+                    else:
+                        mime_type = 'image/jpeg'
+                    data_uri = f"data:{mime_type};base64,{base64_data}"
+                    return data_uri
             else:
                 logger.warning(f"⚠️ [CATALOG_PDF] Image vide pour produit {product.id} ({product.name})")
                 return None
