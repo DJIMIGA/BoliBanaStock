@@ -485,7 +485,14 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           );
           
           if (downloadResult.status !== 200) {
-            throw new Error(`HTTP ${downloadResult.status}`);
+            // Si l'image n'est pas accessible (403, 404, etc.), utiliser l'URL directement
+            // expo-print peut parfois charger les images depuis certaines URLs
+            console.warn(`⚠️ [PREPARE_IMAGES] Image non accessible (HTTP ${downloadResult.status}) pour ${prod.name}, utilisation de l'URL directe`);
+            productsWithImages.push({ 
+              ...prod, 
+              image_url: correctedUrl
+            });
+            return;
           }
           
           // Lire le fichier en base64
@@ -516,8 +523,18 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
             image_data: dataUri // Data URI pour le PDF
           });
         } catch (error: any) {
-          console.error(`❌ [PREPARE_IMAGES] Erreur lors du téléchargement de l'image pour ${prod.name}:`, error.message);
-          // En cas d'erreur, garder le produit sans image_data
+          // En cas d'erreur (403, 404, réseau, etc.), utiliser l'URL directement
+          // Certaines images peuvent quand même se charger depuis l'URL dans le PDF
+          const errorMessage = error.message || String(error);
+          const isHttpError = errorMessage.includes('403') || errorMessage.includes('404') || errorMessage.includes('HTTP');
+          
+          if (isHttpError) {
+            console.warn(`⚠️ [PREPARE_IMAGES] Image non accessible (${errorMessage}) pour ${prod.name}, utilisation de l'URL directe`);
+          } else {
+            console.error(`❌ [PREPARE_IMAGES] Erreur lors du téléchargement de l'image pour ${prod.name}:`, errorMessage);
+          }
+          
+          // En cas d'erreur, garder le produit avec l'URL (peut fonctionner dans certains cas)
           productsWithImages.push({ 
             ...prod, 
             image_url: correctedUrl
