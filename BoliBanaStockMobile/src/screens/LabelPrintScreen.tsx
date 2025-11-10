@@ -60,7 +60,8 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
   const [includePrices, setIncludePrices] = useState(true);
   
   // Configuration de l'imprimante
-  const [printerType, setPrinterType] = useState<'pdf' | 'escpos' | 'tsc'>('tsc');
+  // ESC/POS retiré : réservé aux tickets de caisse, pas adapté pour les étiquettes
+  const [printerType, setPrinterType] = useState<'pdf' | 'tsc'>('tsc');
   const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -813,22 +814,6 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
                   );
                   throw tscError; // Re-lancer pour que le catch parent gère le fallback
                 }
-              } else {
-                console.log('🔵 [BLUETOOTH][ESC/POS] Envoi direct à l\'imprimante Bluetooth...');
-              const printResult = await labelPrintService.sendToBluetoothPrinter({
-                product_ids: products.map(p => p.id),
-                template_id: selectedTemplate?.id,
-                copies,
-                include_cug: includeCug,
-                include_ean: includeEan,
-                include_barcode: includeBarcode,
-                printer_type: printerType,
-                thermal_settings: thermalSettings
-              });
-        Alert.alert(
-                'Impression Bluetooth réussie',
-                `Les étiquettes ont été envoyées directement à l'imprimante Bluetooth ${selectedBluetoothPrinter?.device_name}\n\nTotal: ${products.length * copies} étiquettes`
-              );
               }
             } else {
               console.log('🖨️ [PRINTER] Envoi direct à l\'imprimante réseau...');
@@ -857,13 +842,6 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
               'Fichier généré',
               `Le fichier TSC a été généré avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nVous pouvez maintenant l'envoyer à votre imprimante thermique.`
             );
-            } else if (printerType === 'escpos') {
-              // Pour ESC/POS, on ne peut pas générer de fichier, seulement imprimer directement
-              Alert.alert(
-                'Impression échouée',
-                `L'envoi direct à l'imprimante ESC/POS a échoué.\n\nErreur: ${printError?.message || 'Erreur inconnue'}\n\nVeuillez vérifier la connexion Bluetooth et réessayer.`,
-                [{ text: 'OK' }]
-              );
             }
           }
         } else {
@@ -878,56 +856,6 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
             'Fichier généré',
             `Le fichier TSC a été généré avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nVous pouvez maintenant l'envoyer à votre imprimante thermique.`
           );
-          } else if (printerType === 'escpos') {
-            // Pour ESC/POS, vérifier si une imprimante est connectée
-            if (printerConnected && printerConfig.connection_type === 'bluetooth' && selectedBluetoothPrinter) {
-              // Proposer d'imprimer maintenant
-              Alert.alert(
-                'Étiquettes prêtes',
-                `Les étiquettes ont été préparées avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nUne imprimante Bluetooth ESC/POS est connectée.`,
-                [
-                  { text: 'Annuler', style: 'cancel' },
-                  {
-                    text: 'Imprimer maintenant',
-                    onPress: async () => {
-                      try {
-                        setGenerating(true);
-                        const printResult = await labelPrintService.sendToBluetoothPrinter({
-                          product_ids: products.map(p => p.id),
-                          template_id: selectedTemplate?.id,
-                          copies,
-                          include_cug: includeCug,
-                          include_ean: includeEan,
-                          include_barcode: includeBarcode,
-                          printer_type: printerType,
-                          thermal_settings: thermalSettings
-                        });
-                        
-                        Alert.alert(
-                          'Impression réussie',
-                          `Les étiquettes ont été envoyées à l'imprimante ${selectedBluetoothPrinter.device_name}\n\nTotal: ${products.length * copies} étiquettes`
-                        );
-                      } catch (printError: any) {
-                        console.error('❌ [PRINTER] Erreur impression:', printError);
-                        Alert.alert(
-                          'Erreur d\'impression',
-                          `Impossible d'imprimer les étiquettes.\n\nErreur: ${printError?.message || 'Erreur inconnue'}`
-                        );
-                      } finally {
-                        setGenerating(false);
-                      }
-                    }
-                  }
-                ]
-              );
-            } else {
-              // Aucune imprimante connectée
-              Alert.alert(
-                'Étiquettes prêtes',
-                `Les étiquettes ont été préparées avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nPour imprimer, connectez-vous à une imprimante Bluetooth ESC/POS et activez l'envoi automatique ou réessayez avec l'impression automatique activée.`,
-                [{ text: 'OK' }]
-              );
-            }
           }
         }
 
@@ -1080,17 +1008,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
                 <Ionicons name="document-text" size={24} color={printerType === 'pdf' ? 'white' : '#666'} />
                 <Text style={[styles.printerTypeButtonText, printerType === 'pdf' && styles.printerTypeButtonTextActive]}>
                   PDF
-            </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.printerTypeButton, printerType === 'escpos' && styles.printerTypeButtonActive]}
-                onPress={() => setPrinterType('escpos')}
-              >
-                <Ionicons name="print" size={24} color={printerType === 'escpos' ? 'white' : '#666'} />
-                <Text style={[styles.printerTypeButtonText, printerType === 'escpos' && styles.printerTypeButtonTextActive]}>
-                  ESC/POS
-            </Text>
+                </Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -1102,7 +1020,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
                   TSC
                 </Text>
               </TouchableOpacity>
-          </View>
+            </View>
           </View>
 
           {/* Sélection du modèle d'étiquette */}
@@ -1134,7 +1052,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
            )}
            
            {/* Configuration de l'imprimante thermique */}
-           {(printerType === 'escpos' || printerType === 'tsc') && (
+           {printerType === 'tsc' && (
              <View style={styles.printerConfigSection}>
                <Text style={styles.printerConfigTitle}>Configuration de l'imprimante thermique</Text>
                
@@ -1404,7 +1322,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
            )}
 
            {/* Composant de test pour l'imprimante thermique */}
-           {(printerType === 'escpos' || printerType === 'tsc') && printerConfig.ip_address && (
+           {printerType === 'tsc' && printerConfig.ip_address && (
              <ThermalPrinterTest
                printerConfig={{
                  ip_address: printerConfig.ip_address,

@@ -1,4 +1,5 @@
 import { PermissionsAndroid, Platform, Alert, Linking } from 'react-native';
+import { labelPrintService } from './api';
 
 // Interface pour les imprimantes Bluetooth
 export interface BluetoothPrinter {
@@ -488,7 +489,175 @@ class BluetoothPrinterService {
     }
   }
 
-  // Imprimer des étiquettes TSC directement (Bluetooth)
+  /**
+   * Parse les commandes TSPL et les convertit en format JSON pour printLabel
+   * Note: Cette fonction parse une seule étiquette (entre CLS et PRINT)
+   */
+  private parseTSPLCommands(tsplText: string, thermalSettings: { density: number; speed: number; direction: number; gap: number; offset: number }): any {
+    const lines = tsplText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    
+    let width = 80; // mm par défaut
+    let height = 40; // mm par défaut
+    let dpi = 203;
+    let gap = thermalSettings.gap || 2;
+    let direction = thermalSettings.direction === 0 
+      ? this.BluetoothTscPrinter.DIRECTION.BACKWARD
+      : this.BluetoothTscPrinter.DIRECTION.FORWARD;
+    let density = thermalSettings.density || 8;
+    let speed = thermalSettings.speed || 4;
+    
+    const textBlocks: any[] = [];
+    const barcodeBlocks: any[] = [];
+    
+    // Trouver le premier CLS pour commencer le parsing d'une étiquette
+    let startIndex = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i] === 'CLS') {
+        startIndex = i;
+        break;
+      }
+    }
+    
+    // Parser les commandes TSPL (jusqu'au premier PRINT)
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Arrêter au premier PRINT (une seule étiquette)
+      if (line === 'PRINT') {
+        break;
+      }
+      
+      // SIZE width mm,height mm
+      if (line.startsWith('SIZE ')) {
+        const match = line.match(/SIZE\s+(\d+(?:\.\d+)?)\s*mm\s*,\s*(\d+(?:\.\d+)?)\s*mm/);
+        if (match) {
+          width = parseFloat(match[1]);
+          height = parseFloat(match[2]);
+        }
+      }
+      // GAP gap mm,0
+      else if (line.startsWith('GAP ')) {
+        const match = line.match(/GAP\s+(\d+(?:\.\d+)?)\s*mm/);
+        if (match) {
+          gap = parseFloat(match[1]);
+        }
+      }
+      // DENSITY n
+      else if (line.startsWith('DENSITY ')) {
+        const match = line.match(/DENSITY\s+(\d+)/);
+        if (match) {
+          density = parseInt(match[1], 10);
+        }
+      }
+      // SPEED n
+      else if (line.startsWith('SPEED ')) {
+        const match = line.match(/SPEED\s+(\d+)/);
+        if (match) {
+          speed = parseInt(match[1], 10);
+        }
+      }
+      // DIRECTION n
+      else if (line.startsWith('DIRECTION ')) {
+        const match = line.match(/DIRECTION\s+(\d+)/);
+        if (match) {
+          const dir = parseInt(match[1], 10);
+          direction = dir === 0 
+            ? this.BluetoothTscPrinter.DIRECTION.FORWARD
+            : this.BluetoothTscPrinter.DIRECTION.BACKWARD;
+        }
+      }
+      // TEXT x,y,"font",rotation,xmul,ymul,"text"
+      else if (line.startsWith('TEXT ')) {
+        const match = line.match(/TEXT\s+(\d+)\s*,\s*(\d+)\s*,\s*"(\d+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*"([^"]*)"/);
+        if (match) {
+          const x = parseInt(match[1], 10);
+          const y = parseInt(match[2], 10);
+          const font = parseInt(match[3], 10);
+          const rotation = parseInt(match[4], 10);
+          const xmul = parseInt(match[5], 10);
+          const ymul = parseInt(match[6], 10);
+          const text = match[7];
+          
+          // Convertir le numéro de police en constante
+          let fontType = this.BluetoothTscPrinter.FONTTYPE.FONT_2;
+          if (font === 0) fontType = this.BluetoothTscPrinter.FONTTYPE.FONT_1;
+          else if (font === 1) fontType = this.BluetoothTscPrinter.FONTTYPE.FONT_2;
+          else if (font === 2) fontType = this.BluetoothTscPrinter.FONTTYPE.FONT_3;
+          else if (font === 3) fontType = this.BluetoothTscPrinter.FONTTYPE.FONT_4;
+          
+          // Convertir le multiplicateur
+          let xscal = this.BluetoothTscPrinter.FONTMUL.MUL_1;
+          let yscal = this.BluetoothTscPrinter.FONTMUL.MUL_1;
+          if (xmul === 2) xscal = this.BluetoothTscPrinter.FONTMUL.MUL_2;
+          if (ymul === 2) yscal = this.BluetoothTscPrinter.FONTMUL.MUL_2;
+          
+          textBlocks.push({
+            text,
+            x,
+            y,
+            fonttype: fontType,
+            rotation,
+            xscal,
+            yscal,
+          });
+        }
+      }
+      // BARCODE x,y,"type",height,readable,rotation,narrow,wide,"code"
+      else if (line.startsWith('BARCODE ')) {
+        const match = line.match(/BARCODE\s+(\d+)\s*,\s*(\d+)\s*,\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*"([^"]*)"/);
+        if (match) {
+          const x = parseInt(match[1], 10);
+          const y = parseInt(match[2], 10);
+          const type = match[3];
+          const height = parseInt(match[4], 10);
+          const readable = parseInt(match[5], 10);
+          const rotation = parseInt(match[6], 10);
+          const narrow = parseInt(match[7], 10);
+          const wide = parseInt(match[8], 10);
+          const code = match[9];
+          
+          // Convertir le type de code-barres
+          let barcodeType = this.BluetoothTscPrinter.BARCODETYPE.CODE128;
+          if (type === 'EAN13') barcodeType = this.BluetoothTscPrinter.BARCODETYPE.EAN13;
+          else if (type === '128') barcodeType = this.BluetoothTscPrinter.BARCODETYPE.CODE128;
+          
+          barcodeBlocks.push({
+            x,
+            y,
+            type: barcodeType,
+            height,
+            readable,
+            rotation,
+            narrow,
+            wide,
+            code,
+          });
+        }
+      }
+      // CLS et PRINT sont ignorés (gérés par printLabel)
+    }
+    
+    // Convertir les dimensions en points
+    const dotsPerMm = dpi / 25.4;
+    const widthDots = Math.floor(width * dotsPerMm);
+    const heightDots = Math.floor(height * dotsPerMm);
+    
+    return {
+      width: widthDots,
+      height: heightDots,
+      gap: Math.max(0, Math.min(gap, 50)),
+      direction,
+      reference: [Math.max(0, Math.min(thermalSettings.offset ?? 0, 100)), 0],
+      tear: this.BluetoothTscPrinter.TEAR.ON,
+      sound: 0,
+      density: Math.max(0, Math.min(density, 15)),
+      speed: Math.max(1, Math.min(speed, 15)),
+      text: textBlocks,
+      barcode: barcodeBlocks,
+    };
+  }
+
+  // Imprimer des étiquettes TSC directement (Bluetooth) - Utilise maintenant le backend
   async printTSCLabels(params: {
     products: Array<{ id: number; name: string; cug?: string; generated_ean?: string; selling_price?: number }>,
     copies: number,
@@ -539,6 +708,100 @@ class BluetoothPrinterService {
         throw new Error('Connexion perdue. Veuillez vous reconnecter à l\'imprimante.');
       }
 
+      // NOUVELLE APPROCHE: Utiliser le backend pour générer les commandes TSC
+      console.log('🔄 [TSC] Utilisation du backend pour générer les commandes TSC...');
+      
+      // 1. Créer un lot d'étiquettes via l'API
+      console.log('📦 [TSC] Création du lot d\'étiquettes via l\'API...');
+      const batchData = await labelPrintService.createLabelBatch({
+        product_ids: products.map(p => p.id),
+        copies,
+        include_cug: includeCug,
+        include_ean: includeEan,
+        include_barcode: includeBarcode,
+        printer_type: 'tsc',
+        thermal_settings: thermalSettings,
+      });
+      
+      console.log('✅ [TSC] Lot d\'étiquettes créé:', batchData.id);
+      
+      // 2. Récupérer les commandes TSC du backend
+      console.log('📄 [TSC] Récupération des commandes TSC du backend...');
+      const tscCommands = await labelPrintService.getTSCFile(batchData.id);
+      
+      console.log('✅ [TSC] Commandes TSC récupérées:', tscCommands.length, 'caractères');
+      
+      // 3. Parser les commandes TSPL et les convertir en format JSON pour printLabel
+      console.log('🔄 [TSC] Parsing des commandes TSPL...');
+      
+      // Parser toutes les étiquettes (une par produit)
+      const lines = tscCommands.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+      const labelSections: string[] = [];
+      let currentSection: string[] = [];
+      
+      // Séparer les étiquettes (entre CLS et PRINT)
+      for (const line of lines) {
+        if (line === 'CLS') {
+          if (currentSection.length > 0) {
+            labelSections.push(currentSection.join('\n'));
+          }
+          currentSection = [];
+        }
+        if (line !== 'PRINT' && !line.startsWith('SIZE') && !line.startsWith('GAP') && !line.startsWith('DENSITY') && !line.startsWith('SPEED') && !line.startsWith('DIRECTION')) {
+          currentSection.push(line);
+        }
+        if (line === 'PRINT') {
+          if (currentSection.length > 0) {
+            labelSections.push(currentSection.join('\n'));
+            currentSection = [];
+          }
+        }
+      }
+      
+      // Parser les paramètres globaux (SIZE, GAP, etc.)
+      let globalParams = '';
+      for (const line of lines) {
+        if (line.startsWith('SIZE') || line.startsWith('GAP') || line.startsWith('DENSITY') || line.startsWith('SPEED') || line.startsWith('DIRECTION')) {
+          globalParams += line + '\n';
+        }
+      }
+      
+      console.log(`✅ [TSC] ${labelSections.length} étiquettes trouvées`);
+      
+      // 4. Imprimer les étiquettes une par une
+      console.log('🖨️ [TSC] Impression des étiquettes...');
+      
+      // Vérifier que printLabel existe et est une fonction
+      if (typeof this.BluetoothTscPrinter.printLabel !== 'function') {
+        console.error(`❌ [TSC] printLabel n'est pas une fonction. Type:`, typeof this.BluetoothTscPrinter.printLabel);
+        throw new Error('printLabel n\'est pas une fonction disponible');
+      }
+      
+      // Imprimer chaque étiquette
+      for (let i = 0; i < labelSections.length; i++) {
+        const labelSection = globalParams + labelSections[i];
+        console.log(`🖨️ [TSC] Impression étiquette ${i + 1}/${labelSections.length}...`);
+        
+        const tscOptions = this.parseTSPLCommands(labelSection, thermalSettings);
+        
+        console.log(`✅ [TSC] Étiquette ${i + 1} parsée:`, {
+          width: tscOptions.width,
+          height: tscOptions.height,
+          textCount: tscOptions.text?.length || 0,
+          barcodeCount: tscOptions.barcode?.length || 0
+        });
+        
+        // Appeler printLabel avec les options parsées
+        const printResult = await this.BluetoothTscPrinter.printLabel(tscOptions);
+        
+        console.log(`✅ [TSC] Étiquette ${i + 1} imprimée:`, printResult);
+      }
+      
+      console.log('✅ [TSC] Impression terminée avec succès');
+      
+      return;
+      
+      // ANCIENNE APPROCHE (désactivée - code conservé pour référence)
       // Dimensions par défaut (en mm) - Largeur augmentée pour un design plus moderne
       const width = 80; // Largeur augmentée de 40 à 80mm
       const height = 40; // Hauteur augmentée de 30 à 40mm
@@ -636,13 +899,14 @@ class BluetoothPrinterService {
         // Convertir le nom du produit pour éviter les problèmes de caractères
         const productName = convertFrenchChars((product.name || '').slice(0, 32));
 
-        // Déterminer la rotation - utiliser ROTATION_0 pour tous les éléments
+        // Déterminer la rotation - utiliser 0 (valeur numérique) pour tous les éléments
         // Si l'étiquette est à l'envers, on inversera la direction au lieu de la rotation
-        const baseRotation = this.BluetoothTscPrinter.ROTATION.ROTATION_0;
+        // Utiliser 0 directement pour garantir que le texte est horizontal
+        const baseRotation = 0; // 0 = pas de rotation (horizontal)
 
         console.log(`🔄 [TSC] Rotation appliquée:`, {
           direction: thermalSettings.direction,
-          rotation: 'ROTATION_0',
+          rotation: 0, // 0 = horizontal
           includePrice
         });
 
@@ -667,22 +931,22 @@ class BluetoothPrinterService {
         const spacingAfterName = 2.0; // 2mm après le nom (augmenté pour plus d'espace)
         const barcodeY_mm = nameY_mm + nameHeight_mm + spacingAfterName; // Code-barres après le nom
         const barcodeHeight_mm = 8.0; // Hauteur du code-barres réduite à 8mm
-        const spacingAfterBarcode = -0.5; // Légende collée directement au code-barres (légèrement superposée pour éliminer l'espace)
-        const legendY_mm = barcodeY_mm + barcodeHeight_mm + spacingAfterBarcode; // Légende collée au code-barres
+        const spacingAfterBarcode = -1.5; // Légende très proche du code-barres (superposée pour éliminer l'espace)
+        const legendY_mm = barcodeY_mm + barcodeHeight_mm + spacingAfterBarcode; // Légende très proche du code-barres
         const legendHeight_mm = 2.5; // Hauteur estimée de la légende (réduite)
-        const spacingAfterLegend = 0.5; // 0.5mm après la légende (réduit)
-        // CUG et prix sur la même ligne (justify-between)
-        const cugPriceY_mm = legendY_mm + legendHeight_mm + spacingAfterLegend; // CUG et prix après la légende
+        const spacingAfterLegend = -0.10; // -0.10mm après la légende (négatif pour remonter le CUG légèrement)
+        // CUG et prix séparés verticalement (CUG plus haut, prix plus bas)
+        const cugY_mm = legendY_mm + legendHeight_mm + spacingAfterLegend; // CUG après la légende (plus haut, superposé légèrement)
+        const spacingAfterCug = 3.5; // 3.5mm entre CUG et prix (augmenté pour descendre le prix)
+        const priceY_mm = cugY_mm + spacingAfterCug; // Prix plus bas que le CUG
         const cugHeight_mm = 2.5; // Hauteur estimée du CUG (réduite)
         const priceHeight_mm = 4.0; // Hauteur estimée du prix (plus grand avec MUL_2)
-        // Utiliser la hauteur la plus grande pour la ligne commune
-        const commonLineHeight_mm = Math.max(cugHeight_mm, priceHeight_mm);
         
         // Calculer les positions ajustées pour utiliser toute la hauteur disponible
-        const textHeight_mm_calc = commonLineHeight_mm; // Hauteur de la ligne commune
+        const textHeight_mm_calc = priceY_mm + priceHeight_mm - cugY_mm; // Hauteur totale (CUG + espace + prix)
         const maxAvailableHeight_calc = height - marginBottom;
-        const lastElementY_calc = cugPriceY_mm;
-        const availableSpaceAtBottom_calc = maxAvailableHeight_calc - (lastElementY_calc + textHeight_mm_calc);
+        const lastElementY_calc = priceY_mm; // Utiliser la position du prix comme dernier élément
+        const availableSpaceAtBottom_calc = maxAvailableHeight_calc - (lastElementY_calc + priceHeight_mm);
         
         // Ajuster pour utiliser toute la hauteur disponible
         let adjustmentY = 0;
@@ -700,24 +964,30 @@ class BluetoothPrinterService {
         // Positionner la légende alignée avec le code-barres (un peu à gauche du centre)
         const legendY = Math.floor((legendY_mm + adjustmentY) * dotsPerMm);
         
-        // CUG et prix sur la même ligne Y
-        const cugPriceY = Math.floor((cugPriceY_mm + adjustmentY) * dotsPerMm);
+        // CUG et prix séparés verticalement
+        const cugY = Math.floor((cugY_mm + adjustmentY) * dotsPerMm);
+        const priceY = Math.floor((priceY_mm + adjustmentY) * dotsPerMm);
         const barcodeHeightDots = Math.floor(barcodeHeight_mm * dotsPerMm);
         
         // Vérification finale des positions pour éviter les débordements
         const maxY = heightDots - Math.floor(marginBottom * dotsPerMm);
-        const textHeightDots = Math.floor(commonLineHeight_mm * dotsPerMm); // Hauteur de la ligne commune
+        const cugHeightDots = Math.floor(cugHeight_mm * dotsPerMm);
+        const priceHeightDots = Math.floor(priceHeight_mm * dotsPerMm);
         
-        // Ajuster la position Y si elle dépasse
-        let finalCugPriceY = cugPriceY;
+        // Ajuster la position Y du prix si elle dépasse
+        let finalPriceY = priceY;
         
-        if (finalCugPriceY + textHeightDots > maxY) {
-          console.warn(`⚠️ [TSC] Ligne CUG/Prix dépasse: ${finalCugPriceY + textHeightDots}pts > ${maxY}pts, ajustement...`);
-          finalCugPriceY = Math.max(legendY + Math.floor(2.5 * dotsPerMm), maxY - textHeightDots);
+        if (finalPriceY + priceHeightDots > maxY) {
+          console.warn(`⚠️ [TSC] Prix dépasse: ${finalPriceY + priceHeightDots}pts > ${maxY}pts, ajustement...`);
+          finalPriceY = Math.max(cugY + cugHeightDots + Math.floor(1 * dotsPerMm), maxY - priceHeightDots);
         }
         
-        // Utiliser la position ajustée pour CUG et prix (même ligne)
-        const cugPriceY_final = finalCugPriceY;
+        // Utiliser les positions ajustées
+        const cugY_final = cugY;
+        const priceY_final = finalPriceY;
+        
+        // Variable pour stocker la position X du prix (pour le log final)
+        let priceX_final: number | null = null;
         
         // Blocs de texte
         const textBlocks: any[] = [];
@@ -738,67 +1008,98 @@ class BluetoothPrinterService {
         // 2. Légende du code-barres (en dessous du code-barres)
         // Sera ajoutée après le code-barres si nécessaire
         
-        // 3. CUG et Prix sur la même ligne (justify-between)
-        // CUG à gauche, Prix à droite
+        // 3. CUG (un peu plus haut)
         if (includeCug && product.cug) {
           const cugText = `CUG: ${convertFrenchChars(product.cug)}`;
           textBlocks.push({
             text: cugText,
             x: nameX, // À gauche (même position X que le nom)
-            y: cugPriceY_final, // Même ligne Y que le prix
+            y: cugY_final, // Position Y du CUG (plus haut)
             fonttype: this.BluetoothTscPrinter.FONTTYPE.FONT_2,
             rotation: baseRotation,
             xscal: this.BluetoothTscPrinter.FONTMUL.MUL_1,
             yscal: this.BluetoothTscPrinter.FONTMUL.MUL_1,
           });
-          console.log(`✅ [TSC] CUG ajouté: ${product.cug} à x=${nameX}, y=${cugPriceY_final}`);
+          console.log(`✅ [TSC] CUG ajouté: ${product.cug} à x=${nameX}, y=${cugY_final}`);
         }
 
-        // 4. Prix sur la même ligne que le CUG (justify-between)
-        // Mettre le prix en valeur avec une police plus grande, un scale plus élevé et à droite
+        // 4. Prix (un peu plus bas que le CUG)
+        // Mettre le prix en valeur avec une police plus grande, un scale plus élevé, positionné juste après le CUG horizontalement mais plus bas verticalement
         if (includePrice && product.selling_price && product.selling_price > 0) {
           const priceText = `${formatPrice(product.selling_price)} FCFA`;
           const convertedPriceText = convertFrenchChars(priceText);
           
-          // Utiliser FONT_3 (plus grande) et MUL_2 (double taille) pour mettre le prix en valeur
-          const priceFont = this.BluetoothTscPrinter.FONTTYPE.FONT_3 || this.BluetoothTscPrinter.FONTTYPE.FONT_2;
-          const priceScale = this.BluetoothTscPrinter.FONTMUL.MUL_2 || this.BluetoothTscPrinter.FONTMUL.MUL_1;
+          // Utiliser FONT_2 (taille normale) et MUL_1 (taille normale) pour le prix (réduit pour éviter débordement)
+          const priceFont = this.BluetoothTscPrinter.FONTTYPE.FONT_2;
+          const priceScale = this.BluetoothTscPrinter.FONTMUL.MUL_1;
           
           // Positionner le prix à droite (justify-between avec le CUG)
-          // Estimer la largeur du texte du prix (FONT_3 avec MUL_2)
-          // FONT_3 avec MUL_2 : environ 12 points par caractère
-          const estimatedPriceWidthDots = convertedPriceText.length * 12;
-          // Positionner à droite avec marge plus grande pour éviter le débordement
-          const priceMarginRight_mm = 3; // Marge droite plus grande (3mm au lieu de 2mm)
-          let priceX_right = widthDots - priceMarginRight_mm * dotsPerMm - estimatedPriceWidthDots;
-          // S'assurer qu'il y a assez d'espace entre CUG et prix (au moins 5mm)
-          const minPriceX = nameX + Math.floor(5 * dotsPerMm);
-          const maxPriceX = widthDots - priceMarginRight_mm * dotsPerMm - estimatedPriceWidthDots;
-          priceX_right = Math.max(minPriceX, Math.min(priceX_right, maxPriceX));
-          // S'assurer que le prix ne dépasse pas à droite
-          if (priceX_right + estimatedPriceWidthDots > widthDots - priceMarginRight_mm * dotsPerMm) {
-            priceX_right = Math.max(marginLeft * dotsPerMm, maxPriceX);
+          // Estimer la largeur du texte du prix (FONT_2 avec MUL_1)
+          // FONT_2 avec MUL_1 : environ 8 points par caractère (estimation conservatrice pour éviter débordement)
+          const estimatedPriceWidthDots = convertedPriceText.length * 8;
+          
+          // Positionner le prix à droite (justify-between avec le CUG)
+          // Calculer les limites strictes pour éviter le débordement
+          const marginRightDots = marginRight * dotsPerMm;
+          const maxPriceX = Math.max(marginLeft * dotsPerMm, widthDots - marginRightDots - estimatedPriceWidthDots);
+          
+          // S'assurer qu'il y a assez d'espace entre CUG et prix (au moins 2mm)
+          const minPriceX = nameX + Math.floor(2 * dotsPerMm); // Au moins 2mm après le CUG
+          
+          // Position initiale du prix : à droite avec marge, mais dans les limites
+          let priceX = Math.max(minPriceX, Math.min(maxPriceX, widthDots - marginRightDots - estimatedPriceWidthDots));
+          
+          // Vérification stricte : s'assurer que le prix ne dépasse jamais à droite
+          const finalRightEdge = priceX + estimatedPriceWidthDots;
+          const maxRightEdge = widthDots - marginRightDots;
+          if (finalRightEdge > maxRightEdge) {
+            console.warn(`⚠️ [TSC] Prix dépasse à droite, ajustement: x=${priceX} + largeur=${estimatedPriceWidthDots} = ${finalRightEdge} > ${maxRightEdge}`);
+            // Forcer la position maximale avec marge de sécurité
+            priceX = Math.max(marginLeft * dotsPerMm, maxRightEdge - estimatedPriceWidthDots - Math.floor(1 * dotsPerMm)); // Marge de sécurité de 1mm
           }
-          // S'assurer que le prix ne dépasse pas à gauche et que la position est valide
-          let priceX = Math.max(marginLeft * dotsPerMm, Math.min(priceX_right, maxPriceX));
-          // Vérification finale : s'assurer que la position est valide (positive)
-          if (priceX < 0 || priceX + estimatedPriceWidthDots > widthDots) {
-            console.warn(`⚠️ [TSC] Position prix invalide: x=${priceX}, largeur=${estimatedPriceWidthDots}, width=${widthDots}`);
-            // Positionner le prix à droite avec marge si la position est invalide
-            priceX = Math.max(marginLeft * dotsPerMm, widthDots - priceMarginRight_mm * dotsPerMm - estimatedPriceWidthDots);
+          
+          // Vérification stricte : s'assurer que le prix ne dépasse jamais à gauche
+          if (priceX < marginLeft * dotsPerMm) {
+            console.warn(`⚠️ [TSC] Prix dépasse à gauche, ajustement: x=${priceX} < ${marginLeft * dotsPerMm}`);
+            priceX = marginLeft * dotsPerMm;
+          }
+          
+          // Vérification finale absolue : s'assurer que la position est valide et dans les limites
+          const finalCheckRightEdge = priceX + estimatedPriceWidthDots;
+          if (priceX < 0 || finalCheckRightEdge > widthDots - marginRightDots) {
+            console.error(`❌ [TSC] Position prix invalide après tous ajustements: x=${priceX}, largeur=${estimatedPriceWidthDots}, bord droit=${finalCheckRightEdge}, width=${widthDots}, maxRight=${widthDots - marginRightDots}`);
+            // Forcer la position à gauche si tout échoue
+            priceX = Math.max(marginLeft * dotsPerMm, Math.min(nameX + Math.floor(2 * dotsPerMm), maxPriceX));
+          }
+          
+          // Dernière vérification de sécurité
+          if (priceX + estimatedPriceWidthDots > widthDots - marginRightDots) {
+            priceX = widthDots - marginRightDots - estimatedPriceWidthDots - Math.floor(1 * dotsPerMm); // Marge de sécurité supplémentaire
+            priceX = Math.max(marginLeft * dotsPerMm, priceX); // S'assurer qu'on ne dépasse pas à gauche
+          }
+          
+          // Stocker la position X du prix pour le log final
+          priceX_final = priceX;
+          
+          // Log de vérification finale
+          const finalPriceRightEdge = priceX + estimatedPriceWidthDots;
+          const maxAllowedRightEdge = widthDots - marginRightDots;
+          console.log(`📐 [TSC] Position prix finale: x=${priceX}pts, largeur=${estimatedPriceWidthDots}pts, bord droit=${finalPriceRightEdge}pts, max autorisé=${maxAllowedRightEdge}pts, width=${widthDots}pts`);
+          if (finalPriceRightEdge > maxAllowedRightEdge) {
+            console.error(`❌ [TSC] ERREUR: Prix dépasse encore à droite! ${finalPriceRightEdge} > ${maxAllowedRightEdge}`);
           }
           
           textBlocks.push({
             text: convertedPriceText,
             x: priceX, // À droite (justify-between avec CUG)
-            y: cugPriceY_final, // Même ligne Y que le CUG
-            fonttype: priceFont, // FONT_3 pour une police plus grande
+            y: priceY_final, // Position Y du prix (plus bas que le CUG)
+            fonttype: priceFont, // FONT_2 pour taille normale
             rotation: baseRotation,
-            xscal: priceScale, // MUL_2 pour double largeur
-            yscal: priceScale, // MUL_2 pour double hauteur
+            xscal: priceScale, // MUL_1 pour taille normale
+            yscal: priceScale, // MUL_1 pour taille normale
           });
           
-          console.log(`✅ [TSC] Prix ajouté (en valeur, à droite): ${priceText} à x=${priceX}pts (droite), y=${cugPriceY_final}pts (FONT_3, MUL_2)`);
+          console.log(`✅ [TSC] Prix ajouté (à droite, plus bas): ${priceText} à x=${priceX}pts, y=${priceY_final}pts (FONT_2, MUL_1)`);
         }
 
         // 5. Code-barres (comme dans tsc.py - position fixe à gauche)
@@ -846,25 +1147,45 @@ class BluetoothPrinterService {
               actualBarcodeWidthDots = (cleanedCode.length * modulesPerChar + guardZones) * 2;
             }
             
-            // Position du code-barres : centré légèrement à droite, mais s'assurer qu'il ne dépasse pas
+            // Position du code-barres : plus à gauche pour éviter le débordement à droite
             // Calculer la position centrée
             const centerX = Math.floor(widthDots / 2);
-            // Décaler légèrement à droite (environ 3mm)
-            const offsetRight_mm = 3;
-            let actualBarcodeX = centerX - Math.floor(actualBarcodeWidthDots / 2) + Math.floor(offsetRight_mm * dotsPerMm);
-            // S'assurer que le code-barres ne dépasse pas à droite
-            const maxBarcodeX = widthDots - marginRight * dotsPerMm - actualBarcodeWidthDots;
+            // Décaler à gauche (environ 8mm pour positionner le code-barres plus à gauche)
+            const offsetLeft_mm = 8;
+            let actualBarcodeX = centerX - Math.floor(actualBarcodeWidthDots / 2) - Math.floor(offsetLeft_mm * dotsPerMm);
+            
+            // Calculer les limites strictes pour éviter le débordement
+            const minBarcodeX = marginLeft * dotsPerMm; // Position minimale (marge gauche)
+            const maxBarcodeX = widthDots - marginRight * dotsPerMm - actualBarcodeWidthDots; // Position maximale (marge droite)
+            
+            // Vérification stricte : s'assurer que le code-barres reste dans les limites
+            // Si la position calculée dépasse à droite, la forcer à la position maximale
             if (actualBarcodeX + actualBarcodeWidthDots > widthDots - marginRight * dotsPerMm) {
-              actualBarcodeX = Math.max(marginLeft * dotsPerMm, maxBarcodeX);
+              console.warn(`⚠️ [TSC] Code-barres dépasse à droite, ajustement: x=${actualBarcodeX} + largeur=${actualBarcodeWidthDots} > ${widthDots - marginRight * dotsPerMm}`);
+              actualBarcodeX = maxBarcodeX;
             }
-            // S'assurer que le code-barres ne dépasse pas à gauche et que la position est valide
-            actualBarcodeX = Math.max(marginLeft * dotsPerMm, Math.min(actualBarcodeX, maxBarcodeX));
-            // Vérification finale : s'assurer que la position est valide (positive)
-            if (actualBarcodeX < 0 || actualBarcodeX + actualBarcodeWidthDots > widthDots) {
-              console.warn(`⚠️ [TSC] Position code-barres invalide: x=${actualBarcodeX}, largeur=${actualBarcodeWidthDots}, width=${widthDots}`);
-              // Centrer le code-barres si la position est invalide
-              actualBarcodeX = Math.max(marginLeft * dotsPerMm, Math.floor((widthDots - actualBarcodeWidthDots) / 2));
+            
+            // S'assurer que le code-barres ne dépasse pas à gauche
+            if (actualBarcodeX < minBarcodeX) {
+              console.warn(`⚠️ [TSC] Code-barres dépasse à gauche, ajustement: x=${actualBarcodeX} < ${minBarcodeX}`);
+              actualBarcodeX = minBarcodeX;
             }
+            
+            // Vérification finale absolue : forcer la position dans les limites
+            actualBarcodeX = Math.max(minBarcodeX, Math.min(actualBarcodeX, maxBarcodeX));
+            
+            // Vérification finale de sécurité : s'assurer que le code-barres ne déborde jamais
+            const finalRightEdge = actualBarcodeX + actualBarcodeWidthDots;
+            const maxRightEdge = widthDots - marginRight * dotsPerMm;
+            if (finalRightEdge > maxRightEdge) {
+              console.error(`❌ [TSC] Code-barres déborde encore à droite après ajustements! x=${actualBarcodeX}, largeur=${actualBarcodeWidthDots}, bord droit=${finalRightEdge}, max=${maxRightEdge}`);
+              // Forcer la position maximale avec marge de sécurité supplémentaire
+              actualBarcodeX = maxRightEdge - actualBarcodeWidthDots - Math.floor(1 * dotsPerMm); // Marge de sécurité de 1mm
+              // S'assurer qu'on ne dépasse pas à gauche
+              actualBarcodeX = Math.max(minBarcodeX, actualBarcodeX);
+            }
+            
+            console.log(`📐 [TSC] Position code-barres finale: x=${actualBarcodeX}pts, largeur=${actualBarcodeWidthDots}pts, bord droit=${actualBarcodeX + actualBarcodeWidthDots}pts, max=${maxRightEdge}pts`);
             
             barcodeBlocks.push({
               x: actualBarcodeX, // Position calculée avec largeur réelle
@@ -880,44 +1201,64 @@ class BluetoothPrinterService {
             
             // Ajouter la légende du code-barres manuellement (alignée à droite sous le code-barres)
             const legendText = convertFrenchChars(cleanedCode);
-            const estimatedLegendWidthDots = legendText.length * 6; // 6 points par caractère pour FONT_2
+            // Estimation plus précise de la largeur : FONT_2 à 203 DPI = environ 8 points par caractère
+            // Pour être sûr, utiliser une estimation plus large (10 points par caractère)
+            const estimatedLegendWidthDots = legendText.length * 10; // 10 points par caractère pour FONT_2 (estimation conservatrice)
             
-            // Positionner la légende à droite, alignée avec la fin du code-barres
-            // La légende commence à la fin du code-barres (actualBarcodeX + actualBarcodeWidthDots)
-            // On la positionne à droite en soustrayant sa largeur estimée
-            let legendX_right = actualBarcodeX + actualBarcodeWidthDots - estimatedLegendWidthDots;
+            // Positionner la légende centrée sous le code-barres (alignée avec le centre du code-barres)
+            // Calculer le centre du code-barres
+            const barcodeCenterX = actualBarcodeX + Math.floor(actualBarcodeWidthDots / 2);
+            // Centrer la légende sur le code-barres
+            let legendX_centered = barcodeCenterX - Math.floor(estimatedLegendWidthDots / 2);
             // S'assurer que la légende ne dépasse pas à droite
             const maxLegendX = widthDots - marginRight * dotsPerMm - estimatedLegendWidthDots;
-            if (legendX_right + estimatedLegendWidthDots > widthDots - marginRight * dotsPerMm) {
-              legendX_right = Math.max(marginLeft * dotsPerMm, maxLegendX);
+            if (legendX_centered + estimatedLegendWidthDots > widthDots - marginRight * dotsPerMm) {
+              legendX_centered = Math.max(marginLeft * dotsPerMm, maxLegendX);
             }
             // S'assurer que la légende ne dépasse pas à gauche et que la position est valide
-            let legendX_final = Math.max(marginLeft * dotsPerMm, Math.min(legendX_right, maxLegendX));
+            let legendX_final = Math.max(marginLeft * dotsPerMm, Math.min(legendX_centered, maxLegendX));
             // Vérification finale : s'assurer que la position est valide (positive)
             if (legendX_final < 0 || legendX_final + estimatedLegendWidthDots > widthDots) {
               console.warn(`⚠️ [TSC] Position légende invalide: x=${legendX_final}, largeur=${estimatedLegendWidthDots}, width=${widthDots}`);
-              // Aligner la légende avec le code-barres si la position est invalide
-              legendX_final = Math.max(marginLeft * dotsPerMm, actualBarcodeX);
+              // Centrer la légende si la position est invalide
+              legendX_final = Math.max(marginLeft * dotsPerMm, Math.floor((widthDots - estimatedLegendWidthDots) / 2));
             }
             
-            textBlocks.push({
+            // Utiliser la valeur numérique 0 pour la rotation (au lieu de l'objet ROTATION_0)
+            // Cela garantit que le texte est horizontal
+            const rotationValue = 0; // 0 = pas de rotation (horizontal)
+            
+            // Vérifier les valeurs disponibles pour la rotation si nécessaire
+            const rotationOptions = {
+              ROTATION_0: this.BluetoothTscPrinter.ROTATION?.ROTATION_0,
+              ROTATION_90: this.BluetoothTscPrinter.ROTATION?.ROTATION_90,
+              ROTATION_180: this.BluetoothTscPrinter.ROTATION?.ROTATION_180,
+              ROTATION_270: this.BluetoothTscPrinter.ROTATION?.ROTATION_270,
+            };
+            console.log(`🔍 [TSC] Options de rotation disponibles:`, rotationOptions);
+            console.log(`🔍 [TSC] Rotation utilisée pour légende: ${rotationValue} (numérique)`);
+            
+            const legendBlock = {
               text: legendText,
-              x: legendX_final, // Aligné à droite avec le code-barres
+              x: legendX_final, // Centré sous le code-barres
               y: legendY, // En dessous du code-barres (en points)
               fonttype: this.BluetoothTscPrinter.FONTTYPE.FONT_2,
-              rotation: baseRotation,
+              rotation: rotationValue, // Utiliser 0 directement pour forcer le texte horizontal
               xscal: this.BluetoothTscPrinter.FONTMUL.MUL_1,
               yscal: this.BluetoothTscPrinter.FONTMUL.MUL_1,
-            });
+            };
+            
+            console.log(`🔍 [TSC] Bloc légende créé:`, JSON.stringify(legendBlock, null, 2));
+            textBlocks.push(legendBlock);
             
             console.log(`✅ [TSC] Code-barres ajouté: ${cleanedCode} (type: ${barcodeType === this.BluetoothTscPrinter.BARCODETYPE.EAN13 ? 'EAN13' : 'CODE128'})`);
             console.log(`📐 [TSC] Position code-barres: x=${actualBarcodeX}pts (à droite), largeur réelle=${actualBarcodeWidthDots}pts, y=${barcodeYPos}pts`);
-            console.log(`📐 [TSC] Légende: x=${legendX_final}pts (aligné à droite avec code-barres), largeur=${estimatedLegendWidthDots}pts, y=${legendY}pts`);
+            console.log(`📐 [TSC] Légende: x=${legendX_final}pts (centré sous code-barres), largeur=${estimatedLegendWidthDots}pts, y=${legendY}pts, rotation=${rotationValue}`);
           } else {
             console.warn(`⚠️ [TSC] Code-barres invalide après nettoyage: ${cleanedCode} (longueur: ${cleanedCode?.length || 0})`);
           }
         }
-        
+
         // Options TSC - format correct selon la librairie
         // Vérifier que les paramètres sont valides
         // Note: Si l'étiquette sort à l'envers, on doit inverser la direction
@@ -934,7 +1275,7 @@ class BluetoothPrinterService {
           barcode: `à droite, y=${barcodeYPos}pts (${barcodeY_mm.toFixed(1)}mm, hauteur: ${barcodeHeight_mm}mm)`,
           spacingAfterBarcode: `${spacingAfterBarcode}mm`,
           legend: `à droite, y=${legendY}pts (${(legendY / dotsPerMm).toFixed(1)}mm)`,
-          cugPrice: `CUG à gauche (x=${nameX}pts), Prix à droite, y=${cugPriceY_final}pts (${(cugPriceY_final / dotsPerMm).toFixed(1)}mm) - même ligne`,
+          cugPrice: `CUG à gauche (x=${nameX}pts, y=${cugY_final}pts/${(cugY_final / dotsPerMm).toFixed(1)}mm), Prix à droite (x=${priceX_final !== null ? priceX_final : 'N/A'}pts, y=${priceY_final}pts/${(priceY_final / dotsPerMm).toFixed(1)}mm) - séparés verticalement`,
           adjustmentY: `${adjustmentY.toFixed(1)}mm`,
           maxY: `${maxY}pts (${(maxY / dotsPerMm).toFixed(1)}mm)`,
           direction: tscDirection === this.BluetoothTscPrinter.DIRECTION.FORWARD ? 'FORWARD' : 'BACKWARD'
