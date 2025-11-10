@@ -16,7 +16,9 @@ from .views import (
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
     CatalogPDFAPIView, LabelPrintAPIView, ReceiptPrintAPIView,
     collect_static_files, GetRayonsView, GetSubcategoriesMobileView,
-    ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView
+    ProductCopyAPIView, ProductCopyManagementAPIView, BrandsByRayonAPIView,
+    CategoryRecommendationAPIView,
+    LoyaltyProgramAPIView, LoyaltyAccountAPIView, LoyaltyPointsAPIView
 )
 
 # Configuration Swagger
@@ -98,6 +100,14 @@ urlpatterns = [
     
     # Marques par rayon
     path('brands/by-rayon/', BrandsByRayonAPIView.as_view(), name='api_brands_by_rayon'),
+    
+    # Recommandation de catégories
+    path('categories/recommend/', CategoryRecommendationAPIView.as_view(), name='api_category_recommend'),
+    
+    # Fidélité
+    path('loyalty/program/', LoyaltyProgramAPIView.as_view(), name='api_loyalty_program'),
+    path('loyalty/account/', LoyaltyAccountAPIView.as_view(), name='api_loyalty_account'),
+    path('loyalty/points/calculate/', LoyaltyPointsAPIView.as_view(), name='api_loyalty_points_calculate'),
     
     # Administration - Collecte des fichiers statiques
     path('admin/collectstatic/', collect_static_files, name='api_collect_static'),

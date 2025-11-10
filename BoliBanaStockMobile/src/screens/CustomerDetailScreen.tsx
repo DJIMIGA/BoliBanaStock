@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import theme from '../utils/theme';
-import { customerService } from '../services/api';
+import { customerService, saleService } from '../services/api';
 import { CustomerFormModal } from '../components';
 
 interface Customer {
@@ -30,26 +30,43 @@ interface Customer {
   credit_limit?: number;
   is_active: boolean;
   created_at: string;
+  is_loyalty_member?: boolean;
+  loyalty_points?: number;
 }
 
-interface CreditTransaction {
+interface Transaction {
   id: number;
-  type: 'credit' | 'payment';
-  type_display: string;
-  amount: number;
-  formatted_amount: string;
-  balance_after: number;
-  formatted_balance_after: string;
+  transaction_type: 'credit' | 'loyalty' | 'sale';
+  // Pour les transactions de crédit
+  type?: 'credit' | 'payment';
+  type_display?: string;
+  amount?: number;
+  formatted_amount?: string;
+  balance_after?: number;
+  formatted_balance_after?: string;
+  user_name?: string;
+  sale?: number; // ID de la vente
+  sale_id?: number; // ID de la vente (alternative)
+  // Pour les transactions de fidélité
+  type_loyalty?: 'earned' | 'redeemed' | 'adjusted';
+  points?: number;
+  formatted_points?: string;
+  balance_after_loyalty?: number;
+  formatted_balance_after_loyalty?: string;
+  // Pour les ventes
+  payment_method?: 'cash' | 'credit' | 'sarali';
+  items_count?: number;
+  // Commun
   transaction_date: string;
+  date: string;
   notes?: string;
   sale_reference?: string;
-  user_name: string;
 }
 
 export default function CustomerDetailScreen({ navigation, route }: any) {
   const { customerId } = route.params;
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -60,13 +77,42 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
   const loadCustomerData = async () => {
     try {
       setLoading(true);
-      const [customerData, creditHistory] = await Promise.all([
+      const [customerData, history, salesResponse] = await Promise.all([
         customerService.getCustomer(customerId),
-        customerService.getCreditHistory(customerId, 20)
+        customerService.getCreditHistory(customerId, 20),
+        saleService.getSales({ customer: customerId, page_size: 20 })
       ]);
       
       setCustomer(customerData);
-      setTransactions(creditHistory.transactions || []);
+      
+      // Récupérer les transactions de crédit et fidélité
+      const creditAndLoyaltyTransactions = history.transactions || [];
+      
+      // Convertir les ventes en transactions pour l'affichage
+      const sales = salesResponse.results || salesResponse || [];
+      const saleTransactions = sales.map((sale: any) => ({
+        id: sale.id,
+        transaction_type: 'sale',
+        type: 'sale',
+        type_display: 'Vente',
+        amount: sale.total_amount || sale.revenue || 0,
+        formatted_amount: `${(sale.total_amount || sale.revenue || 0).toLocaleString()} FCFA`,
+        transaction_date: sale.sale_date || sale.date || sale.created_at,
+        date: sale.sale_date || sale.date || sale.created_at,
+        sale_reference: sale.reference,
+        payment_method: sale.payment_method,
+        notes: sale.notes,
+        items_count: sale.items?.length || 0,
+      }));
+      
+      // Fusionner toutes les transactions et trier par date (plus récent en premier)
+      const allTransactions = [...creditAndLoyaltyTransactions, ...saleTransactions].sort((a, b) => {
+        const dateA = new Date(a.transaction_date || a.date || 0).getTime();
+        const dateB = new Date(b.transaction_date || b.date || 0).getTime();
+        return dateB - dateA; // Plus récent en premier
+      });
+      
+      setTransactions(allTransactions);
     } catch (error) {
       console.error('Erreur lors du chargement du client:', error);
       Alert.alert(
@@ -95,9 +141,67 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
     setShowEditModal(true);
   };
 
-  const handleCustomerUpdated = (updatedCustomer: any) => {
-    setCustomer(updatedCustomer);
+  const handleCustomerUpdated = async (updatedCustomer: any) => {
+    // Recharger les données du client depuis l'API pour avoir les dernières informations
+    try {
+      const refreshedCustomer = await customerService.getCustomer(customerId);
+      setCustomer(refreshedCustomer);
+    } catch (error) {
+      console.error('Erreur lors du rafraîchissement du client:', error);
+      // Utiliser les données mises à jour si le rafraîchissement échoue
+      setCustomer(updatedCustomer);
+    }
     setShowEditModal(false);
+  };
+
+  const handleDeleteCustomer = () => {
+    if (!customer) return;
+
+    Alert.alert(
+      'Supprimer le client',
+      `Êtes-vous sûr de vouloir supprimer le client "${customer.name} ${customer.first_name || ''}" ?\n\nCette action est irréversible.`,
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await customerService.deleteCustomer(customer.id);
+              
+              Alert.alert(
+                'Succès',
+                'Client supprimé avec succès',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => navigation.goBack(),
+                  },
+                ]
+              );
+            } catch (error: any) {
+              console.error('Erreur lors de la suppression du client:', error);
+              const errorMessage = error.response?.data?.error || 
+                                 error.response?.data?.detail || 
+                                 error.message || 
+                                 'Impossible de supprimer le client.';
+              
+              Alert.alert(
+                'Erreur',
+                errorMessage,
+                [{ text: 'OK' }]
+              );
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleAddPayment = async () => {
@@ -141,56 +245,194 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
     }
   };
 
-  const renderTransactionItem = ({ item }: { item: CreditTransaction }) => (
-    <View style={styles.transactionItem}>
-      <View style={styles.transactionHeader}>
-        <View style={[
-          styles.transactionTypeBadge,
-          item.type === 'credit' ? styles.creditBadge : styles.paymentBadge
-        ]}>
-          <Ionicons 
-            name={item.type === 'credit' ? 'remove-circle' : 'add-circle'} 
-            size={16} 
-            color="white" 
-          />
-          <Text style={styles.transactionTypeText}>
-            {item.type_display}
+  const renderTransactionItem = ({ item }: { item: Transaction }) => {
+    const isLoyalty = item.transaction_type === 'loyalty';
+    const isCredit = item.transaction_type === 'credit';
+    const isSale = item.transaction_type === 'sale';
+    
+    // Transaction de vente
+    if (isSale) {
+      return (
+        <View style={styles.transactionItem}>
+          <View style={styles.transactionHeader}>
+            <View style={[
+              styles.transactionTypeBadge,
+              styles.saleBadge
+            ]}>
+              <Ionicons 
+                name="receipt" 
+                size={16} 
+                color="white" 
+              />
+              <Text style={styles.transactionTypeText}>
+                {item.type_display || 'Vente'}
+              </Text>
+            </View>
+            <Text style={[styles.transactionAmount, styles.saleAmount]}>
+              {item.formatted_amount || '0 FCFA'}
+            </Text>
+          </View>
+          
+          <Text style={styles.transactionDate}>
+            {new Date(item.transaction_date || item.date).toLocaleString('fr-FR')}
+          </Text>
+          
+          {item.sale_reference && (
+            <Text style={styles.transactionSale}>
+              Référence: #{item.sale_reference}
+            </Text>
+          )}
+          
+          {item.payment_method && (
+            <View style={styles.transactionPaymentMethod}>
+              <Ionicons 
+                name={item.payment_method === 'cash' ? 'cash' : item.payment_method === 'credit' ? 'card' : 'wallet'} 
+                size={14} 
+                color={theme.colors.text.secondary} 
+              />
+              <Text style={styles.transactionPaymentMethodText}>
+                {item.payment_method === 'cash' ? 'Espèces' : 
+                 item.payment_method === 'credit' ? 'Crédit' : 
+                 item.payment_method === 'sarali' ? 'Sarali' : 
+                 item.payment_method}
+              </Text>
+            </View>
+          )}
+          
+          {item.notes && !item.notes.includes('Vente à crédit #') && (
+            <Text style={styles.transactionNotes}>{item.notes}</Text>
+          )}
+        </View>
+      );
+    }
+    
+    if (isLoyalty) {
+      const type = item.type_loyalty || 'earned';
+      return (
+        <View style={styles.transactionItem}>
+          <View style={styles.transactionHeader}>
+            <View style={styles.transactionTypeRow}>
+              <View style={[
+                styles.transactionTypeBadge,
+                type === 'earned' ? styles.loyaltyEarnedBadge : 
+                type === 'redeemed' ? styles.loyaltyRedeemedBadge : 
+                styles.loyaltyAdjustedBadge
+              ]}>
+                <Ionicons 
+                  name={type === 'earned' ? 'star' : type === 'redeemed' ? 'star-outline' : 'settings'} 
+                  size={16} 
+                  color="white" 
+                />
+                <Text style={styles.transactionTypeText}>
+                  {item.type_display || 'Fidélité'}
+                </Text>
+              </View>
+              <View style={styles.loyaltyBadge}>
+                <Ionicons name="star" size={12} color={theme.colors.primary[500]} />
+                <Text style={styles.loyaltyBadgeText}>Fidélité</Text>
+              </View>
+            </View>
+            <Text style={[
+              styles.transactionAmount,
+              type === 'earned' ? styles.loyaltyEarnedAmount : styles.loyaltyRedeemedAmount
+            ]}>
+              {isLoyalty ? (
+                // Pour les transactions de fidélité, formatted_points contient déjà le signe pour redeemed (points négatifs)
+                // On ajoute seulement le signe + pour earned
+                (() => {
+                  const pointsValue = item.formatted_points || (Math.abs(item.points || 0)).toFixed(2);
+                  if (type === 'earned') {
+                    return '+' + pointsValue + ' pts';
+                  } else {
+                    // Pour redeemed, les points sont négatifs dans la DB, donc formatted_points contient déjà le signe
+                    return pointsValue + ' pts';
+                  }
+                })()
+              ) : (
+                item.formatted_amount || '0 FCFA'
+              )}
+            </Text>
+          </View>
+          
+          <Text style={styles.transactionDate}>
+            {new Date(item.transaction_date || item.date).toLocaleString('fr-FR')}
+          </Text>
+          
+          {item.notes && !item.notes.includes('Vente à crédit #') && (
+            <Text style={styles.transactionNotes}>{item.notes}</Text>
+          )}
+          
+          {item.sale_reference && (
+            <Text style={styles.transactionSale}>
+              Vente #{item.sale_reference}
+            </Text>
+          )}
+          
+          <View style={styles.transactionBalance}>
+            <Text style={styles.transactionBalanceLabel}>Solde après:</Text>
+            <Text style={styles.transactionBalanceAmount}>
+              {item.formatted_balance_after_loyalty || item.formatted_balance_after || '0'}
+            </Text>
+          </View>
+        </View>
+      );
+    }
+    
+    // Transaction de crédit
+    const type = item.type || 'credit';
+    return (
+      <View style={styles.transactionItem}>
+        <View style={styles.transactionHeader}>
+          <View style={[
+            styles.transactionTypeBadge,
+            type === 'credit' ? styles.creditBadge : styles.paymentBadge
+          ]}>
+            <Ionicons 
+              name={type === 'credit' ? 'remove-circle' : 'add-circle'} 
+              size={16} 
+              color="white" 
+            />
+            <Text style={styles.transactionTypeText}>
+              {item.type_display || 'Crédit'}
+            </Text>
+          </View>
+          <Text style={styles.transactionAmount}>
+            {item.formatted_amount || '0 FCFA'}
           </Text>
         </View>
-        <Text style={styles.transactionAmount}>
-          {item.formatted_amount}
+        
+        <Text style={styles.transactionDate}>
+          {new Date(item.transaction_date || item.date).toLocaleString('fr-FR')}
         </Text>
+        
+        {item.notes && !item.notes.includes('Vente à crédit #') && (
+          <Text style={styles.transactionNotes}>{item.notes}</Text>
+        )}
+        
+        {item.sale_reference && (
+          <Text style={styles.transactionSale}>
+            Vente #{item.sale_reference}
+          </Text>
+        )}
+        
+        {item.user_name && (
+          <Text style={styles.transactionUser}>
+            Par {item.user_name}
+          </Text>
+        )}
+        
+        <View style={styles.transactionBalance}>
+          <Text style={styles.transactionBalanceLabel}>Solde après:</Text>
+          <Text style={[
+            styles.transactionBalanceAmount,
+            (item.balance_after || 0) < 0 && styles.negativeBalance
+          ]}>
+            {item.formatted_balance_after || '0 FCFA'}
+          </Text>
+        </View>
       </View>
-      
-      <Text style={styles.transactionDate}>
-        {new Date(item.transaction_date).toLocaleString('fr-FR')}
-      </Text>
-      
-      {item.notes && (
-        <Text style={styles.transactionNotes}>{item.notes}</Text>
-      )}
-      
-      {item.sale_reference && (
-        <Text style={styles.transactionSale}>
-          Vente #{item.sale_reference}
-        </Text>
-      )}
-      
-      <Text style={styles.transactionUser}>
-        Par {item.user_name}
-      </Text>
-      
-      <View style={styles.transactionBalance}>
-        <Text style={styles.transactionBalanceLabel}>Solde après:</Text>
-        <Text style={[
-          styles.transactionBalanceAmount,
-          item.balance_after < 0 && styles.negativeBalance
-        ]}>
-          {item.formatted_balance_after}
-        </Text>
-      </View>
-    </View>
-  );
+    );
+  };
 
   if (!customer) {
     return (
@@ -210,9 +452,14 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
           <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>Détail Client</Text>
-        <TouchableOpacity onPress={handleEditCustomer}>
-          <Ionicons name="create-outline" size={24} color={theme.colors.primary[500]} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleEditCustomer} style={styles.headerButton}>
+            <Ionicons name="create-outline" size={24} color={theme.colors.primary[500]} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleDeleteCustomer} style={styles.headerButton}>
+            <Ionicons name="trash-outline" size={24} color={theme.colors.error[500]} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -227,11 +474,24 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
             <Text style={styles.customerName}>
               {customer.name} {customer.first_name}
             </Text>
-            {!customer.is_active && (
-              <View style={styles.inactiveBadge}>
-                <Text style={styles.inactiveBadgeText}>Inactif</Text>
-              </View>
-            )}
+            <View style={styles.badgesContainer}>
+              {customer.is_loyalty_member && (
+                <View style={styles.loyaltyBadge}>
+                  <Ionicons name="star" size={16} color={theme.colors.primary[500]} />
+                  <Text style={styles.loyaltyBadgeText}>Fidélité</Text>
+                  {customer.loyalty_points !== undefined && customer.loyalty_points !== null && Number(customer.loyalty_points) > 0 && (
+                    <Text style={styles.loyaltyPointsText}>
+                      {' '}({Number(customer.loyalty_points).toFixed(2)} pts)
+                    </Text>
+                  )}
+                </View>
+              )}
+              {!customer.is_active && (
+                <View style={styles.inactiveBadge}>
+                  <Text style={styles.inactiveBadgeText}>Inactif</Text>
+                </View>
+              )}
+            </View>
           </View>
           
           {customer.phone && (
@@ -290,12 +550,18 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
 
         {/* Transactions */}
         <View style={styles.transactionsCard}>
-          <Text style={styles.transactionsTitle}>Historique des transactions</Text>
+          <View style={styles.transactionsHeader}>
+            <Ionicons name="receipt" size={20} color={theme.colors.primary[500]} />
+            <Text style={styles.transactionsTitle}>Historique des transactions</Text>
+          </View>
           
           {transactions.length > 0 ? (
-            transactions.map((transaction) => (
-              <View key={transaction.id}>
+            transactions.map((transaction, index) => (
+              <View key={`${transaction.transaction_type}-${transaction.id}`}>
                 {renderTransactionItem({ item: transaction })}
+                {index < transactions.length - 1 && (
+                  <View style={styles.transactionSeparator} />
+                )}
               </View>
             ))
           ) : (
@@ -390,6 +656,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.neutral[200],
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerButton: {
+    padding: 4,
+  },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -418,6 +692,7 @@ const styles = StyleSheet.create({
   customerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 16,
   },
   customerName: {
@@ -425,6 +700,34 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: theme.colors.text.primary,
     flex: 1,
+    marginRight: 12,
+  },
+  badgesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loyaltyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary[100],
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 5,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary[300],
+    ...theme.shadows.sm,
+  },
+  loyaltyBadgeText: {
+    fontSize: 13,
+    color: theme.colors.primary[700],
+    fontWeight: '700',
+  },
+  loyaltyPointsText: {
+    fontSize: 12,
+    color: theme.colors.primary[600],
+    fontWeight: '600',
   },
   inactiveBadge: {
     backgroundColor: theme.colors.neutral[300],
@@ -495,22 +798,41 @@ const styles = StyleSheet.create({
     padding: 16,
     ...theme.shadows.sm,
   },
+  transactionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
   transactionsTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
-    marginBottom: 16,
   },
   transactionItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.neutral[100],
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+  },
+  transactionSeparator: {
+    height: 1,
+    backgroundColor: theme.colors.neutral[200],
+    marginVertical: 8,
+    marginHorizontal: 16,
   },
   transactionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
+  },
+  transactionTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   transactionTypeBadge: {
     flexDirection: 'row',
@@ -526,6 +848,18 @@ const styles = StyleSheet.create({
   paymentBadge: {
     backgroundColor: theme.colors.success[500],
   },
+  loyaltyEarnedBadge: {
+    backgroundColor: theme.colors.primary[500],
+  },
+  loyaltyRedeemedBadge: {
+    backgroundColor: theme.colors.warning[500],
+  },
+  loyaltyAdjustedBadge: {
+    backgroundColor: theme.colors.neutral[500],
+  },
+  saleBadge: {
+    backgroundColor: theme.colors.info[500],
+  },
   transactionTypeText: {
     fontSize: 12,
     fontWeight: 'bold',
@@ -535,6 +869,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
+  },
+  loyaltyEarnedAmount: {
+    color: theme.colors.primary[600],
+  },
+  loyaltyRedeemedAmount: {
+    color: theme.colors.warning[600],
+  },
+  saleAmount: {
+    color: theme.colors.info[600],
+  },
+  transactionPaymentMethod: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  transactionPaymentMethodText: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
   },
   transactionDate: {
     fontSize: 12,

@@ -31,6 +31,7 @@ interface UseContinuousScannerReturn {
   scanList: ScannedItem[];
   addToScanList: (barcode: string, productData: Partial<ScannedItem>) => void;
   updateQuantity: (itemId: string, newQuantity: number) => void;
+  updateUnitPrice: (itemId: string, newUnitPrice: number) => void;
   removeItem: (itemId: string) => void;
   validateList: () => void;
   clearList: (silent?: boolean) => void;
@@ -187,6 +188,26 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
     );
   }, []);
 
+  // Mettre à jour le prix unitaire d'un produit
+  const updateUnitPrice = useCallback((itemId: string, newUnitPrice: number) => {
+    if (newUnitPrice < 0) {
+      Alert.alert('Erreur', 'Le prix unitaire ne peut pas être négatif');
+      return;
+    }
+    
+    setScanList(prevList => 
+      prevList.map(item => 
+        item.id === itemId 
+          ? { 
+              ...item, 
+              unitPrice: newUnitPrice,
+              totalPrice: newUnitPrice * (item.quantity || 1)
+            }
+          : item
+      )
+    );
+  }, []);
+
   // Supprimer un produit de la liste
   const removeItem = useCallback((itemId: string) => {
     const itemToRemove = scanList.find(item => item.id === itemId);
@@ -320,6 +341,7 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
     scanList,
     addToScanList,
     updateQuantity,
+    updateUnitPrice,
     removeItem,
     validateList,
     clearList,

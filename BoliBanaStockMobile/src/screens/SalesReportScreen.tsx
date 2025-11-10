@@ -26,6 +26,9 @@ interface SaleItem {
   unit_price: number;
   total_price: number;
   amount?: number;
+  margin?: number;
+  total_margin?: number;
+  margin_percentage?: number;
 }
 
 interface Sale {
@@ -38,6 +41,8 @@ interface Sale {
   payment_method: string;
   status?: string;
   items?: SaleItem[];
+  total_margin?: number;
+  average_margin_percentage?: number;
 }
 
 interface ProductSales {
@@ -46,13 +51,16 @@ interface ProductSales {
   product_cug?: string;
   total_quantity: number;
   total_revenue: number;
+  total_margin: number;
   sale_count: number;
 }
 
 interface SalesStats {
   total_revenue: number;
+  total_margin: number;
   total_sales: number;
   average_basket: number;
+  average_margin_percentage: number;
   by_payment_method: {
     cash: number;
     credit: number;
@@ -61,8 +69,10 @@ interface SalesStats {
   };
   previousYear?: {
     total_revenue: number;
+    total_margin: number;
     total_sales: number;
     average_basket: number;
+    average_margin_percentage: number;
   };
 }
 
@@ -289,6 +299,24 @@ export default function SalesReportScreen({ navigation }: any) {
       return sum + parseFloat(String(sale.total_amount || 0));
     }, 0);
 
+    const totalMargin = salesList.reduce((sum, sale) => {
+      // Utiliser total_margin de la vente si disponible, sinon calculer à partir des items
+      if (sale.total_margin !== undefined) {
+        return sum + parseFloat(String(sale.total_margin || 0));
+      }
+      // Calculer à partir des items si total_margin n'est pas disponible
+      if (sale.items && sale.items.length > 0) {
+        const saleMargin = sale.items.reduce((itemSum, item) => {
+          return itemSum + parseFloat(String(item.total_margin || item.margin || 0)) * (item.quantity || 1);
+        }, 0);
+        return sum + saleMargin;
+      }
+      return sum;
+    }, 0);
+
+    const totalCost = totalRevenue - totalMargin;
+    const averageMarginPercentage = totalCost > 0 ? (totalMargin / totalCost) * 100 : 0;
+
     const byPaymentMethod: { [key: string]: number } = {
       cash: 0,
       credit: 0,
@@ -308,17 +336,37 @@ export default function SalesReportScreen({ navigation }: any) {
         return sum + parseFloat(String(sale.total_amount || 0));
       }, 0);
 
+      const prevMargin = previousYearSales.reduce((sum, sale) => {
+        if (sale.total_margin !== undefined) {
+          return sum + parseFloat(String(sale.total_margin || 0));
+        }
+        if (sale.items && sale.items.length > 0) {
+          const saleMargin = sale.items.reduce((itemSum, item) => {
+            return itemSum + parseFloat(String(item.total_margin || item.margin || 0)) * (item.quantity || 1);
+          }, 0);
+          return sum + saleMargin;
+        }
+        return sum;
+      }, 0);
+
+      const prevCost = prevRevenue - prevMargin;
+      const prevMarginPercentage = prevCost > 0 ? (prevMargin / prevCost) * 100 : 0;
+
       previousYearStats = {
         total_revenue: prevRevenue,
+        total_margin: prevMargin,
         total_sales: previousYearSales.length,
         average_basket: previousYearSales.length > 0 ? prevRevenue / previousYearSales.length : 0,
+        average_margin_percentage: prevMarginPercentage,
       };
     }
 
     setStats({
       total_revenue: totalRevenue,
+      total_margin: totalMargin,
       total_sales: salesList.length,
       average_basket: salesList.length > 0 ? totalRevenue / salesList.length : 0,
+      average_margin_percentage: averageMarginPercentage,
       by_payment_method: byPaymentMethod,
       previousYear: previousYearStats,
     });
@@ -347,12 +395,18 @@ export default function SalesReportScreen({ navigation }: any) {
             product_cug: item.product_cug,
             total_quantity: 0,
             total_revenue: 0,
+            total_margin: 0,
             sale_count: 0,
           };
         }
 
         productMap[key].total_quantity += item.quantity || 0;
         productMap[key].total_revenue += parseFloat(String(item.total_price || item.amount || 0));
+        // Calculer la marge : utiliser total_margin si disponible, sinon calculer à partir de margin
+        const itemMargin = item.total_margin !== undefined 
+          ? parseFloat(String(item.total_margin || 0))
+          : (item.margin !== undefined ? parseFloat(String(item.margin || 0)) * (item.quantity || 1) : 0);
+        productMap[key].total_margin += itemMargin;
         productMap[key].sale_count += 1;
       });
     });
@@ -676,6 +730,45 @@ export default function SalesReportScreen({ navigation }: any) {
 
                   <View style={styles.compactStatCard}>
                     <View style={styles.compactStatHeader}>
+                      <Ionicons name="trending-up" size={20} color={theme.colors.info[500]} />
+                      <Text style={styles.compactStatLabel}>Marge totale</Text>
+                      {stats.previousYear ? (
+                        <View style={styles.inlineComparison}>
+                          <Ionicons
+                            name={stats.total_margin >= stats.previousYear.total_margin ? "arrow-up" : "arrow-down"}
+                            size={10}
+                            color={stats.total_margin >= stats.previousYear.total_margin ? theme.colors.success[500] : theme.colors.error[500]}
+                          />
+                          <Text
+                            style={[
+                              styles.inlineComparisonText,
+                              stats.total_margin >= stats.previousYear.total_margin
+                                ? styles.comparisonPositive
+                                : styles.comparisonNegative,
+                            ]}
+                          >
+                            {Math.abs(calculatePercentageChange(stats.total_margin, stats.previousYear.total_margin)).toFixed(1)}%
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.noComparisonText}>Pas de données</Text>
+                      )}
+                    </View>
+                    <Text style={styles.compactStatValue}>
+                      {Math.round(stats.total_margin).toLocaleString()} FCFA
+                    </Text>
+                    <Text style={styles.compactStatSubtext}>
+                      {stats.average_margin_percentage.toFixed(1)}% de marge
+                    </Text>
+                    {stats.previousYear && (
+                      <Text style={styles.previousYearValue}>
+                        An dernier: {Math.round(stats.previousYear.total_margin).toLocaleString()} FCFA ({stats.previousYear.average_margin_percentage.toFixed(1)}%)
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.compactStatCard}>
+                    <View style={styles.compactStatHeader}>
                       <Ionicons name="receipt-outline" size={20} color={theme.colors.primary[500]} />
                       <Text style={styles.compactStatLabel}>Ventes</Text>
                       {stats.previousYear ? (
@@ -819,33 +912,44 @@ export default function SalesReportScreen({ navigation }: any) {
                   </View>
                 </View>
 
-                {productSales.slice(0, 10).map((product, index) => (
-                  <View key={product.product_id || product.product_name} style={styles.productRankCard}>
-                    <View style={styles.rankBadge}>
-                      <Text style={styles.rankNumber}>{index + 1}</Text>
-                    </View>
-                    <View style={styles.productInfo}>
-                      <Text style={styles.productName} numberOfLines={1}>
-                        {product.product_name}
-                      </Text>
-                      {product.product_cug && (
-                        <Text style={styles.productCug}>CUG: {product.product_cug}</Text>
-                      )}
-                    </View>
-                    <View style={styles.productStats}>
-                      <View style={styles.productStatItem}>
-                        <Ionicons name="cube-outline" size={14} color={theme.colors.text.secondary} />
-                        <Text style={styles.productStatValue}>{product.total_quantity}</Text>
+                {productSales.slice(0, 10).map((product, index) => {
+                  const marginPercentage = product.total_revenue > 0 
+                    ? ((product.total_margin / (product.total_revenue - product.total_margin)) * 100)
+                    : 0;
+                  return (
+                    <View key={product.product_id || product.product_name} style={styles.productRankCard}>
+                      <View style={styles.rankBadge}>
+                        <Text style={styles.rankNumber}>{index + 1}</Text>
                       </View>
-                      <View style={styles.productStatItem}>
-                        <Ionicons name="cash-outline" size={14} color={theme.colors.text.secondary} />
-                        <Text style={styles.productStatValue}>
-                          {Math.round(product.total_revenue).toLocaleString()} FCFA
+                      <View style={styles.productInfo}>
+                        <Text style={styles.productName} numberOfLines={1}>
+                          {product.product_name}
                         </Text>
+                        {product.product_cug && (
+                          <Text style={styles.productCug}>CUG: {product.product_cug}</Text>
+                        )}
+                      </View>
+                      <View style={styles.productStats}>
+                        <View style={styles.productStatItem}>
+                          <Ionicons name="cube-outline" size={14} color={theme.colors.text.secondary} />
+                          <Text style={styles.productStatValue}>{product.total_quantity}</Text>
+                        </View>
+                        <View style={styles.productStatItem}>
+                          <Ionicons name="cash-outline" size={14} color={theme.colors.text.secondary} />
+                          <Text style={styles.productStatValue}>
+                            {Math.round(product.total_revenue).toLocaleString()} FCFA
+                          </Text>
+                        </View>
+                        <View style={styles.productStatItem}>
+                          <Ionicons name="trending-up" size={14} color={theme.colors.info[500]} />
+                          <Text style={[styles.productStatValue, styles.productMarginValue]}>
+                            {Math.round(product.total_margin).toLocaleString()} FCFA ({marginPercentage.toFixed(1)}%)
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
 
@@ -1316,6 +1420,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: theme.colors.primary[600],
+  },
+  productMarginValue: {
+    color: theme.colors.info[600],
+  },
+  compactStatSubtext: {
+    fontSize: 11,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
   },
   siteFilterContainer: {
     flexDirection: 'row',

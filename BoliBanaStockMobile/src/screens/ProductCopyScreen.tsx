@@ -12,12 +12,14 @@ import {
   Image,
   Modal,
   Platform,
+  ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types';
-import { productCopyService, categoryService } from '../services/api';
+import { productCopyService, categoryService, siteService } from '../services/api';
 import { Product, Category } from '../types';
 import theme from '../utils/theme';
 import { useUserPermissions } from '../hooks/useUserPermissions';
@@ -42,23 +44,40 @@ const ProductCopyScreen: React.FC<ProductCopyScreenProps> = ({ navigation }) => 
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { siteConfiguration } = useUserPermissions();
+  const { siteConfiguration, isSuperuser } = useUserPermissions();
+  
+  // ✅ Filtre par site source uniquement pour les superusers
+  const [sites, setSites] = useState<any[]>([]);
+  const [selectedSourceSite, setSelectedSourceSite] = useState<number | null>(null);
+  const [siteModalVisible, setSiteModalVisible] = useState(false);
 
-  const loadProducts = useCallback(async (pageNum: number = 1, search: string = '', categoryId?: number) => {
+  const loadProducts = useCallback(async (pageNum: number = 1, search: string = '', categoryId?: number, sourceSiteId?: number) => {
     try {
       setLoading(true);
       setErrorMessage(null);
-      const pageSize = 20; // Même taille de page que ProductsScreen
-      const response = await productCopyService.getAvailableProductsForCopy(search, pageNum, categoryId, pageSize);
+      const pageSize = 50; // ✅ Pagination optimisée pour économiser les données mobile
+      const response = await productCopyService.getAvailableProductsForCopy(search, pageNum, categoryId, pageSize, sourceSiteId);
       
+      console.log(`📦 ProductCopyScreen - Page ${pageNum}, Total disponible: ${response.count}, Produits reçus: ${response.results?.length || 0}, Next: ${response.next}`);
+      
+      const newProducts = response.results || [];
       if (pageNum === 1) {
-        setProducts(response.results || []);
+        setProducts(newProducts);
+        console.log(`📦 ProductCopyScreen - Page 1 chargée: ${newProducts.length} produits`);
       } else {
-        setProducts(prev => [...prev, ...(response.results || [])]);
+        setProducts(prev => {
+          const updated = [...prev, ...newProducts];
+          console.log(`📦 ProductCopyScreen - Page ${pageNum} ajoutée: ${newProducts.length} nouveaux produits, Total: ${updated.length}`);
+          return updated;
+        });
       }
       
-      setHasMore(!!response.next);
+      // Vérifier s'il y a plus de pages
+      const hasMorePages = response.next !== null && response.next !== undefined;
+      setHasMore(hasMorePages);
       setPage(pageNum);
+      
+      console.log(`✅ ProductCopyScreen - hasMore: ${hasMorePages}, Total produits disponibles: ${response.count}`);
     } catch (error) {
       console.error('Erreur lors du chargement des produits:', error);
       // Extraire un message utile depuis la réponse serveur si présent
@@ -88,40 +107,64 @@ const ProductCopyScreen: React.FC<ProductCopyScreenProps> = ({ navigation }) => 
     }
   }, []);
 
+  // ✅ Charger les sites uniquement pour les superusers
+  const loadSites = useCallback(async () => {
+    if (isSuperuser) {
+      try {
+        const response = await siteService.getSites();
+        if (response.success) {
+          setSites(response.sites || []);
+        }
+      } catch (error) {
+        console.error('❌ Erreur chargement sites:', error);
+      }
+    }
+  }, [isSuperuser]);
+
+  const handleSourceSiteSelect = (site: any) => {
+    const siteId = site?.id || null;
+    setSelectedSourceSite(siteId);
+    setSiteModalVisible(false);
+    // Recharger les produits avec le nouveau site source
+    setPage(1);
+    setSelectedProduct(null);
+  };
+
+  const clearSourceSiteFilter = () => {
+    setSelectedSourceSite(null);
+    setPage(1);
+    setSelectedProduct(null);
+  };
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setSelectedProduct(null);
-    if (siteConfiguration !== 1) {
-      await loadProducts(1, searchQuery, selectedCategory?.id);
-    }
+    await loadProducts(1, searchQuery, selectedCategory?.id, selectedSourceSite || undefined);
     setRefreshing(false);
-  }, [searchQuery, selectedCategory, siteConfiguration]);
-
-useEffect(() => {
-  if (siteConfiguration === 1) {
-    setProducts([]);
-    setHasMore(false);
-    setLoading(false);
-    setErrorMessage("Vous êtes connecté sur le Site Principal. La copie doit être lancée depuis un autre site.");
-    return;
-  }
-  loadProducts();
-  loadCategories();
-}, [siteConfiguration]);
+  }, [searchQuery, selectedCategory, selectedSourceSite]);
 
   useEffect(() => {
-    loadProducts(1, searchQuery, selectedCategory?.id);
-  }, [selectedCategory]);
+    loadSites();
+  }, [isSuperuser, loadSites]);
+
+  useEffect(() => {
+    // Les utilisateurs normaux copient depuis le site principal
+    // Les superusers peuvent choisir le site source
+    loadProducts(1, searchQuery, selectedCategory?.id, selectedSourceSite || undefined);
+    loadCategories();
+  }, [siteConfiguration, selectedSourceSite]);
+
+  useEffect(() => {
+    loadProducts(1, searchQuery, selectedCategory?.id, selectedSourceSite || undefined);
+  }, [selectedCategory, selectedSourceSite]);
 
   const handleSearch = useCallback((text: string) => {
     setSearchQuery(text);
     setSelectedProduct(null);
     setPage(1);
     setErrorMessage(null);
-    if (siteConfiguration !== 1) {
-      loadProducts(1, text, selectedCategory?.id);
-    }
-  }, [selectedCategory, siteConfiguration]);
+    loadProducts(1, text, selectedCategory?.id, selectedSourceSite || undefined);
+  }, [selectedCategory, selectedSourceSite]);
 
   const handleCategorySelect = useCallback((category: Category | null) => {
     setSelectedCategory(category);
@@ -152,8 +195,8 @@ useEffect(() => {
     const proceedCopy = async () => {
       try {
         setCopying(true);
-        console.log('➡️ Lancement de la copie du produit', selectedProduct);
-        const response = await productCopyService.copySingleProduct(selectedProduct);
+        console.log('➡️ Lancement de la copie du produit', selectedProduct, 'depuis site', selectedSourceSite);
+        const response = await productCopyService.copySingleProduct(selectedProduct, selectedSourceSite || undefined);
         console.log('✅ Réponse copie produit', response);
         // Cas: succès API mais aucune copie effectuée (ex: CUG en doublon)
         if (response && response.success && response.copied_count === 0) {
@@ -229,9 +272,10 @@ useEffect(() => {
 
   const loadMoreProducts = () => {
     if (hasMore && !loading) {
-      if (siteConfiguration !== 1) {
-        loadProducts(page + 1, searchQuery, selectedCategory?.id);
-      }
+      console.log(`🔄 ProductCopyScreen - Chargement page ${page + 1}, hasMore: ${hasMore}, loading: ${loading}`);
+      loadProducts(page + 1, searchQuery, selectedCategory?.id, selectedSourceSite || undefined);
+    } else {
+      console.log(`⏸️ ProductCopyScreen - Pas de chargement: hasMore: ${hasMore}, loading: ${loading}`);
     }
   };
 
@@ -247,66 +291,85 @@ useEffect(() => {
         onPress={() => toggleProductSelection(item.id)}
         activeOpacity={0.7}
       >
-        <View style={styles.productHeader}>
+        <View style={styles.productRow}>
+          {/* Checkbox */}
           <TouchableOpacity
             style={styles.checkbox}
             onPress={() => toggleProductSelection(item.id)}
           >
             <Ionicons
               name={isSelected ? 'checkbox' : 'square-outline'}
-              size={24}
+              size={20}
               color={isSelected ? theme.colors.success[600] : '#ccc'}
             />
           </TouchableOpacity>
           
+          {/* Image à gauche */}
           {item.image_url ? (
             <Image source={{ uri: item.image_url }} style={styles.productImage} />
           ) : (
             <View style={styles.noImage}>
-              <Ionicons name="image-outline" size={24} color="#ccc" />
+              <Ionicons name="image-outline" size={18} color="#ccc" />
             </View>
           )}
-        </View>
 
-        <View style={styles.productInfo}>
-          <Text style={[styles.productName, isSelected && styles.selectedProductName]} numberOfLines={2}>
-            {item.name}
-          </Text>
-          <Text style={styles.productCug}>CUG: {item.cug}</Text>
-          
-          <View style={styles.productMeta}>
-            {item.category && (
-              <View style={styles.metaItem}>
-                <Ionicons name="pricetag-outline" size={16} color="#666" />
-                <Text style={styles.metaText}>{item.category.name}</Text>
-              </View>
-            )}
-            {item.brand && (
-              <View style={styles.metaItem}>
-                <Ionicons name="business-outline" size={16} color="#666" />
-                <Text style={styles.metaText}>{item.brand.name}</Text>
+          {/* Contenu à droite */}
+          <View style={styles.productInfo}>
+            <Text style={[styles.productName, isSelected && styles.selectedProductName]} numberOfLines={2}>
+              {item.name}
+            </Text>
+            <Text style={styles.productCug}>CUG: {item.cug}</Text>
+            
+            <View style={styles.productMeta}>
+              {item.category && (
+                <View style={styles.metaItem}>
+                  <Ionicons name="pricetag-outline" size={12} color="#666" />
+                  <Text style={styles.metaText}>{item.category.name}</Text>
+                </View>
+              )}
+              {item.brand && (
+                <View style={styles.metaItem}>
+                  <Ionicons name="business-outline" size={12} color="#666" />
+                  <Text style={styles.metaText}>{item.brand.name}</Text>
+                </View>
+              )}
+            </View>
+            
+            {isSelected && (
+              <View style={styles.copyHint}>
+                <Ionicons name="copy-outline" size={14} color={theme.colors.success[600]} />
+                <Text style={styles.copyHintText}>Prêt à copier</Text>
               </View>
             )}
           </View>
-          
-          {isSelected && (
-            <View style={styles.copyHint}>
-              <Ionicons name="copy-outline" size={16} color={theme.colors.success[600]} />
-              <Text style={styles.copyHintText}>Prêt à copier et modifier</Text>
-            </View>
-          )}
         </View>
       </TouchableOpacity>
     );
   };
 
   const renderFooter = () => {
-    if (!hasMore) return null;
+    if (!hasMore) {
+      if (products.length > 0) {
+        return (
+          <View style={styles.loadingFooter}>
+            <Text style={styles.loadingText}>Tous les produits ont été chargés ({products.length} produits)</Text>
+          </View>
+        );
+      }
+      return null;
+    }
+    if (loading) {
+      return (
+        <View style={styles.loadingFooter}>
+          <ActivityIndicator size="small" color="#4CAF50" />
+          <Text style={styles.loadingText}>Chargement...</Text>
+        </View>
+      );
+    }
     return (
-      <View style={styles.loadingFooter}>
-        <ActivityIndicator size="small" color="#4CAF50" />
-        <Text style={styles.loadingText}>Chargement...</Text>
-      </View>
+      <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreProducts}>
+        <Text style={styles.loadMoreText}>Charger plus de produits</Text>
+      </TouchableOpacity>
     );
   };
 
@@ -351,6 +414,32 @@ useEffect(() => {
           )}
         </View>
         </View>
+
+        {/* ✅ Filtre par site source uniquement pour les superusers */}
+        {isSuperuser && (
+          <View style={styles.siteFilterContainer}>
+            <TouchableOpacity 
+              style={styles.siteFilterButton}
+              onPress={() => setSiteModalVisible(true)}
+            >
+              <Ionicons name="business-outline" size={16} color={theme.colors.primary[500]} />
+              <Text style={styles.siteFilterText}>
+                {selectedSourceSite 
+                  ? sites.find(s => s.id === selectedSourceSite)?.site_name 
+                  : 'Tous les sites'}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={theme.colors.text.secondary} />
+            </TouchableOpacity>
+            {selectedSourceSite && (
+              <TouchableOpacity 
+                style={styles.clearSiteButton}
+                onPress={clearSourceSiteFilter}
+              >
+                <Ionicons name="close-circle" size={20} color={theme.colors.error[500]} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
         
         {/* Category Filter */}
       <View style={styles.categoryFilterContainer}>
@@ -402,8 +491,12 @@ useEffect(() => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         onEndReached={loadMoreProducts}
-        onEndReachedThreshold={0.1}
+        onEndReachedThreshold={0.5}
         ListFooterComponent={renderFooter}
+        initialNumToRender={20}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
         ListEmptyComponent={
           !loading && (
             <View style={styles.emptyState}>
@@ -489,6 +582,50 @@ useEffect(() => {
           title="Sélectionner une catégorie"
         />
       </Modal>
+
+      {/* ✅ Site Source Selection Modal uniquement pour les superusers */}
+      {isSuperuser && (
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={siteModalVisible}
+          onRequestClose={() => setSiteModalVisible(false)}
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setSiteModalVisible(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Sélectionner un site source</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            
+            <ScrollView style={styles.modalContent}>
+              <TouchableOpacity
+                style={styles.siteOption}
+                onPress={() => handleSourceSiteSelect(null)}
+              >
+                <Text style={styles.siteOptionText}>Tous les sites</Text>
+                {!selectedSourceSite && <Ionicons name="checkmark" size={20} color={theme.colors.success[500]} />}
+              </TouchableOpacity>
+              
+              {sites.filter(s => s.id !== siteConfiguration).map((site) => (
+                <TouchableOpacity
+                  key={site.id}
+                  style={styles.siteOption}
+                  onPress={() => handleSourceSiteSelect(site)}
+                >
+                  <View>
+                    <Text style={styles.siteOptionText}>{site.site_name}</Text>
+                    <Text style={styles.siteOptionSubtext}>{site.nom_societe}</Text>
+                  </View>
+                  {selectedSourceSite === site.id && <Ionicons name="checkmark" size={20} color={theme.colors.success[500]} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -613,99 +750,102 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   productsListContent: {
-    padding: 20,
+    padding: 12,
+    paddingBottom: 20,
   },
   productCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
-    elevation: 2,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 6,
+    elevation: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
   selectedProduct: {
+    borderWidth: 1.5,
     borderColor: theme.colors.success[500],
     backgroundColor: theme.colors.success[50],
-    elevation: 4,
+    elevation: 2,
     shadowColor: theme.colors.success[500],
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    transform: [{ scale: 1.02 }],
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
   selectedProductName: {
-    color: theme.colors.success[600],
-    fontWeight: '700',
+    color: theme.colors.success[700],
+    fontSize: 14,
+    fontWeight: '600',
   },
   copyHint: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    padding: 8,
-    backgroundColor: theme.colors.success[100],
-    borderRadius: 8,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: theme.colors.success[200],
+    marginTop: 4,
+    padding: 4,
+    backgroundColor: theme.colors.success[50],
+    borderRadius: 4,
+    gap: 4,
   },
   copyHintText: {
-    fontSize: 12,
+    fontSize: 10,
     color: theme.colors.success[700],
-    fontWeight: '600',
+    fontWeight: '500',
   },
-  productHeader: {
+  productRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
   },
   checkbox: {
-    marginRight: 12,
+    marginRight: 8,
+    marginTop: 2,
   },
   productImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    marginRight: 10,
   },
   noImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 6,
     backgroundColor: '#f5f5f5',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    marginRight: 10,
   },
   productInfo: {
     flex: 1,
   },
   productName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   productCug: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
     marginBottom: 2,
   },
   productMeta: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 8,
+    marginTop: 2,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   metaText: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: 10,
+    color: '#666',
   },
   loadingFooter: {
     paddingVertical: 20,
@@ -807,6 +947,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'white',
     textAlign: 'center',
+  },
+  loadMoreButton: {
+    padding: 16,
+    backgroundColor: theme.colors.primary[500],
+    borderRadius: 8,
+    alignItems: 'center',
+    margin: 16,
+  },
+  loadMoreText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
   },
 });
 

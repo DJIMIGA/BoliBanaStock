@@ -24,6 +24,7 @@ import BarcodeModal from '../components/BarcodeModal';
 import HierarchicalCategorySelector from '../components/HierarchicalCategorySelector';
 import AddBrandModal from '../components/AddBrandModal';
 import BrandFilterField from '../components/BrandFilterField';
+import CategoryRecommendations from '../components/CategoryRecommendations';
 
 interface Category {
   id: number;
@@ -73,6 +74,10 @@ export default function AddProductScreen({ navigation, route }: any) {
   const [addBrandModalVisible, setAddBrandModalVisible] = useState(false);
   const [barcodeModalVisible, setBarcodeModalVisible] = useState(false);
   const [selectedCategoryName, setSelectedCategoryName] = useState('');
+  // États pour les recommandations de catégories
+  const [categoryRecommendations, setCategoryRecommendations] = useState<any[]>([]);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState<string | undefined>(undefined);
   const [form, setForm] = useState<ProductForm>({
     name: '',
     cug: '',
@@ -108,6 +113,59 @@ export default function AddProductScreen({ navigation, route }: any) {
       setForm(prev => ({ ...prev, image: selectedImage }));
     }
   }, [selectedImage]);
+
+  // Fonction pour récupérer les recommandations de catégories
+  const fetchCategoryRecommendations = useCallback(async (productName: string) => {
+    if (!productName || productName.trim().length < 2) {
+      setCategoryRecommendations([]);
+      setRecommendationsError(undefined);
+      return;
+    }
+
+    setRecommendationsLoading(true);
+    setRecommendationsError(undefined);
+
+    try {
+      const result = await categoryService.recommendCategories(productName.trim());
+      
+      if (result.success && result.recommendations) {
+        setCategoryRecommendations(result.recommendations);
+        setRecommendationsError(undefined);
+      } else {
+        setCategoryRecommendations([]);
+        setRecommendationsError(result.error || 'Aucune recommandation disponible');
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur lors de la récupération des recommandations:', error);
+      setCategoryRecommendations([]);
+      setRecommendationsError('Erreur lors de la récupération des recommandations');
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  }, []);
+
+  // Déclencher la recommandation avec debounce (500ms) après la saisie du nom
+  useEffect(() => {
+    // Ne pas déclencher si on est en mode édition et que le nom n'a pas changé
+    if (editId && form.name.length === 0) {
+      return;
+    }
+
+    // Ne déclencher que si le nom du produit a au moins 2 caractères
+    if (form.name.trim().length >= 2) {
+      const timer = setTimeout(() => {
+        fetchCategoryRecommendations(form.name);
+      }, 500); // Debounce de 500ms
+
+      // Nettoyage du timer au démontage ou changement de dépendance
+      return () => {
+        clearTimeout(timer);
+      };
+    } else {
+      setCategoryRecommendations([]);
+      setRecommendationsError(undefined);
+    }
+  }, [form.name, editId, fetchCategoryRecommendations]);
 
   useEffect(() => {
     const loadForEdit = async () => {
@@ -190,6 +248,18 @@ export default function AddProductScreen({ navigation, route }: any) {
     setForm(prev => ({ ...prev, category_id: categoryId }));
     setSelectedCategoryName(categoryName);
     setHierarchicalCategoryModalVisible(false);
+    // Nettoyer les recommandations après sélection
+    setCategoryRecommendations([]);
+    setRecommendationsError(undefined);
+  };
+
+  // Fonction pour gérer la sélection d'une recommandation
+  const handleRecommendationSelect = (categoryId: number, categoryName: string) => {
+    setForm(prev => ({ ...prev, category_id: String(categoryId) }));
+    setSelectedCategoryName(categoryName);
+    // Nettoyer les recommandations après sélection
+    setCategoryRecommendations([]);
+    setRecommendationsError(undefined);
   };
 
 
@@ -647,6 +717,19 @@ export default function AddProductScreen({ navigation, route }: any) {
                 <Ionicons name="chevron-down" size={20} color={theme.colors.primary[500]} />
               </TouchableOpacity>
               
+              {/* Affichage des recommandations de catégories */}
+              {(categoryRecommendations.length > 0 || recommendationsLoading || recommendationsError) && (
+                <CategoryRecommendations
+                  recommendations={categoryRecommendations}
+                  loading={recommendationsLoading}
+                  error={recommendationsError}
+                  onSelect={handleRecommendationSelect}
+                  onDismiss={() => {
+                    setCategoryRecommendations([]);
+                    setRecommendationsError(undefined);
+                  }}
+                />
+              )}
             </View>
 
             <BrandFilterField

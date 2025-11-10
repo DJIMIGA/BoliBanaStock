@@ -6,8 +6,28 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Charger les variables d'environnement
-load_dotenv()
+# Charger les variables d'environnement depuis .env si le fichier existe
+# Sur Railway, les variables d'environnement sont définies directement, donc on ignore les erreurs
+try:
+    # Essayer de charger le .env avec différents encodages
+    env_path = Path(__file__).resolve().parent.parent / '.env'
+    if env_path.exists():
+        try:
+            load_dotenv(env_path, encoding='utf-8')
+        except UnicodeDecodeError:
+            # Si UTF-8 échoue, essayer UTF-16 ou ignorer
+            try:
+                load_dotenv(env_path, encoding='utf-16')
+            except Exception:
+                # Ignorer si le fichier a un encodage invalide
+                pass
+    else:
+        # Pas de fichier .env, c'est normal sur Railway
+        load_dotenv(override=False)
+except Exception:
+    # Ignorer toute erreur lors du chargement du .env
+    # Sur Railway, les variables d'environnement sont définies directement
+    pass
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,6 +60,7 @@ INSTALLED_APPS = [
     'apps.core',
     'apps.inventory',
     'apps.sales',
+    'apps.loyalty',
     'crispy_forms',
     'crispy_tailwind',
     'import_export',

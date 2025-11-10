@@ -117,6 +117,29 @@ class Sale(models.Model):
         help_text="Montant de la monnaie rendue"
     )
     
+    # Gestion de la fidélité
+    loyalty_points_earned = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Points gagnés",
+        help_text="Points de fidélité gagnés lors de cette vente"
+    )
+    loyalty_points_used = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Points utilisés",
+        help_text="Points de fidélité utilisés comme réduction"
+    )
+    loyalty_discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Réduction fidélité (FCFA)",
+        help_text="Montant de la réduction en FCFA grâce aux points utilisés"
+    )
+    
     # Métadonnées
     notes = models.TextField(blank=True, null=True, verbose_name="Notes")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -145,8 +168,8 @@ class Sale(models.Model):
         # Calculer la TVA en fonction du taux
         self.tax_amount = self.subtotal * (self.tax_rate / Decimal('100'))
         
-        # Calculer le total
-        self.total_amount = self.subtotal + self.tax_amount - self.discount_amount
+        # Calculer le total (en soustrayant la réduction fidélité)
+        self.total_amount = self.subtotal + self.tax_amount - self.discount_amount - self.loyalty_discount_amount
         
         # Mettre à jour le statut de paiement
         if self.amount_paid >= self.total_amount:
@@ -193,6 +216,30 @@ class Sale(models.Model):
     def is_cash_register_sale(self):
         """Vérifie si la vente est liée à une caisse"""
         return self.cash_register is not None
+
+    @property
+    def total_margin(self):
+        """Calcule la marge totale de la vente basée sur les prix de caisse réels"""
+        return sum(item.total_margin for item in self.items.all())
+
+    @property
+    def average_margin_percentage(self):
+        """Calcule le pourcentage de marge moyen de la vente"""
+        items = self.items.all()
+        if not items:
+            return 0
+        
+        total_cost = sum(item.product.purchase_price * item.quantity for item in items)
+        if total_cost > 0:
+            return (self.total_margin / total_cost) * 100
+        return 0
+
+    @property
+    def revenue(self):
+        """Calcule le chiffre d'affaires basé sur les prix de caisse réels (unit_price)"""
+        # Le total_amount est déjà calculé à partir des prix de caisse (unit_price)
+        # via item.amount = quantity * unit_price
+        return self.total_amount
 
     def complete_sale(self):
         """Valide la vente et met à jour le stock"""
@@ -248,6 +295,23 @@ class SaleItem(models.Model):
         self.amount = self.quantity * self.unit_price
         super().save(*args, **kwargs)
         self.sale.update_totals()
+
+    @property
+    def margin(self):
+        """Calcule la marge réelle basée sur le prix de caisse (unit_price) - prix d'achat"""
+        return self.unit_price - self.product.purchase_price
+
+    @property
+    def total_margin(self):
+        """Calcule la marge totale (marge unitaire × quantité)"""
+        return self.margin * self.quantity
+
+    @property
+    def margin_percentage(self):
+        """Calcule le pourcentage de marge basé sur le prix de caisse"""
+        if self.product.purchase_price > 0:
+            return (self.margin / self.product.purchase_price) * 100
+        return 0
 
     def __str__(self):
         return f"{self.product} x {self.quantity}"
@@ -321,12 +385,16 @@ class CreditTransaction(models.Model):
     @property
     def formatted_amount(self):
         """Retourne le montant formaté en FCFA"""
-        return f"{self.amount:,}".replace(",", " ") + " FCFA"
+        # Convertir en entier pour éviter les décimales
+        amount_int = int(self.amount)
+        return f"{amount_int:,}".replace(",", " ") + " FCFA"
 
     @property
     def formatted_balance_after(self):
         """Retourne le solde après transaction formaté en FCFA"""
-        return f"{self.balance_after:,}".replace(",", " ") + " FCFA"
+        # Convertir en entier pour éviter les décimales
+        balance_int = int(self.balance_after)
+        return f"{balance_int:,}".replace(",", " ") + " FCFA"
 
     class Meta:
         verbose_name = "Transaction crédit"

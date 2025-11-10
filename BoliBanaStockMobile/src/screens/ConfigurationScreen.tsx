@@ -9,8 +9,11 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Switch,
 } from 'react-native';
-import { configurationService } from '../services/api';
+import { Ionicons } from '@expo/vector-icons';
+import { configurationService, loyaltyService } from '../services/api';
+import theme from '../utils/theme';
 
 interface Configuration {
   id: number;
@@ -27,15 +30,39 @@ interface Configuration {
   updated_at: string;
 }
 
+interface LoyaltyProgram {
+  id: number;
+  site_configuration: number;
+  site_name: string;
+  points_per_amount: number;
+  amount_for_points: number;
+  amount_per_point: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 const ConfigurationScreen: React.FC = () => {
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Configuration>>({});
+  
+  // État pour le programme de fidélité
+  const [loyaltyProgram, setLoyaltyProgram] = useState<LoyaltyProgram | null>(null);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [loyaltyEditing, setLoyaltyEditing] = useState(false);
+  const [loyaltyFormData, setLoyaltyFormData] = useState({
+    points_per_amount: '1',
+    amount_for_points: '1000',
+    amount_per_point: '100',
+    is_active: true,
+  });
 
   useEffect(() => {
     loadConfiguration();
+    loadLoyaltyProgram();
   }, []);
 
   const loadConfiguration = async () => {
@@ -105,6 +132,53 @@ const ConfigurationScreen: React.FC = () => {
 
   const updateFormData = (field: keyof Configuration, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const loadLoyaltyProgram = async () => {
+    try {
+      setLoyaltyLoading(true);
+      const response = await loyaltyService.getProgram();
+      if (response.success && response.program) {
+        setLoyaltyProgram(response.program);
+        setLoyaltyFormData({
+          points_per_amount: response.program.points_per_amount?.toString() || '1',
+          amount_for_points: response.program.amount_for_points?.toString() || '1000',
+          amount_per_point: response.program.amount_per_point?.toString() || '100',
+          is_active: response.program.is_active ?? true,
+        });
+      }
+    } catch (error) {
+      console.error('Erreur chargement programme fidélité:', error);
+    } finally {
+      setLoyaltyLoading(false);
+    }
+  };
+
+  const handleSaveLoyaltyProgram = async () => {
+    try {
+      setSaving(true);
+      const programData = {
+        points_per_amount: parseFloat(loyaltyFormData.points_per_amount) || 1,
+        amount_for_points: parseInt(loyaltyFormData.amount_for_points) || 1000,
+        amount_per_point: parseFloat(loyaltyFormData.amount_per_point) || 100,
+        is_active: loyaltyFormData.is_active,
+      };
+      
+      const response = await loyaltyService.updateProgram(programData);
+      if (response.success && response.program) {
+        setLoyaltyProgram(response.program);
+        setLoyaltyEditing(false);
+        Alert.alert('Succès', 'Programme de fidélité mis à jour avec succès');
+      }
+    } catch (error: any) {
+      console.error('Erreur sauvegarde programme fidélité:', error);
+      Alert.alert(
+        'Erreur',
+        error.response?.data?.error || 'Impossible de sauvegarder le programme de fidélité'
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -240,6 +314,170 @@ const ConfigurationScreen: React.FC = () => {
             </View>
           </View>
 
+          {/* Programme de fidélité */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeaderLeft}>
+                <Ionicons name="star" size={24} color={theme.colors.primary[500]} />
+                <Text style={styles.sectionTitle}>Programme de fidélité</Text>
+              </View>
+              {!loyaltyEditing && (
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => setLoyaltyEditing(true)}
+                >
+                  <Ionicons name="create-outline" size={20} color={theme.colors.primary[500]} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {loyaltyLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                <Text style={styles.loadingText}>Chargement...</Text>
+              </View>
+            ) : (
+              <>
+                {/* Statut du programme */}
+                <View style={styles.inputGroup}>
+                  <View style={styles.switchRow}>
+                    <View style={styles.switchLabelContainer}>
+                      <Text style={styles.label}>Programme actif</Text>
+                      <Text style={styles.helpText}>
+                        Active ou désactive le programme de fidélité
+                      </Text>
+                    </View>
+                    <Switch
+                      value={loyaltyFormData.is_active}
+                      onValueChange={(value) =>
+                        setLoyaltyFormData(prev => ({ ...prev, is_active: value }))
+                      }
+                      disabled={!loyaltyEditing}
+                      trackColor={{
+                        false: theme.colors.neutral[300],
+                        true: theme.colors.primary[200],
+                      }}
+                      thumbColor={loyaltyFormData.is_active ? theme.colors.primary[500] : theme.colors.neutral[400]}
+                    />
+                  </View>
+                </View>
+
+                {/* Configuration des points gagnés */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Configuration des points gagnés</Text>
+                  <Text style={styles.helpText}>
+                    Définissez combien de points sont gagnés pour un montant dépensé
+                  </Text>
+                  
+                  <View style={styles.loyaltyConfigRow}>
+                    <View style={styles.loyaltyConfigInput}>
+                      <Text style={styles.loyaltyConfigLabel}>Points</Text>
+                      <TextInput
+                        style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
+                        value={loyaltyFormData.points_per_amount}
+                        onChangeText={(text) =>
+                          setLoyaltyFormData(prev => ({ ...prev, points_per_amount: text }))
+                        }
+                        editable={loyaltyEditing}
+                        placeholder="1"
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    
+                    <Text style={styles.loyaltyConfigEquals}>pour</Text>
+                    
+                    <View style={styles.loyaltyConfigInput}>
+                      <Text style={styles.loyaltyConfigLabel}>FCFA dépensés</Text>
+                      <TextInput
+                        style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
+                        value={loyaltyFormData.amount_for_points}
+                        onChangeText={(text) =>
+                          setLoyaltyFormData(prev => ({ ...prev, amount_for_points: text }))
+                        }
+                        editable={loyaltyEditing}
+                        placeholder="1000"
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  </View>
+                  
+                  <View style={styles.exampleBox}>
+                    <Ionicons name="information-circle" size={16} color={theme.colors.primary[500]} />
+                    <Text style={styles.exampleText}>
+                      Exemple: {loyaltyFormData.points_per_amount} point(s) pour {parseInt(loyaltyFormData.amount_for_points) || 1000} FCFA dépensés
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Configuration de la valeur des points */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Valeur d'un point</Text>
+                  <Text style={styles.helpText}>
+                    Définissez la valeur en FCFA d'un point de fidélité
+                  </Text>
+                  
+                  <View style={styles.loyaltyConfigRow}>
+                    <View style={styles.loyaltyConfigInput}>
+                      <Text style={styles.loyaltyConfigLabel}>1 point =</Text>
+                      <TextInput
+                        style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
+                        value={loyaltyFormData.amount_per_point}
+                        onChangeText={(text) =>
+                          setLoyaltyFormData(prev => ({ ...prev, amount_per_point: text }))
+                        }
+                        editable={loyaltyEditing}
+                        placeholder="100"
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <Text style={styles.loyaltyConfigEquals}>FCFA de réduction</Text>
+                  </View>
+                  
+                  <View style={styles.exampleBox}>
+                    <Ionicons name="information-circle" size={16} color={theme.colors.primary[500]} />
+                    <Text style={styles.exampleText}>
+                      Exemple: 1 point = {parseFloat(loyaltyFormData.amount_per_point) || 100} FCFA de réduction
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Actions pour la fidélité */}
+                {loyaltyEditing && (
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity
+                      style={[styles.button, styles.buttonSecondary]}
+                      onPress={() => {
+                        if (loyaltyProgram) {
+                          setLoyaltyFormData({
+                            points_per_amount: loyaltyProgram.points_per_amount?.toString() || '1',
+                            amount_for_points: loyaltyProgram.amount_for_points?.toString() || '1000',
+                            amount_per_point: loyaltyProgram.amount_per_point?.toString() || '100',
+                            is_active: loyaltyProgram.is_active ?? true,
+                          });
+                        }
+                        setLoyaltyEditing(false);
+                      }}
+                      disabled={saving}
+                    >
+                      <Text style={styles.buttonTextSecondary}>Annuler</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, styles.buttonPrimary]}
+                      onPress={handleSaveLoyaltyProgram}
+                      disabled={saving}
+                    >
+                      {saving ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <Text style={styles.buttonTextPrimary}>Sauvegarder</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+
           {/* Actions */}
           <View style={styles.actions}>
             {editing ? (
@@ -357,11 +595,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editButton: {
+    padding: 4,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1e293b',
-    marginBottom: 16,
   },
   inputGroup: {
     marginBottom: 16,
@@ -438,6 +689,55 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
     marginBottom: 4,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  switchLabelContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  helpText: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 4,
+  },
+  loyaltyConfigRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+  },
+  loyaltyConfigInput: {
+    flex: 1,
+  },
+  loyaltyConfigLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  loyaltyConfigEquals: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748b',
+    marginTop: 20,
+  },
+  exampleBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary[50],
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  exampleText: {
+    fontSize: 13,
+    color: theme.colors.primary[700],
+    flex: 1,
   },
 });
 

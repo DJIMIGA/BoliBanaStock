@@ -4,6 +4,11 @@ buildscript {
   repositories {
     google()
     mavenCentral()
+    // Configuration pour les packages qui utilisent encore jcenter (HTTP)
+    maven {
+      url "http://jcenter.bintray.com/"
+      allowInsecureProtocol = true
+    }
   }
   dependencies {
     classpath('com.android.tools.build:gradle')
@@ -30,6 +35,13 @@ allprojects {
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
+    
+    // Configuration pour les packages qui utilisent encore jcenter (HTTP)
+    // jcenter est déprécié mais certains packages l'utilisent encore
+    maven {
+      url "http://jcenter.bintray.com/"
+      allowInsecureProtocol = true
+    }
   }
 }
 

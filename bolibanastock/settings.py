@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'apps.core',
     'apps.inventory',
     'apps.sales',
+    'apps.loyalty',
     'crispy_forms',
     'crispy_tailwind',
     'import_export',

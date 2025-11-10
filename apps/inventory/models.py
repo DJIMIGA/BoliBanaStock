@@ -8,6 +8,7 @@ from django.utils.text import slugify
 from django.urls import reverse
 import random
 from django.utils.translation import gettext_lazy as _
+from decimal import Decimal
 import os
 
 # ===== FONCTIONS DYNAMIQUES POUR UPLOAD_TO =====
@@ -692,6 +693,26 @@ class Customer(models.Model):
         related_name='customers',
         verbose_name=_('Configuration du site')
     )
+    
+    # Gestion de la fidélité
+    loyalty_points = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Points de fidélité",
+        help_text="Solde de points de fidélité du client"
+    )
+    is_loyalty_member = models.BooleanField(
+        default=False,
+        verbose_name="Membre du programme de fidélité",
+        help_text="Indique si le client est inscrit au programme de fidélité"
+    )
+    loyalty_joined_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Date d'inscription à la fidélité",
+        help_text="Date à laquelle le client s'est inscrit au programme"
+    )
 
     def __str__(self):
         return f"{self.name} {self.first_name}" if self.first_name else self.name
@@ -710,10 +731,36 @@ class Customer(models.Model):
     def credit_debt_amount(self):
         """Retourne le montant de la dette (valeur absolue)"""
         return abs(self.credit_balance) if self.credit_balance < 0 else 0
+    
+    def get_loyalty_points(self):
+        """Retourne le solde de points de fidélité"""
+        return self.loyalty_points or Decimal('0.00')
+    
+    def can_use_points(self, points):
+        """Vérifie si le client peut utiliser le nombre de points demandé"""
+        if not self.is_loyalty_member:
+            return False
+        return self.get_loyalty_points() >= Decimal(str(points))
+    
+    def join_loyalty_program(self):
+        """Inscrit le client au programme de fidélité"""
+        if not self.is_loyalty_member:
+            self.is_loyalty_member = True
+            self.loyalty_joined_at = timezone.now()
+            self.loyalty_points = Decimal('0.00')
+            self.save()
 
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['phone', 'site_configuration'],
+                condition=models.Q(phone__isnull=False),
+                name='unique_phone_per_site',
+                violation_error_message="Un client avec ce numéro de téléphone existe déjà pour ce site."
+            ),
+        ]
 
 class Supplier(models.Model):
     name = models.CharField(max_length=100)
@@ -947,6 +994,7 @@ class LabelBatch(models.Model):
     CHANNEL_CHOICES = [
         ('pdf', 'PDF'),
         ('escpos', 'Thermique (ESC/POS)'),
+        ('tsc', 'Thermique (TSC)'),
     ]
     STATUS_CHOICES = [
         ('queued', 'En attente'),

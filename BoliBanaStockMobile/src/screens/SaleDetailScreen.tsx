@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { saleService } from '../services/api';
+import theme from '../utils/theme';
 
 interface SaleItem {
   id: number;
@@ -28,6 +29,11 @@ interface Sale {
   reference: string;
   customer_name: string;
   total_amount: number;
+  subtotal?: number;
+  discount_amount?: number;
+  loyalty_discount_amount?: number;
+  loyalty_points_earned?: number;
+  loyalty_points_used?: number;
   payment_method: string;
   status: string;
   items: SaleItem[];
@@ -113,13 +119,13 @@ export default function SaleDetailScreen({ route, navigation }: any) {
     const shareText = `Vente #${sale.reference || sale.id}
 Client: ${sale.customer_name}
 Date: ${formatDate(sale.sale_date)}
-Total: ${sale.total_amount.toLocaleString()} FCFA
+Total: ${Math.round(Number(sale.total_amount || 0)).toLocaleString('fr-FR')} FCFA
 Méthode de paiement: ${getPaymentMethodText(sale.payment_method)}
 Statut: ${getStatusText(sale.status)}
 
 Articles:
 ${sale.items.map(item => 
-  `• ${item.product_name} (${item.product_cug}) - ${item.quantity}x ${item.unit_price.toLocaleString()} FCFA = ${item.total_price.toLocaleString()} FCFA`
+  `• ${item.product_name} (${item.product_cug}) - ${item.quantity}x ${Math.round(Number(item.unit_price || 0)).toLocaleString('fr-FR')} FCFA = ${Math.round(Number(item.total_price || 0)).toLocaleString('fr-FR')} FCFA`
 ).join('\n')}`;
 
     try {
@@ -217,13 +223,15 @@ ${sale.items.map(item =>
               <View key={item.id} style={styles.itemRow}>
                 <View style={styles.itemInfo}>
                   <Text style={styles.itemName}>{item.product_name}</Text>
-                  <Text style={styles.itemCug}>CUG: {item.product_cug}</Text>
+                  {item.product_cug && (
+                    <Text style={styles.itemCug}>CUG: {item.product_cug}</Text>
+                  )}
                 </View>
                 <View style={styles.itemQuantities}>
                   <Text style={styles.itemQuantity}>{item.quantity}x</Text>
-                  <Text style={styles.itemPrice}>{item.unit_price.toLocaleString()} FCFA</Text>
+                  <Text style={styles.itemPrice}>{Math.round(Number(item.unit_price || 0)).toLocaleString('fr-FR')} FCFA</Text>
                 </View>
-                <Text style={styles.itemTotal}>{item.total_price.toLocaleString()} FCFA</Text>
+                <Text style={styles.itemTotal}>{Math.round(Number(item.total_price || 0)).toLocaleString('fr-FR')} FCFA</Text>
               </View>
             ))}
           </View>
@@ -232,9 +240,72 @@ ${sale.items.map(item =>
         {/* Total */}
         <View style={styles.section}>
           <View style={styles.totalCard}>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total:</Text>
-              <Text style={styles.totalAmount}>{sale.total_amount.toLocaleString()} FCFA</Text>
+            {/* Sous-total */}
+            {sale.subtotal !== undefined && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Sous-total:</Text>
+                <Text style={styles.totalValue}>{Math.round(Number(sale.subtotal || 0)).toLocaleString('fr-FR')} FCFA</Text>
+              </View>
+            )}
+            
+            {/* Réduction fidélité */}
+            {sale.loyalty_discount_amount && Number(sale.loyalty_discount_amount) > 0 && (
+              <View style={styles.totalRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Ionicons name="star" size={14} color={theme.colors.primary[500]} />
+                  <Text style={styles.totalLabel}>Réduction fidélité:</Text>
+                </View>
+                <Text style={[styles.totalValue, styles.discountValue]}>
+                  -{Math.round(Number(sale.loyalty_discount_amount)).toLocaleString('fr-FR')} FCFA
+                </Text>
+              </View>
+            )}
+            
+            {/* Autres réductions */}
+            {sale.discount_amount && Number(sale.discount_amount) > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Réduction:</Text>
+                <Text style={[styles.totalValue, styles.discountValue]}>
+                  -{Math.round(Number(sale.discount_amount)).toLocaleString('fr-FR')} FCFA
+                </Text>
+              </View>
+            )}
+            
+            {/* Points utilisés */}
+            {sale.loyalty_points_used && Number(sale.loyalty_points_used) > 0 && (
+              <View style={styles.totalRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Ionicons name="gift" size={14} color={theme.colors.warning[500]} />
+                  <Text style={styles.totalLabel}>Points utilisés:</Text>
+                </View>
+                <Text style={styles.totalValue}>
+                  {Number(sale.loyalty_points_used).toFixed(2)} pts
+                </Text>
+              </View>
+            )}
+            
+            {/* Points gagnés */}
+            {sale.loyalty_points_earned && Number(sale.loyalty_points_earned) > 0 && (
+              <View style={styles.totalRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Ionicons name="star" size={14} color={theme.colors.primary[500]} />
+                  <Text style={styles.totalLabel}>Points gagnés:</Text>
+                </View>
+                <Text style={[styles.totalValue, styles.pointsValue]}>
+                  +{Number(sale.loyalty_points_earned).toFixed(2)} pts
+                </Text>
+              </View>
+            )}
+            
+            {/* Séparateur */}
+            {(sale.loyalty_discount_amount || sale.discount_amount) && (
+              <View style={styles.totalDivider} />
+            )}
+            
+            {/* Total final */}
+            <View style={[styles.totalRow, styles.totalRowFinal]}>
+              <Text style={styles.totalLabelFinal}>Total:</Text>
+              <Text style={styles.totalAmount}>{Math.round(Number(sale.total_amount || 0)).toLocaleString('fr-FR')} FCFA</Text>
             </View>
           </View>
         </View>
@@ -403,11 +474,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 8,
+  },
+  totalRowFinal: {
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 2,
+    borderTopColor: '#e0e0e0',
   },
   totalLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  totalLabelFinal: {
     fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  totalValue: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#333',
+  },
+  discountValue: {
+    color: '#F44336',
+  },
+  pointsValue: {
+    color: '#4CAF50',
+  },
+  totalDivider: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    marginVertical: 8,
   },
   totalAmount: {
     fontSize: 20,

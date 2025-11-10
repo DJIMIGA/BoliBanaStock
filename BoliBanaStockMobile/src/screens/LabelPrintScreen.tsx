@@ -9,17 +9,18 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
 import theme from '../utils/theme';
 import { useNavigation } from '@react-navigation/native';
 import { PrintOptionsConfig } from '../components/PrintOptionsConfig';
 import ThermalPrinterTest from '../components/ThermalPrinterTest';
 import { productService, labelPrintService } from '../services/api';
+import bluetoothPrinterService from '../services/bluetoothPrinterService';
 
 interface Product {
   id: number;
@@ -59,7 +60,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
   const [includePrices, setIncludePrices] = useState(true);
   
   // Configuration de l'imprimante
-  const [printerType, setPrinterType] = useState<'pdf' | 'escpos' | 'tsc'>('escpos');
+  const [printerType, setPrinterType] = useState<'pdf' | 'escpos' | 'tsc'>('tsc');
   const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -77,7 +78,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
   const [printerConfig, setPrinterConfig] = useState({
     ip_address: '',
     port: 9100,
-    auto_connect: false,
+    auto_connect: true, // Activé par défaut pour impression automatique
     connection_type: 'bluetooth' as 'network' | 'bluetooth',
     bluetooth_address: '',
   });
@@ -87,6 +88,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
   const [testingConnection, setTestingConnection] = useState(false);
   const [bluetoothPrinters, setBluetoothPrinters] = useState<any[]>([]);
   const [selectedBluetoothPrinter, setSelectedBluetoothPrinter] = useState<any>(null);
+  const [showPrinterList, setShowPrinterList] = useState(false);
   
   // Options fixes (toujours incluses)
   const includeCug = true;
@@ -155,6 +157,39 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
 
     loadTemplates();
   }, []);
+
+  // Vérifier l'état de connexion Bluetooth au chargement et lors du retour sur l'écran
+  useEffect(() => {
+    const checkConnectionStatus = () => {
+      try {
+        const isConnected = bluetoothPrinterService.isConnected();
+        const connectedPrinter = bluetoothPrinterService.getConnectedPrinter();
+        
+        console.log('🔍 [BLUETOOTH] Vérification état connexion:', { isConnected, connectedPrinter });
+        
+        if (isConnected && connectedPrinter) {
+          setPrinterConnected(true);
+          setSelectedBluetoothPrinter(connectedPrinter);
+          console.log('✅ [BLUETOOTH] Imprimante déjà connectée:', connectedPrinter.device_name);
+        } else {
+          setPrinterConnected(false);
+          setSelectedBluetoothPrinter(null);
+        }
+      } catch (error) {
+        console.warn('⚠️ [BLUETOOTH] Erreur vérification connexion:', error);
+      }
+    };
+
+    // Vérifier immédiatement
+    checkConnectionStatus();
+
+    // Vérifier à nouveau quand l'écran revient au focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      checkConnectionStatus();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   // Vérifier qu'il y a des produits sélectionnés
   if (selectedProducts.length === 0) {
@@ -504,23 +539,64 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
     try {
       console.log('🔍 [BLUETOOTH] Découverte des imprimantes Bluetooth...');
       
-      // Simulation de la découverte (sera remplacé par la vraie implémentation)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Utiliser le service réel pour découvrir les imprimantes
+      const printers = await bluetoothPrinterService.discoverPrinters();
       
-      const mockPrinters = [
-        { device_name: 'Imprimante Thermique 1', device_address: '00:11:22:33:44:55' },
-        { device_name: 'TSC TTP-244ME', device_address: '00:11:22:33:44:66' },
-        { device_name: 'Epson TM-T20III', device_address: '00:11:22:33:44:77' },
-      ];
+      setBluetoothPrinters(printers);
       
-      setBluetoothPrinters(mockPrinters);
+      if (printers.length === 0) {
       Alert.alert(
-        'Imprimantes trouvées',
-        `${mockPrinters.length} imprimante(s) Bluetooth découverte(s)`
-      );
-    } catch (error) {
+          'Aucune imprimante trouvée',
+          'Aucune imprimante Bluetooth n\'a été découverte. Vérifiez que votre imprimante est allumée et en mode découverte.',
+          [{ text: 'OK' }]
+        );
+        setShowPrinterList(false);
+        return;
+      }
+      
+      // Si une seule imprimante, la sélectionner automatiquement
+      if (printers.length === 1) {
+        await connectToBluetoothPrinter(printers[0]);
+      } else {
+        // Afficher la liste des imprimantes dans l'interface
+        setShowPrinterList(true);
+      }
+    } catch (error: any) {
       console.error('❌ [BLUETOOTH] Erreur découverte:', error);
-      Alert.alert('Erreur', 'Erreur lors de la découverte des imprimantes Bluetooth');
+      const errorMessage = error?.message || 'Erreur inconnue lors de la découverte des imprimantes Bluetooth';
+      Alert.alert(
+        'Erreur de découverte',
+        errorMessage + '\n\nAssurez-vous que:\n- Le Bluetooth est activé\n- Vous utilisez un development build (pas Expo Go)\n- Les permissions sont accordées'
+      );
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  // Se déconnecter de l'imprimante Bluetooth
+  const disconnectFromBluetoothPrinter = async () => {
+    setTestingConnection(true);
+    try {
+      console.log('🔌 [BLUETOOTH] Déconnexion de l\'imprimante...');
+      await bluetoothPrinterService.disconnectPrinter();
+      setSelectedBluetoothPrinter(null);
+      setPrinterConnected(false);
+      
+      Alert.alert(
+        'Déconnexion réussie',
+        'Vous avez été déconnecté de l\'imprimante',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      console.error('❌ [BLUETOOTH] Erreur déconnexion:', error);
+      // Même en cas d'erreur, on réinitialise l'état local
+      setSelectedBluetoothPrinter(null);
+      setPrinterConnected(false);
+      Alert.alert(
+        'Déconnexion',
+        'Déconnexion effectuée (avec avertissement)',
+        [{ text: 'OK' }]
+      );
     } finally {
       setTestingConnection(false);
     }
@@ -531,20 +607,58 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
     setTestingConnection(true);
     try {
       console.log('🔗 [BLUETOOTH] Connexion à l\'imprimante:', printer.device_name);
+      console.log('🔗 [BLUETOOTH] Adresse:', printer.device_address);
       
-      // Simulation de la connexion (sera remplacé par la vraie implémentation)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Utiliser le service réel pour se connecter
+      const connected = await bluetoothPrinterService.connectToPrinter(printer);
       
+      console.log('🔍 [DEBUG] connectToPrinter résultat:', connected);
+      console.log('🔍 [DEBUG] État avant setPrinterConnected:', {
+        connected,
+        printer_name: printer.device_name,
+        isConnected_service: bluetoothPrinterService.isConnected()
+      });
+      
+      if (connected) {
       setSelectedBluetoothPrinter(printer);
       setPrinterConnected(true);
+        
+        console.log('✅ [DEBUG] setPrinterConnected(true) appelé');
+        console.log('✅ [DEBUG] État après setPrinterConnected:', {
+          isConnected_service: bluetoothPrinterService.isConnected(),
+          connectedPrinter: bluetoothPrinterService.getConnectedPrinter()
+        });
       
       Alert.alert(
         'Connexion réussie',
         `Connecté à ${printer.device_name}`
       );
-    } catch (error) {
+      } else {
+        console.error('❌ [DEBUG] connectToPrinter a retourné false');
+        throw new Error('Échec de la connexion à l\'imprimante');
+      }
+    } catch (error: any) {
       console.error('❌ [BLUETOOTH] Erreur connexion:', error);
-      Alert.alert('Erreur', 'Erreur lors de la connexion à l\'imprimante');
+      const errorMessage = error?.message || 'Erreur inconnue lors de la connexion';
+      
+      // Afficher un message d'erreur détaillé
+      let userMessage = 'Impossible de se connecter à l\'imprimante.\n\n';
+      
+      if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+        userMessage += 'La connexion a expiré. Vérifiez que l\'imprimante est allumée et à proximité.';
+      } else if (errorMessage.includes('permission') || errorMessage.includes('Permission')) {
+        userMessage += 'Permissions Bluetooth insuffisantes. Vérifiez les paramètres de l\'application.';
+      } else if (errorMessage.includes('refused') || errorMessage.includes('Refused')) {
+        userMessage += 'Connexion refusée. Assurez-vous que l\'imprimante est en mode découverte.';
+      } else if (errorMessage.includes('not found') || errorMessage.includes('Not found')) {
+        userMessage += 'Imprimante introuvable. Relancez la découverte.';
+      } else {
+        userMessage += `Détails: ${errorMessage}`;
+      }
+      
+      userMessage += '\n\nVérifiez que:\n- L\'imprimante est allumée\n- Le Bluetooth est activé\n- L\'imprimante est à proximité';
+      
+      Alert.alert('Erreur de connexion', userMessage);
     } finally {
       setTestingConnection(false);
     }
@@ -620,11 +734,87 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
         const batch = await labelPrintService.createLabelBatch(batchData);
         console.log('✅ [BATCH] Lot d\'étiquettes créé:', batch);
 
+        // Debug: Vérifier les conditions pour l'impression directe
+        console.log('🔍 [DEBUG] Conditions impression directe:', {
+          printerConnected,
+          auto_connect: printerConfig.auto_connect,
+          connection_type: printerConfig.connection_type,
+          printerType,
+          isConnected: bluetoothPrinterService.isConnected(),
+          selectedBluetoothPrinter: selectedBluetoothPrinter?.device_name
+        });
+
         // Si l'imprimante est connectée, envoyer directement
         if (printerConnected && printerConfig.auto_connect) {
           try {
             if (printerConfig.connection_type === 'bluetooth') {
-              console.log('🔵 [BLUETOOTH] Envoi direct à l\'imprimante Bluetooth...');
+              if (printerType === 'tsc') {
+                console.log('🔵 [BLUETOOTH][TSC] Envoi direct des étiquettes TSC...');
+                console.log('🔵 [BLUETOOTH][TSC] Paramètres:', {
+                  productsCount: products.length,
+                  copies,
+                  printer: selectedBluetoothPrinter?.device_name,
+                  connected: bluetoothPrinterService.isConnected()
+                });
+                
+                try {
+                  // Vérifier que les produits ont bien selling_price
+                  console.log('🔍 [TSC] Produits avant impression:', products.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    selling_price: p.selling_price,
+                    hasPrice: !!p.selling_price
+                  })));
+                  
+                  console.log('🔍 [TSC] Paramètres impression:', {
+                    includePrice: includePrices,
+                    productsCount: products.length,
+                    copies,
+                    thermalSettings
+                  });
+                  
+                  await bluetoothPrinterService.printTSCLabels({
+                    products,
+                    copies,
+                    thermalSettings,
+                    includeCug,
+                    includeEan,
+                    includeBarcode,
+                    includePrice: includePrices, // Passer le paramètre includePrices
+                  });
+                  
+                  console.log('✅ [BLUETOOTH][TSC] Impression terminée avec succès');
+                  Alert.alert(
+                    'Impression réussie',
+                    `Les étiquettes TSC ont été envoyées directement à l'imprimante ${selectedBluetoothPrinter?.device_name}\n\nTotal: ${products.length * copies} étiquettes`
+                  );
+                } catch (tscError: any) {
+                  console.error('❌ [BLUETOOTH][TSC] Erreur impression:', tscError);
+                  Alert.alert(
+                    'Erreur d\'impression TSC',
+                    `Impossible d'imprimer les étiquettes TSC.\n\nErreur: ${tscError?.message || 'Erreur inconnue'}\n\nVérifiez que l'imprimante est bien connectée et allumée.`,
+                    [
+                      { text: 'OK', style: 'cancel' },
+                      {
+                        text: 'Générer fichier TSC',
+                        onPress: async () => {
+                          try {
+                            const tscContent = await labelPrintService.getTSCFile(batch.id);
+                            Alert.alert(
+                              'Fichier TSC généré',
+                              `Le fichier TSC a été généré avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes`
+                            );
+                          } catch (fileError: any) {
+                            Alert.alert('Erreur', `Impossible de générer le fichier TSC: ${fileError?.message || 'Erreur inconnue'}`);
+                          }
+                        }
+                      }
+                    ]
+                  );
+                  throw tscError; // Re-lancer pour que le catch parent gère le fallback
+                }
+              } else {
+                console.log('🔵 [BLUETOOTH][ESC/POS] Envoi direct à l\'imprimante Bluetooth...');
               const printResult = await labelPrintService.sendToBluetoothPrinter({
                 product_ids: products.map(p => p.id),
                 template_id: selectedTemplate?.id,
@@ -635,11 +825,11 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
                 printer_type: printerType,
                 thermal_settings: thermalSettings
               });
-              
         Alert.alert(
                 'Impression Bluetooth réussie',
                 `Les étiquettes ont été envoyées directement à l'imprimante Bluetooth ${selectedBluetoothPrinter?.device_name}\n\nTotal: ${products.length * copies} étiquettes`
               );
+              }
             } else {
               console.log('🖨️ [PRINTER] Envoi direct à l\'imprimante réseau...');
               const printResult = await labelPrintService.sendToThermalPrinter(batch.id, {
@@ -655,9 +845,11 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
               );
             }
           } catch (printError) {
-            console.warn('⚠️ [PRINTER] Envoi direct échoué, génération du fichier:', printError);
+            console.warn('⚠️ [PRINTER] Envoi direct échoué:', printError);
             
-            // Fallback : générer le fichier TSC
+            // Selon le type d'imprimante, générer le bon format
+            if (printerType === 'tsc') {
+              // Pour TSC, générer le fichier TSC
             const tscContent = await labelPrintService.getTSCFile(batch.id);
             console.log('📄 [TSC] Fichier TSC généré:', tscContent.length, 'caractères');
             
@@ -665,9 +857,20 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
               'Fichier généré',
               `Le fichier TSC a été généré avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nVous pouvez maintenant l'envoyer à votre imprimante thermique.`
             );
+            } else if (printerType === 'escpos') {
+              // Pour ESC/POS, on ne peut pas générer de fichier, seulement imprimer directement
+              Alert.alert(
+                'Impression échouée',
+                `L'envoi direct à l'imprimante ESC/POS a échoué.\n\nErreur: ${printError?.message || 'Erreur inconnue'}\n\nVeuillez vérifier la connexion Bluetooth et réessayer.`,
+                [{ text: 'OK' }]
+              );
+            }
           }
         } else {
-          // Générer le fichier TSC pour transfert manuel
+          // Pas d'impression automatique : générer un fichier selon le type ou proposer l'impression
+          console.log('⚠️ [DEBUG] Impression automatique désactivée ou imprimante non connectée');
+          if (printerType === 'tsc') {
+            // Pour TSC, générer le fichier TSC
           const tscContent = await labelPrintService.getTSCFile(batch.id);
           console.log('📄 [TSC] Fichier TSC généré:', tscContent.length, 'caractères');
           
@@ -675,6 +878,57 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
             'Fichier généré',
             `Le fichier TSC a été généré avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nVous pouvez maintenant l'envoyer à votre imprimante thermique.`
           );
+          } else if (printerType === 'escpos') {
+            // Pour ESC/POS, vérifier si une imprimante est connectée
+            if (printerConnected && printerConfig.connection_type === 'bluetooth' && selectedBluetoothPrinter) {
+              // Proposer d'imprimer maintenant
+              Alert.alert(
+                'Étiquettes prêtes',
+                `Les étiquettes ont été préparées avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nUne imprimante Bluetooth ESC/POS est connectée.`,
+                [
+                  { text: 'Annuler', style: 'cancel' },
+                  {
+                    text: 'Imprimer maintenant',
+                    onPress: async () => {
+                      try {
+                        setGenerating(true);
+                        const printResult = await labelPrintService.sendToBluetoothPrinter({
+                          product_ids: products.map(p => p.id),
+                          template_id: selectedTemplate?.id,
+                          copies,
+                          include_cug: includeCug,
+                          include_ean: includeEan,
+                          include_barcode: includeBarcode,
+                          printer_type: printerType,
+                          thermal_settings: thermalSettings
+                        });
+                        
+                        Alert.alert(
+                          'Impression réussie',
+                          `Les étiquettes ont été envoyées à l'imprimante ${selectedBluetoothPrinter.device_name}\n\nTotal: ${products.length * copies} étiquettes`
+                        );
+                      } catch (printError: any) {
+                        console.error('❌ [PRINTER] Erreur impression:', printError);
+                        Alert.alert(
+                          'Erreur d\'impression',
+                          `Impossible d'imprimer les étiquettes.\n\nErreur: ${printError?.message || 'Erreur inconnue'}`
+                        );
+                      } finally {
+                        setGenerating(false);
+                      }
+                    }
+                  }
+                ]
+              );
+            } else {
+              // Aucune imprimante connectée
+              Alert.alert(
+                'Étiquettes prêtes',
+                `Les étiquettes ont été préparées avec succès.\n\nTotal: ${batch.copies_total || products.length * copies} étiquettes\n\nPour imprimer, connectez-vous à une imprimante Bluetooth ESC/POS et activez l'envoi automatique ou réessayez avec l'impression automatique activée.`,
+                [{ text: 'OK' }]
+              );
+            }
+          }
         }
 
         // Sauvegarder les données
@@ -835,7 +1089,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
               >
                 <Ionicons name="print" size={24} color={printerType === 'escpos' ? 'white' : '#666'} />
                 <Text style={[styles.printerTypeButtonText, printerType === 'escpos' && styles.printerTypeButtonTextActive]}>
-                  Thermique
+                  ESC/POS
             </Text>
               </TouchableOpacity>
               
@@ -980,19 +1234,35 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
                      </Text>
                    </TouchableOpacity>
                    
-                   {bluetoothPrinters.length > 0 && (
-                     <View style={styles.bluetoothPrintersList}>
-                       {bluetoothPrinters.map((printer, index) => (
+                  {showPrinterList && bluetoothPrinters.length > 0 && (
+                    <View style={styles.printerListContainer}>
+                      <View style={styles.printerListHeader}>
+                        <Text style={styles.printerListTitle}>
+                          Imprimantes trouvées ({bluetoothPrinters.length})
+                        </Text>
                          <TouchableOpacity
-                           key={index}
+                          onPress={() => setShowPrinterList(false)}
+                          style={styles.closePrinterListButton}
+                        >
+                          <Ionicons name="close" size={20} color={theme.colors.text.primary} />
+                        </TouchableOpacity>
+                      </View>
+                      <FlatList
+                        data={bluetoothPrinters}
+                        keyExtractor={(item, index) => item.device_address || `printer-${index}`}
+                        renderItem={({ item: printer }) => (
+                          <TouchableOpacity
                            style={[
                              styles.bluetoothPrinterItem,
                              selectedBluetoothPrinter?.device_address === printer.device_address && styles.bluetoothPrinterItemSelected
                            ]}
-                           onPress={() => connectToBluetoothPrinter(printer)}
+                            onPress={() => {
+                              setShowPrinterList(false);
+                              connectToBluetoothPrinter(printer);
+                            }}
                            disabled={testingConnection}
                          >
-                           <Ionicons name="print" size={20} color={theme.colors.primary[500]} />
+                            <Ionicons name="bluetooth" size={20} color={theme.colors.primary[500]} />
                            <View style={styles.bluetoothPrinterInfo}>
                              <Text style={styles.bluetoothPrinterName}>{printer.device_name}</Text>
                              <Text style={styles.bluetoothPrinterAddress}>{printer.device_address}</Text>
@@ -1000,8 +1270,17 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
                            {selectedBluetoothPrinter?.device_address === printer.device_address && (
                              <Ionicons name="checkmark-circle" size={20} color="#28a745" />
                            )}
+                            {testingConnection && (
+                              <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                            )}
                          </TouchableOpacity>
-                       ))}
+                        )}
+                        style={styles.printerList}
+                        contentContainerStyle={styles.printerListContent}
+                        nestedScrollEnabled={true}
+                        scrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                      />
                      </View>
                    )}
                    
@@ -1017,13 +1296,30 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
                  </View>
                )}
                
-               {/* Statut de connexion */}
+               {/* Statut de connexion et déconnexion */}
                {printerConnected && (
                  <View style={styles.connectionStatusContainer}>
                    <View style={styles.connectionStatus}>
                      <Ionicons name="checkmark-circle" size={20} color="#28a745" />
                      <Text style={styles.connectionStatusText}>Imprimante connectée</Text>
                    </View>
+                   <TouchableOpacity
+                     style={styles.disconnectButton}
+                     onPress={disconnectFromBluetoothPrinter}
+                     disabled={testingConnection}
+                   >
+                     <Ionicons 
+                       name="close-circle" 
+                       size={16} 
+                       color="white" 
+                     />
+                     <Text style={styles.disconnectButtonText}>
+                       Déconnecter
+                     </Text>
+                     {testingConnection && (
+                       <ActivityIndicator size="small" color="white" style={{ marginLeft: 8 }} />
+                     )}
+                   </TouchableOpacity>
                  </View>
                )}
                
@@ -1154,7 +1450,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
             </Text>
           )}
         </TouchableOpacity>
-          
+
           {/* Espace supplémentaire pour éviter la superposition */}
           <View style={{ height: 20 }} />
 
@@ -1366,6 +1662,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#28a745',
   },
+  disconnectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.error[500] || '#dc3545',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 8,
+  },
+  disconnectButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   connectionStatusContainer: {
     marginBottom: 16,
     alignItems: 'center',
@@ -1450,14 +1762,49 @@ const styles = StyleSheet.create({
   bluetoothPrintersList: {
     maxHeight: 200,
   },
+  printerListContainer: {
+    marginTop: 12,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    backgroundColor: theme.colors.neutral[50],
+    maxHeight: 300,
+  },
+  printerListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+    backgroundColor: theme.colors.neutral[100],
+  },
+  printerListTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  closePrinterListButton: {
+    padding: 4,
+  },
+  printerList: {
+    maxHeight: 250,
+    flexGrow: 0,
+  },
+  printerListContent: {
+    padding: 8,
+  },
   bluetoothPrinterItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    justifyContent: 'space-between',
+    padding: 12,
+    marginBottom: 8,
     backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
   },
   bluetoothPrinterItemSelected: {
     backgroundColor: '#f0f8ff',

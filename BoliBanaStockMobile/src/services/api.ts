@@ -1061,6 +1061,59 @@ export const categoryService = {
       
       throw enrichedError;
     }
+  },
+
+  // Recommandation de catégories basée sur le nom du produit
+  recommendCategories: async (productName: string) => {
+    try {
+      if (!productName || productName.trim().length < 2) {
+        return {
+          success: false,
+          error: 'Le nom du produit doit contenir au moins 2 caractères',
+          recommendations: []
+        };
+      }
+
+      const response = await api.get('/categories/recommend/', {
+        params: { product_name: productName.trim() }
+      });
+      
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur API recommandation catégories:', error.response?.data || error.message);
+      console.error('📊 Status:', error.response?.status);
+      
+      // Gérer les erreurs réseau et serveur
+      if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
+        return {
+          success: false,
+          error: 'Erreur de connexion réseau. Vérifiez votre connexion internet.',
+          recommendations: []
+        };
+      }
+      
+      if (error.response?.status === 400) {
+        return {
+          success: false,
+          error: error.response?.data?.error || 'Données invalides',
+          recommendations: []
+        };
+      }
+      
+      if (error.response?.status === 500) {
+        return {
+          success: false,
+          error: 'Erreur serveur lors de la génération des recommandations',
+          recommendations: []
+        };
+      }
+      
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message || 'Erreur inconnue',
+        recommendations: []
+      };
+    }
   }
 };
 
@@ -1367,6 +1420,7 @@ export const customerService = {
     }
   },
 
+
   // Enregistrer un paiement pour un client
   addPayment: async (id: number, paymentData: { amount: number; notes?: string }) => {
     try {
@@ -1424,7 +1478,8 @@ export const transactionService = {
     context?: 'sale' | 'reception' | 'inventory' | 'manual' | 'return' | 'correction' | 'all';
     page?: number;
     page_size?: number;
-  }) => {
+    site_configuration?: number;
+  } | any) => {
     try {
       const response = await api.get('/transactions/', { params });
       return response.data;
@@ -1561,13 +1616,15 @@ export const profileService = {
 // Service pour la copie de produits entre sites
 export const productCopyService = {
   // Récupérer les produits disponibles pour la copie
-  getAvailableProductsForCopy: async (search?: string, page?: number, categoryId?: number, pageSize?: number) => {
+  getAvailableProductsForCopy: async (search?: string, page?: number, categoryId?: number, pageSize?: number, sourceSiteId?: number, includeInactive: boolean = false) => {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (page) params.append('page', page.toString());
       if (categoryId) params.append('category', categoryId.toString());
       if (pageSize) params.append('page_size', pageSize.toString());
+      if (sourceSiteId) params.append('source_site', sourceSiteId.toString());
+      if (includeInactive) params.append('include_inactive', 'true');
       
       const fullUrl = `/inventory/copy/?${params.toString()}`;
       console.log('📡 productCopyService.getAvailableProductsForCopy →', fullUrl);
@@ -1596,12 +1653,16 @@ export const productCopyService = {
   },
 
   // Copier un seul produit et retourner ses détails pour édition
-  copySingleProduct: async (productId: number) => {
+  copySingleProduct: async (productId: number, sourceSiteId?: number) => {
     try {
-      const response = await api.post('/inventory/copy/', {
+      const data: any = {
         products: [productId],
         single_copy: true
-      });
+      };
+      if (sourceSiteId) {
+        data.source_site = sourceSiteId;
+      }
+      const response = await api.post('/inventory/copy/', data);
       return response.data;
     } catch (error) {
       throw error;
@@ -1870,14 +1931,54 @@ export const labelPrintService = {
         barcode_value: '' // Sera déterminé côté serveur
       }));
 
-      const payload = {
-        template_id: batchData.template_id || 1,
-        printer_type: batchData.printer_type,
-        thermal_settings: batchData.thermal_settings,
-        items: items
+      // Le serializer LabelBatchCreateSerializer attend:
+      // - template (obligatoire)
+      // - source (optionnel, défaut 'manual')
+      // - channel (obligatoire)
+      // - copies_total (optionnel, calculé côté serveur)
+      // Note: items n'est pas dans le serializer mais la vue l'utilise depuis request.data
+      
+      // Nettoyer la valeur channel pour éviter les caractères invisibles ou problèmes d'encodage
+      let channelValue = (batchData.printer_type || 'escpos').toString().trim();
+      
+      // Forcer les valeurs valides uniquement
+      const validChannels = ['escpos', 'tsc', 'pdf'];
+      if (!validChannels.includes(channelValue)) {
+        console.warn(`⚠️ [BATCH] Channel invalide "${channelValue}", utilisation de 'escpos' par défaut`);
+        channelValue = 'escpos';
+      }
+      
+      // Nettoyer tous les caractères non-ASCII et caractères invisibles pour éviter les problèmes d'encodage
+      // Supprimer les caractères non-ASCII, les guillemets typographiques, et les caractères de contrôle
+      channelValue = channelValue
+        .replace(/[^\x20-\x7E]/g, '') // Supprimer tous les caractères non-ASCII imprimables
+        .replace(/["«»'']/g, '') // Supprimer les guillemets typographiques
+        .trim();
+      
+      // Vérifier à nouveau après nettoyage
+      if (!validChannels.includes(channelValue)) {
+        console.warn(`⚠️ [BATCH] Channel invalide après nettoyage "${channelValue}", utilisation de 'escpos' par défaut`);
+        channelValue = 'escpos';
+      }
+      
+      console.log('🔍 [BATCH] Channel value:', {
+        original: batchData.printer_type,
+        final: channelValue,
+        type: typeof channelValue,
+        length: channelValue?.length,
+        charCodes: channelValue?.split('').map(c => c.charCodeAt(0))
+      });
+      
+      const payload: any = {
+        template: batchData.template_id || 1, // ID du template (obligatoire)
+        source: 'manual',
+        channel: channelValue, // channel: 'escpos' ou 'tsc' (nettoyé)
+        items: items, // Utilisé directement par la vue depuis request.data
       };
 
-      const response = await api.post('/label-batches/create_batch/', payload, {
+      console.log('📤 [BATCH] Payload envoyé:', JSON.stringify(payload, null, 2));
+
+      const response = await api.post('/labels/batches/create_batch/', payload, {
         timeout: 30000,
       });
       
@@ -1898,7 +1999,7 @@ export const labelPrintService = {
     try {
       console.log('📄 [TSC] Récupération du fichier TSC pour le lot:', batchId);
       
-      const response = await api.get(`/label-batches/${batchId}/tsc/`, {
+      const response = await api.get(`/labels/batches/${batchId}/tsc/`, {
         responseType: 'text',
         timeout: 15000,
       });
@@ -1918,7 +2019,7 @@ export const labelPrintService = {
     try {
       console.log('📄 [PDF] Récupération du fichier PDF pour le lot:', batchId);
       
-      const response = await api.get(`/label-batches/${batchId}/pdf/`, {
+      const response = await api.get(`/labels/batches/${batchId}/pdf/`, {
         responseType: 'blob',
         timeout: 15000,
       });
@@ -2019,7 +2120,18 @@ export const labelPrintService = {
         console.log('✅ [TEMPLATES] Modèles récupérés avec succès');
         console.log('✅ [TEMPLATES] Status:', response.status);
         console.log('✅ [TEMPLATES] Response data:', JSON.stringify(response.data, null, 2));
+        
+        // L'API retourne un objet avec 'results' qui contient le tableau
+        if (response.data && response.data.results && Array.isArray(response.data.results)) {
+          return response.data.results;
+        } else if (Array.isArray(response.data)) {
+          // Si c'est directement un tableau, le retourner
         return response.data;
+        } else {
+          // Sinon, retourner un tableau vide
+          console.warn('⚠️ [TEMPLATES] Format de réponse inattendu:', typeof response.data);
+          return [];
+        }
       } catch (templateError: any) {
         console.warn('⚠️ [TEMPLATES] Endpoint /labels/templates/ non disponible, utilisation du fallback');
         
@@ -2155,6 +2267,95 @@ export const receiptService = {
       }
       
       console.error('❌ [RECEIPT] Full error object:', error);
+      throw error;
+    }
+  },
+};
+
+// Service pour la fidélité
+export const loyaltyService = {
+  // Récupérer la configuration du programme de fidélité
+  getProgram: async () => {
+    try {
+      const response = await api.get('/loyalty/program/');
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  // Mettre à jour la configuration du programme de fidélité
+  updateProgram: async (programData: any) => {
+    try {
+      const response = await api.put('/loyalty/program/', programData);
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  // Récupérer un compte de fidélité par numéro de téléphone
+  getAccountByPhone: async (phone: string) => {
+    try {
+      const response = await api.get('/loyalty/account/', {
+        params: { phone }
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  // Créer un nouveau compte de fidélité (inscription rapide)
+  createAccount: async (accountData: {
+    phone: string;
+    name: string;
+    first_name?: string;
+  }) => {
+    try {
+      const response = await api.post('/loyalty/account/', accountData);
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  // Calculer les points gagnés pour un montant
+  calculatePointsEarned: async (amount: number) => {
+    try {
+      // Ne pas envoyer de requête si le montant est 0, négatif, null ou undefined
+      if (amount === null || amount === undefined || amount <= 0 || isNaN(amount)) {
+        console.log('🔒 [LOYALTY] Montant invalide, pas de requête API:', amount);
+        return { success: true, points_earned: 0 };
+      }
+      
+      console.log('✅ [LOYALTY] Calcul des points pour montant:', amount);
+      const response = await api.post('/loyalty/points/calculate/', {
+        amount
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  // Calculer la valeur en FCFA de points
+  calculatePointsValue: async (points: number) => {
+    try {
+      // Ne pas envoyer de requête si les points sont 0, négatifs, null ou undefined
+      if (points === null || points === undefined || points <= 0 || isNaN(points)) {
+        console.log('🔒 [LOYALTY] Points invalides, pas de requête API:', points);
+        return { success: true, value_fcfa: 0 };
+      }
+      
+      console.log('✅ [LOYALTY] Calcul valeur pour points:', points);
+      const response = await api.post('/loyalty/points/calculate/', {
+        points
+      });
+      console.log('📊 [LOYALTY] Réponse API valeur points:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ [LOYALTY] Erreur API calcul valeur points:', error);
       throw error;
     }
   },

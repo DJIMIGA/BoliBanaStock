@@ -79,7 +79,7 @@ export default function ProductsScreen({ navigation, route }: any) {
       // Charger les produits avec filtrage et pagination
       const params: any = {
         page: page,
-        page_size: 20
+        page_size: 50
       };
       
       // Filtre par catégorie (priorité aux paramètres de navigation)
@@ -262,8 +262,15 @@ export default function ProductsScreen({ navigation, route }: any) {
 
   // ✅ Gestion des sites
   const handleSiteSelect = (site: any) => {
-    setSelectedSite(site.id);
+    const siteId = site?.id || null;
+    setSelectedSite(siteId);
     setSiteModalVisible(false);
+    // Le useEffect se chargera de recharger les données
+  };
+
+  const clearSiteFilter = () => {
+    setSelectedSite(null);
+    // Le useEffect se chargera de recharger les données
   };
 
   // ✅ Fonction pour centrer le filtre sélectionné
@@ -307,8 +314,8 @@ export default function ProductsScreen({ navigation, route }: any) {
         <View style={styles.productImageContainer}>
           <ProductImage 
             imageUrl={item.image_url}
-            size={60}
-            borderRadius={8}
+            size={48}
+            borderRadius={6}
           />
           
 
@@ -318,12 +325,22 @@ export default function ProductsScreen({ navigation, route }: any) {
           <Text style={styles.productName} numberOfLines={2}>
             {item.name}
           </Text>
-          {/* DEBUG: Affichage de l'ID du produit */}
-          <Text style={styles.productIdDebug}>ID: {item.id}</Text>
           <Text style={styles.productCug}>CUG: {item.cug}</Text>
-          <Text style={styles.productCategory}>
-            {item.category_name} • {item.brand_name}
-          </Text>
+          <View style={styles.productMeta}>
+            {item.category_name && (
+              <Text style={styles.productCategory}>
+                {item.category_name}
+              </Text>
+            )}
+            {item.category_name && item.brand_name && (
+              <Text style={styles.metaSeparator}> • </Text>
+            )}
+            {item.brand_name && (
+              <Text style={styles.productBrand}>
+                {item.brand_name}
+              </Text>
+            )}
+          </View>
         </View>
         <View style={styles.productStatus}>
           <View
@@ -334,9 +351,9 @@ export default function ProductsScreen({ navigation, route }: any) {
           >
             <Ionicons 
               name={getStockStatusIcon(item.stock_status, item.quantity)} 
-              size={12} 
+              size={10} 
               color="white" 
-              style={{ marginRight: 4 }}
+              style={{ marginRight: 3 }}
             />
             <Text style={styles.statusText}>
               {getStockStatusText(item.stock_status, item.quantity)}
@@ -353,7 +370,7 @@ export default function ProductsScreen({ navigation, route }: any) {
       
       <View style={styles.productFooter}>
         <View style={styles.quantityContainer}>
-          <Ionicons name="cube-outline" size={16} color={item.quantity < 0 ? "#E91E63" : "#666"} />
+          <Ionicons name="cube-outline" size={14} color={item.quantity < 0 ? "#E91E63" : "#666"} />
           <Text style={[styles.quantityText, { color: item.quantity < 0 ? "#E91E63" : "#666" }]}>
             {item.quantity} unités
           </Text>
@@ -518,7 +535,11 @@ export default function ProductsScreen({ navigation, route }: any) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         onEndReached={loadMoreProducts}
-        onEndReachedThreshold={0.1}
+        onEndReachedThreshold={0.5}
+        initialNumToRender={20}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
         ListFooterComponent={
           loadingMore ? (
             <View style={styles.loadingMoreContainer}>
@@ -696,91 +717,100 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listContainer: {
-    padding: 20,
+    padding: 12,
+    paddingBottom: 20,
   },
   productCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
-    elevation: 2,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 6,
+    elevation: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
   productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 8,
     alignItems: 'flex-start',
   },
   productImageContainer: {
-    marginRight: 12,
+    marginRight: 10,
   },
   productImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 6,
     backgroundColor: '#f5f5f5',
   },
   noImageContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 6,
     backgroundColor: '#f5f5f5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   productInfo: {
     flex: 1,
-    marginRight: 10,
+    marginRight: 8,
   },
   productName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   productCug: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
     marginBottom: 2,
   },
-  productIdDebug: {
-    fontSize: 10,
-    color: '#999',
-    marginBottom: 2,
+  productMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   productCategory: {
-    fontSize: 12,
+    fontSize: 10,
+    color: '#666',
+  },
+  metaSeparator: {
+    fontSize: 10,
     color: '#999',
+  },
+  productBrand: {
+    fontSize: 10,
+    color: '#666',
   },
   productStatus: {
     alignItems: 'flex-end',
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
   },
   statusText: {
-    fontSize: 10,
+    fontSize: 9,
     color: 'white',
     fontWeight: '600',
   },
   marginBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginTop: 5,
-    minWidth: 60,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 4,
+    minWidth: 50,
     alignItems: 'center',
   },
   marginText: {
-    fontSize: 10,
+    fontSize: 9,
     color: 'white',
     fontWeight: '600',
     textAlign: 'center',
@@ -795,13 +825,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   quantityText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
-    marginLeft: 5,
+    marginLeft: 4,
   },
   priceText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 13,
+    fontWeight: '700',
     color: '#4CAF50',
   },
   emptyContainer: {

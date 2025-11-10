@@ -63,28 +63,11 @@
         {% endif %}
         {% if sale.customer %}
         <div>Client: {{ sale.customer.name }} {{ sale.customer.first_name|default:"" }} {% if sale.customer.phone %}({{ sale.customer.phone }}){% endif %}</div>
+        {% elif sale.payment_method == 'credit' %}
+        <div>Client: Non spécifié (Crédit)</div>
         {% else %}
-        {% if sale.payment_method == 'credit' %}
-        <div style="background: #FFE082; padding: 8px; border: 2px solid #FF6F00; border-radius: 3px; margin: 5px 0;">
-            <strong style="color: #E65100;">🐛 DEBUG:</strong> Client manquant pour vente à crédit<br/>
-            <small>ID vente: {{ sale.id }}, Payment method: {{ sale.payment_method }}</small>
-        </div>
+        <div>Client: Anonyme</div>
         {% endif %}
-        {% endif %}
-        
-        <!-- DEBUG SECTION - À retirer en production -->
-        <div style="background: #FFE082; padding: 10px; border: 2px solid #FF6F00; border-radius: 5px; margin: 10px 0; font-size: 10px;">
-            <strong style="color: #E65100;">🐛 DEBUG INFO:</strong><br/>
-            Customer présent: {% if sale.customer %}✅ OUI{% else %}❌ NON{% endif %}<br/>
-            {% if sale.customer %}
-            Customer ID: {{ sale.customer.id }}<br/>
-            Customer name: {{ sale.customer.name|default:"N/A" }}<br/>
-            Customer first_name: {{ sale.customer.first_name|default:"N/A" }}<br/>
-            Customer phone: {{ sale.customer.phone|default:"N/A" }}<br/>
-            {% endif %}
-            Payment method: {{ sale.payment_method }}<br/>
-            Sale ID: {{ sale.id }}
-        </div>
     </div>
 
     <table class="items">

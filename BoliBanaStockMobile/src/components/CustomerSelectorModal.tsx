@@ -28,6 +28,8 @@ interface Customer {
   has_credit_debt: boolean;
   credit_debt_amount: number;
   is_active: boolean;
+  is_loyalty_member?: boolean;
+  loyalty_points?: number;
 }
 
 interface CustomerSelectorModalProps {
@@ -215,12 +217,20 @@ export default function CustomerSelectorModal({
           disabled={!item.is_active}
         >
           <View style={styles.customerInfo}>
-            <Text style={[
-              styles.customerName,
-              !item.is_active && styles.customerNameInactive
-            ]}>
-              {item.name || ''} {item.first_name || ''}
-            </Text>
+            <View style={styles.customerHeader}>
+              <Text style={[
+                styles.customerName,
+                !item.is_active && styles.customerNameInactive
+              ]}>
+                {item.name || ''} {item.first_name || ''}
+              </Text>
+              {item.is_loyalty_member && (
+                <View style={styles.loyaltyBadge}>
+                  <Ionicons name="star" size={14} color={theme.colors.primary[500]} />
+                  <Text style={styles.loyaltyBadgeText}>Fidélité</Text>
+                </View>
+              )}
+            </View>
             {item.phone && (
               <Text style={styles.customerPhone}>{item.phone}</Text>
             )}
@@ -449,11 +459,35 @@ const styles = StyleSheet.create({
   customerInfo: {
     flex: 1,
   },
+  customerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   customerName: {
     fontSize: 16,
     fontWeight: '600',
     color: theme.colors.text.primary,
-    marginBottom: 2,
+    flex: 1,
+    marginRight: 8,
+  },
+  loyaltyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary[100],
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.primary[300],
+    ...theme.shadows.sm,
+  },
+  loyaltyBadgeText: {
+    fontSize: 11,
+    color: theme.colors.primary[700],
+    fontWeight: '700',
   },
   customerNameInactive: {
     color: theme.colors.neutral[500],

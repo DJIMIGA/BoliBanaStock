@@ -483,10 +483,10 @@ export default function TransactionsScreen({ navigation }: any) {
             <Text style={styles.transactionDate}>
               {new Date(item.transaction_date).toLocaleDateString('fr-FR')}
             </Text>
-            {item.sale_reference && (
+            {item.sale_reference && item.context !== 'return' && (
               <View style={styles.saleBadge}>
                 <Ionicons name="cart" size={12} color={theme.colors.primary[600]} />
-                <Text style={styles.saleBadgeText}>{item.sale_reference}</Text>
+                <Text style={styles.saleBadgeText}>Vente #{item.sale_reference}</Text>
               </View>
             )}
           </View>
@@ -518,7 +518,7 @@ export default function TransactionsScreen({ navigation }: any) {
               {item.quantity} unités
             </Text>
           </View>
-          {item.notes && (
+          {item.notes && !item.notes.includes('Vente à crédit #') && (
             <Text style={styles.notesText} numberOfLines={1}>
               {item.notes}
             </Text>
@@ -535,7 +535,7 @@ export default function TransactionsScreen({ navigation }: any) {
     >
       <View style={styles.saleHeader}>
         <View style={styles.saleInfo}>
-          <Text style={styles.saleId}>Vente #{item.reference || item.id}</Text>
+          <Text style={styles.saleId}>Vente #{item.reference || 'N/A'}</Text>
           <Text style={styles.saleDate}>{formatDate((item as any).sale_date || (item as any).date)}</Text>
           <Text style={styles.customerName}>{item.customer_name}</Text>
         </View>

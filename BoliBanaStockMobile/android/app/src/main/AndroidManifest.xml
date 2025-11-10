@@ -6,6 +6,20 @@
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+  
+  <!-- Permissions Bluetooth pour Android < 12 (API < 31) -->
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+  <!-- Permissions de localisation requises pour la découverte Bluetooth (Android < 12) -->
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+  
+  <!-- Permissions Bluetooth pour Android 12+ (API 31+) -->
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+  
+  <!-- Feature Bluetooth (optionnel mais recommandé) -->
+  <uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>

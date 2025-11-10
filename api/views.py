@@ -2767,8 +2767,11 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
         # Nettoyer la valeur 'channel' pour éviter les problèmes d'encodage
         if 'channel' in request_data:
             channel_value = str(request_data['channel']).strip()
+            # Supprimer les guillemets typographiques et autres caractères spéciaux
+            channel_value = channel_value.replace('«', '').replace('»', '').replace('"', '').replace("'", '')
             # Supprimer les caractères non-ASCII et les caractères invisibles
             channel_value = ''.join(c for c in channel_value if c.isprintable() and ord(c) < 128)
+            channel_value = channel_value.strip()
             # Forcer les valeurs valides uniquement
             valid_channels = ['escpos', 'tsc', 'pdf']
             if channel_value not in valid_channels:
@@ -2776,6 +2779,7 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
                 channel_value = 'escpos'
             # Remplacer la valeur dans request_data
             request_data['channel'] = channel_value
+            logger.info(f"✅ [CREATE_BATCH] Channel nettoyé: {repr(request_data['channel'])} -> {repr(channel_value)}")
 
         data = LabelBatchCreateSerializer(data=request_data)
         if not data.is_valid():
@@ -3135,6 +3139,56 @@ def get_product_image_url(product):
     return None
 
 
+def get_product_image_base64(product):
+    """Retourne l'image du produit en base64 (data URI) pour le PDF.
+    Utile car expo-print ne peut pas charger les images depuis des URLs externes.
+    """
+    import base64
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    image_field = getattr(product, 'image', None)
+    
+    # Tenter d'utiliser l'image de l'original si ProductCopy existe et lie ce produit
+    try:
+        from apps.inventory.models import ProductCopy
+        copy = ProductCopy.objects.select_related('original_product').filter(copied_product=product).first()
+        if copy and getattr(copy.original_product, 'image', None):
+            image_field = copy.original_product.image
+    except Exception:
+        pass
+
+    if image_field:
+        try:
+            # Lire le fichier image
+            image_file = image_field.read()
+            if image_file:
+                # Convertir en base64
+                base64_data = base64.b64encode(image_file).decode('utf-8')
+                
+                # Déterminer le type MIME à partir de l'extension
+                image_name = image_field.name.lower()
+                if image_name.endswith('.png'):
+                    mime_type = 'image/png'
+                elif image_name.endswith('.gif'):
+                    mime_type = 'image/gif'
+                else:
+                    mime_type = 'image/jpeg'
+                
+                # Créer la data URI
+                data_uri = f"data:{mime_type};base64,{base64_data}"
+                
+                logger.info(f"✅ [CATALOG_PDF] Image convertie en base64 pour produit {product.id} ({product.name}) - {len(data_uri) // 1024} KB")
+                return data_uri
+            else:
+                logger.warning(f"⚠️ [CATALOG_PDF] Image vide pour produit {product.id} ({product.name})")
+                return None
+        except Exception as e:
+            logger.error(f"❌ [CATALOG_PDF] Erreur lors de la conversion en base64 pour produit {product.id} ({product.name}): {e}")
+            return None
+    return None
+
+
 class CatalogPDFAPIView(APIView):
     """API pour générer un catalogue PDF A4"""
     permission_classes = [permissions.IsAuthenticated]
@@ -3270,12 +3324,20 @@ class CatalogPDFAPIView(APIView):
                     image_url = get_product_image_url(product)
                     if image_url:
                         product_data['image_url'] = image_url
-                    else:
-                        # Logger si le produit a une image mais get_product_image_url retourne None
+                    
+                    # IMPORTANT: Inclure aussi l'image en base64 pour le PDF
+                    # expo-print ne peut pas charger les images depuis des URLs externes (S3)
+                    # Il faut utiliser des data URIs (base64) pour les images dans le PDF
+                    image_base64 = get_product_image_base64(product)
+                    if image_base64:
+                        product_data['image_data'] = image_base64
+                    
+                    if not image_url and not image_base64:
+                        # Logger si le produit a une image mais aucune méthode ne fonctionne
                         if product.image:
                             import logging
                             logger = logging.getLogger(__name__)
-                            logger.warning(f"⚠️ [CATALOG_PDF] Produit {product.id} ({product.name}) a une image mais get_product_image_url retourne None. Image field: {product.image.name if product.image else 'None'}")
+                            logger.warning(f"⚠️ [CATALOG_PDF] Produit {product.id} ({product.name}) a une image mais get_product_image_url et get_product_image_base64 retournent None. Image field: {product.image.name if product.image else 'None'}")
                 
                 catalog_data['products'].append(product_data)
             

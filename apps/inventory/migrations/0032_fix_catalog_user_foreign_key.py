@@ -12,11 +12,19 @@ def fix_catalog_user_foreign_key(apps, schema_editor):
     """
     CatalogGeneration = apps.get_model('inventory', 'CatalogGeneration')
     
-    # Supprimer toutes les CatalogGeneration orphelines
+    # Supprimer toutes les CatalogGeneration avec user_id NULL ou orphelines
     from apps.core.models import User as CoreUser
     valid_user_ids = set(CoreUser.objects.values_list('id', flat=True))
-    orphaned = CatalogGeneration.objects.exclude(user_id__in=valid_user_ids)
     
+    # Supprimer les CatalogGeneration avec user_id NULL
+    null_user_count = CatalogGeneration.objects.filter(user_id__isnull=True).count()
+    if null_user_count > 0:
+        print(f"🧹 Suppression de {null_user_count} générations avec user_id NULL...")
+        CatalogGeneration.objects.filter(user_id__isnull=True).delete()
+        print(f"✅ {null_user_count} générations avec user_id NULL supprimées")
+    
+    # Supprimer les CatalogGeneration orphelines (user_id invalide)
+    orphaned = CatalogGeneration.objects.exclude(user_id__in=valid_user_ids)
     count = orphaned.count()
     if count > 0:
         print(f"🧹 Suppression de {count} générations orphelines avant correction FK...")
@@ -24,6 +32,21 @@ def fix_catalog_user_foreign_key(apps, schema_editor):
         print(f"✅ {count} générations orphelines supprimées")
     
     print("✅ Contrainte de clé étrangère corrigée pour CatalogGeneration.user")
+
+
+def cleanup_null_users(apps, schema_editor):
+    """
+    Supprimer toutes les CatalogGeneration avec user_id NULL après la recréation du champ
+    """
+    CatalogGeneration = apps.get_model('inventory', 'CatalogGeneration')
+    
+    # Supprimer les CatalogGeneration avec user_id NULL
+    null_user_count = CatalogGeneration.objects.filter(user_id__isnull=True).count()
+    if null_user_count > 0:
+        print(f"🧹 Suppression de {null_user_count} générations avec user_id NULL après recréation du champ...")
+        CatalogGeneration.objects.filter(user_id__isnull=True).delete()
+        print(f"✅ {null_user_count} générations avec user_id NULL supprimées")
+    
 
 
 def reverse_fix(apps, schema_editor):
@@ -41,7 +64,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # D'abord, supprimer toutes les CatalogGeneration orphelines
+        # D'abord, supprimer toutes les CatalogGeneration orphelines et avec user_id NULL
         migrations.RunPython(
             fix_catalog_user_foreign_key,
             reverse_fix,
@@ -51,14 +74,32 @@ class Migration(migrations.Migration):
             model_name='cataloggeneration',
             name='user',
         ),
-        # Recréer le champ user avec la bonne référence
+        # Recréer le champ user avec la bonne référence (nullable=True temporairement)
         migrations.AddField(
             model_name='cataloggeneration',
             name='user',
             field=models.ForeignKey(
                 on_delete=django.db.models.deletion.CASCADE, 
                 to=settings.AUTH_USER_MODEL, 
-                verbose_name='Utilisateur'
+                verbose_name='Utilisateur',
+                null=True,  # Temporairement nullable pour éviter l'erreur
             ),
+        ),
+        # Supprimer les valeurs NULL restantes après la recréation du champ
+        migrations.RunPython(
+            cleanup_null_users,
+            reverse_fix,
+        ),
+        # Rendre le champ non-nullable avec SQL brut pour éviter les problèmes de trigger
+        migrations.RunSQL(
+            # SQL pour rendre la colonne NOT NULL
+            sql="""
+                ALTER TABLE inventory_cataloggeneration 
+                ALTER COLUMN user_id SET NOT NULL;
+            """,
+            reverse_sql="""
+                ALTER TABLE inventory_cataloggeneration 
+                ALTER COLUMN user_id DROP NOT NULL;
+            """,
         ),
     ]

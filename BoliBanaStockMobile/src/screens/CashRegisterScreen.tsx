@@ -10,6 +10,7 @@ import {
   TextInput,
   ActivityIndicator,
   FlatList,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +27,7 @@ import {
 import { useContinuousScanner } from '../hooks';
 import { loadSalesCartDraft, saveSalesCartDraft, clearSalesCartDraft } from '../utils/draftStorage';
 import { useUserPermissions } from '../hooks/useUserPermissions';
-import { productService, saleService, customerService } from '../services/api';
+import { productService, saleService, customerService, loyaltyService } from '../services/api';
 import { sanitizeBarcode, validateBarcode, areSimilarBarcodes, validateBarcodeQuality } from '../utils/barcodeUtils';
 
 const { width } = Dimensions.get('window');
@@ -78,6 +79,100 @@ export default function CashRegisterScreen({ navigation }: any) {
     saveSalesCartDraft(scanner.scanList);
   }, [scanner.scanList]);
 
+  // Charger le programme de fidélité au montage
+  useEffect(() => {
+    (async () => {
+      try {
+        console.log('🔄 [LOYALTY] Chargement du programme de fidélité...');
+        const response = await loyaltyService.getProgram();
+        console.log('📊 [LOYALTY] Réponse chargement programme:', response);
+        if (response && response.success && response.program) {
+          setLoyaltyProgram(response.program);
+          console.log('✅ [LOYALTY] Programme de fidélité chargé:', response.program);
+        } else {
+          console.warn('⚠️ [LOYALTY] Programme de fidélité non trouvé ou invalide');
+        }
+      } catch (error) {
+        console.error('❌ [LOYALTY] Erreur lors du chargement du programme de fidélité:', error);
+      }
+    })();
+  }, []);
+
+  // Calculer les points gagnés et la valeur des points utilisés
+  useEffect(() => {
+    if (selectedCustomer && selectedCustomer.is_loyalty_member && loyaltyProgram) {
+      const totalAmount = scanner.getTotalValue();
+      const amountForCalculation = totalAmount + loyaltyDiscountAmount;
+      
+      // Ne pas calculer si le montant est 0, négatif, null ou undefined
+      if (!amountForCalculation || amountForCalculation <= 0 || isNaN(amountForCalculation)) {
+        setLoyaltyPointsEarned(0);
+        return;
+      }
+      
+      // Calculer les points gagnés (sur le montant avant réduction fidélité)
+      (async () => {
+        try {
+          const pointsResponse = await loyaltyService.calculatePointsEarned(amountForCalculation);
+          if (pointsResponse && pointsResponse.success) {
+            setLoyaltyPointsEarned(pointsResponse.points_earned || 0);
+          } else {
+            setLoyaltyPointsEarned(0);
+          }
+        } catch (error) {
+          console.error('Erreur calcul points gagnés:', error);
+          setLoyaltyPointsEarned(0);
+        }
+      })();
+    } else {
+      setLoyaltyPointsEarned(0);
+    }
+  }, [scanner.scanList, selectedCustomer, loyaltyProgram, loyaltyDiscountAmount]);
+
+  // Calculer la valeur en FCFA des points utilisés
+  useEffect(() => {
+    if (loyaltyPointsUsed > 0 && loyaltyProgram) {
+      (async () => {
+        try {
+          console.log('🔄 [LOYALTY] Calcul valeur points utilisés:', loyaltyPointsUsed);
+          const valueResponse = await loyaltyService.calculatePointsValue(loyaltyPointsUsed);
+          console.log('📊 [LOYALTY] Réponse calcul valeur:', valueResponse);
+          if (valueResponse && valueResponse.success) {
+            const subtotal = scanner.getTotalValue();
+            const calculatedDiscount = valueResponse.value_fcfa || 0;
+            
+            // Limiter la réduction au subtotal (ne pas permettre un total négatif)
+            const maxDiscount = subtotal;
+            const actualDiscount = Math.min(calculatedDiscount, maxDiscount);
+            
+            // Si la réduction est limitée, ajuster le nombre de points utilisés
+            if (calculatedDiscount > maxDiscount && loyaltyProgram.amount_per_point > 0) {
+              const adjustedPoints = (actualDiscount / parseFloat(loyaltyProgram.amount_per_point || '100'));
+              setLoyaltyPointsUsed(adjustedPoints);
+              Alert.alert(
+                'Réduction limitée',
+                `La réduction de ${calculatedDiscount.toLocaleString()} FCFA dépasse le total de ${subtotal.toLocaleString()} FCFA.\n\nSeulement ${actualDiscount.toLocaleString()} FCFA seront déduits (${adjustedPoints.toFixed(2)} points).`,
+                [{ text: 'OK' }]
+              );
+            }
+            
+            setLoyaltyDiscountAmount(actualDiscount);
+            console.log('✅ [LOYALTY] Réduction calculée:', actualDiscount, 'FCFA (max:', maxDiscount, 'FCFA)');
+          } else {
+            console.warn('⚠️ [LOYALTY] Réponse invalide:', valueResponse);
+            setLoyaltyDiscountAmount(0);
+          }
+        } catch (error) {
+          console.error('❌ [LOYALTY] Erreur calcul valeur points:', error);
+          setLoyaltyDiscountAmount(0);
+        }
+      })();
+    } else {
+      console.log('🔄 [LOYALTY] Réinitialisation réduction (points:', loyaltyPointsUsed, ', program:', !!loyaltyProgram, ')');
+      setLoyaltyDiscountAmount(0);
+    }
+  }, [loyaltyPointsUsed, loyaltyProgram, scanner.scanList]);
+
   const { userInfo, isSuperuser } = useUserPermissions();
   
   // États pour le nouveau workflow de paiement
@@ -95,6 +190,20 @@ export default function CashRegisterScreen({ navigation }: any) {
   const [amountGiven, setAmountGiven] = useState<number>(0);
   const [changeAmount, setChangeAmount] = useState<number>(0);
   const [saraliReference, setSaraliReference] = useState<string>('');
+  const [pendingPaymentMethod, setPendingPaymentMethod] = useState<'cash' | 'credit' | 'sarali' | null>(null);
+  
+  // États pour la fidélité
+  const [loyaltyPointsUsed, setLoyaltyPointsUsed] = useState<number>(0);
+  const [loyaltyPointsEarned, setLoyaltyPointsEarned] = useState<number>(0);
+  const [loyaltyDiscountAmount, setLoyaltyDiscountAmount] = useState<number>(0);
+  const [loyaltyProgram, setLoyaltyProgram] = useState<any>(null);
+  const [loyaltyPointsModalVisible, setLoyaltyPointsModalVisible] = useState<boolean>(false);
+  const [loyaltyPointsInput, setLoyaltyPointsInput] = useState<string>('');
+  
+  // États pour la modification du prix unitaire
+  const [priceEditModalVisible, setPriceEditModalVisible] = useState<boolean>(false);
+  const [selectedItemForPriceEdit, setSelectedItemForPriceEdit] = useState<any>(null);
+  const [priceInput, setPriceInput] = useState<string>('');
   // Anti-duplication local spécifique caisse
   const lastScanByBarcodeRef = useRef<Record<string, number>>({});
   const lastScanByProductIdRef = useRef<Record<string, number>>({});
@@ -341,8 +450,66 @@ export default function CashRegisterScreen({ navigation }: any) {
       return;
     }
 
+    // Calculer le total avec réduction fidélité
+    const subtotal = scanner.getTotalValue();
+    const discount = Math.min(loyaltyDiscountAmount, subtotal);
+    const total = Math.max(0, subtotal - discount);
+
+    // Si le total est 0 (gratuit), procéder directement à la vente
+    if (total === 0) {
+      Alert.alert(
+        'Vente gratuite',
+        'Le total est de 0 FCFA (gratuit).\n\nVoulez-vous finaliser cette vente ?',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          {
+            text: 'Finaliser',
+            style: 'default',
+            onPress: () => {
+              // Procéder directement à la vente en espèces (gratuit)
+              processSale('cash');
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    // Proposer l'ajout ou la sélection d'un client si pas de client sélectionné
+    if (!selectedCustomer) {
+      Alert.alert(
+        '📋 Client',
+        'Souhaitez-vous associer un client à cette vente ?\n\n• Choisir un client existant\n• Ajouter un nouveau client\n\nVous pourrez aussi l\'inscrire au programme de fidélité.',
+        [
+          { 
+            text: 'Passer', 
+            style: 'cancel',
+            onPress: () => {
     // Ouvrir la modal de sélection du mode de paiement
     setPaymentModalVisible(true);
+            }
+          },
+          {
+            text: '🔍 Choisir un client',
+            style: 'default',
+            onPress: () => {
+              setCustomerSelectorModalVisible(true);
+            },
+          },
+          {
+            text: '➕ Ajouter un client',
+            style: 'default',
+            onPress: () => {
+              setCustomerFormModalVisible(true);
+            },
+          },
+        ],
+        { cancelable: true }
+      );
+    } else {
+      // Ouvrir la modal de sélection du mode de paiement
+      setPaymentModalVisible(true);
+    }
   };
 
   const handlePaymentMethodSelect = (method: 'cash' | 'credit' | 'sarali') => {
@@ -353,7 +520,15 @@ export default function CashRegisterScreen({ navigation }: any) {
         setCashPaymentModalVisible(true);
         break;
       case 'credit':
+        // Pour le crédit, vérifier si un client est déjà sélectionné
+        if (selectedCustomer) {
+          // Si un client est déjà sélectionné, procéder directement à la vente
+          processSale('credit', selectedCustomer);
+        } else {
+          // Sinon, mémoriser le mode de paiement et ouvrir le modal de sélection de client
+          setPendingPaymentMethod('credit');
         setCustomerSelectorModalVisible(true);
+        }
         break;
       case 'sarali':
         setSaraliPaymentModalVisible(true);
@@ -377,8 +552,13 @@ export default function CashRegisterScreen({ navigation }: any) {
   const handleCustomerSelect = (customer: any) => {
     setSelectedCustomer(customer);
     setCustomerSelectorModalVisible(false);
-    // Passer directement le customer à processSale car setSelectedCustomer est asynchrone
+    
+    // Si on était en attente d'un paiement à crédit, procéder à la vente
+    if (pendingPaymentMethod === 'credit') {
+      setPendingPaymentMethod(null);
     processSale('credit', customer);
+    }
+    // Sinon, juste sélectionner le client (pas de vente automatique)
   };
 
   const handleCustomerCreate = () => {
@@ -388,8 +568,10 @@ export default function CashRegisterScreen({ navigation }: any) {
   const handleCustomerCreated = (customer: any) => {
     setSelectedCustomer(customer);
     setCustomerFormModalVisible(false);
-    // Passer directement le customer à processSale car setSelectedCustomer est asynchrone
-    processSale('credit', customer);
+    // Après création du client, ouvrir la modal de sélection du mode de paiement
+    if (scanner.scanList.length > 0) {
+      setPaymentModalVisible(true);
+    }
   };
 
   const handlePrintReceipt = (saleId: number) => {
@@ -403,6 +585,10 @@ export default function CashRegisterScreen({ navigation }: any) {
       // Utiliser customerOverride si fourni (pour éviter les problèmes de state asynchrone)
       const customer = customerOverride || selectedCustomer;
       
+      // Sauvegarder les valeurs de fidélité AVANT toute autre opération pour éviter les problèmes de state asynchrone
+      const currentLoyaltyPointsUsed = loyaltyPointsUsed;
+      const currentLoyaltyDiscountAmount = loyaltyDiscountAmount;
+      
       // Préparer les données de la vente
       const saleData: any = {
         customer: customer?.id || null,
@@ -413,7 +599,8 @@ export default function CashRegisterScreen({ navigation }: any) {
           unit_price: item.unitPrice,
           total_price: item.totalPrice
         })),
-        total_amount: scanner.getTotalValue(),
+        // Ne pas envoyer total_amount avec réduction - le backend le calculera
+        // Le backend calculera le total à partir des items et appliquera la réduction fidélité
         payment_method: paymentMethod,
         status: 'completed'
       };
@@ -426,8 +613,34 @@ export default function CashRegisterScreen({ navigation }: any) {
         saleData.sarali_reference = saraliReference;
       }
 
+      // Ajouter les points de fidélité utilisés si applicable
+      console.log('🔍 [DEBUG] Avant envoi vente:', {
+        currentLoyaltyPointsUsed,
+        currentLoyaltyDiscountAmount,
+        loyaltyPointsUsed,
+        loyaltyDiscountAmount,
+        customerIsLoyaltyMember: customer?.is_loyalty_member,
+        customerId: customer?.id
+      });
+      
+      if (currentLoyaltyPointsUsed > 0 && customer?.is_loyalty_member) {
+        saleData.loyalty_points_used = currentLoyaltyPointsUsed;
+        console.log('✅ [LOYALTY] Points utilisés ajoutés à la vente:', currentLoyaltyPointsUsed);
+      } else {
+        console.warn('⚠️ [LOYALTY] Points non ajoutés:', {
+          currentLoyaltyPointsUsed,
+          customerIsLoyaltyMember: customer?.is_loyalty_member,
+          condition: currentLoyaltyPointsUsed > 0 && customer?.is_loyalty_member
+        });
+      }
+
+      console.log('📤 [API] Données de vente envoyées:', JSON.stringify(saleData, null, 2));
+
       // Appel API pour créer la vente (sans retrait de stock automatique)
       const sale = await saleService.createSale(saleData);
+      
+      // Récupérer les points gagnés depuis la réponse de l'API (points réels attribués par le backend)
+      const actualPointsEarned = sale.loyalty_points_earned || 0;
       
       // ✅ NOUVELLE APPROCHE: Retirer le stock via l'endpoint dédié pour chaque item
       for (const item of scanner.scanList) {
@@ -443,17 +656,26 @@ export default function CashRegisterScreen({ navigation }: any) {
         }
       }
       
-      // Sauvegarder les valeurs avant de vider la liste
+      // Sauvegarder les valeurs avant de vider la liste (utiliser les valeurs sauvegardées)
       const totalItems = scanner.getTotalItems();
-      const totalValue = scanner.getTotalValue();
+      const saleSubtotal = scanner.getTotalValue();
+      const discount = Math.min(currentLoyaltyDiscountAmount, saleSubtotal);
+      const finalTotal = Math.max(0, saleSubtotal - discount);
       
       // ✅ Vider automatiquement la liste après une vente réussie (mode silencieux)
       resetPaymentState();
       scanner.clearList(true); // true = vidage silencieux sans confirmation
       clearSalesCartDraft();
       
-      // Message de succès adapté au mode de paiement
-      let successMessage = `Vente #${sale.reference || sale.id} enregistrée avec succès !\n\n${totalItems} articles\nTotal: ${totalValue.toLocaleString()} FCFA`;
+      // Message de succès adapté au mode de paiement (utiliser le total réel après réduction)
+      let successMessage = `Vente #${sale.reference || sale.id} enregistrée avec succès !\n\n${totalItems} articles`;
+      
+      // Afficher le détail si réduction fidélité
+      if (discount > 0) {
+        successMessage += `\nSous-total: ${saleSubtotal.toLocaleString()} FCFA`;
+        successMessage += `\nRéduction fidélité: -${discount.toLocaleString()} FCFA`;
+      }
+      successMessage += `\nTotal: ${finalTotal.toLocaleString()} FCFA`;
       
       // Utiliser customerOverride si fourni (pour éviter les problèmes de state asynchrone)
       const customerForDisplay = customerOverride || selectedCustomer;
@@ -461,10 +683,22 @@ export default function CashRegisterScreen({ navigation }: any) {
       if (paymentMethod === 'cash' && changeAmount > 0) {
         successMessage += `\nMonnaie rendue: ${changeAmount.toLocaleString()} FCFA`;
       } else if (paymentMethod === 'credit' && customerForDisplay) {
-        successMessage += `\nClient: ${customerForDisplay.name} ${customerForDisplay.first_name || ''}`;
-        successMessage += `\nNouveau solde: ${customerForDisplay.credit_balance_formatted}`;
-      } else if (paymentMethod === 'sarali') {
+        const customerName = customerForDisplay.name || '';
+        const customerFirstName = customerForDisplay.first_name || '';
+        const fullName = `${customerName} ${customerFirstName}`.trim() || 'Client sans nom';
+        successMessage += `\nClient: ${fullName}`;
+        // Récupérer le solde depuis la réponse de la vente si disponible, sinon depuis le client
+        const creditBalance = sale.customer_data?.credit_balance_formatted || sale.customer?.credit_balance_formatted || customerForDisplay.credit_balance_formatted;
+        if (creditBalance && creditBalance !== 'null' && creditBalance !== null && creditBalance !== undefined && String(creditBalance).trim() !== '') {
+          successMessage += `\nNouveau solde: ${creditBalance}`;
+        }
+      } else if (paymentMethod === 'sarali' && saraliReference) {
         successMessage += `\nRéférence Sarali: ${saraliReference}`;
+      }
+      
+      // Afficher les points gagnés si applicable (utiliser les points réels du backend)
+      if (customerForDisplay && customerForDisplay.is_loyalty_member && actualPointsEarned > 0) {
+        successMessage += `\n\n⭐ Points gagnés: +${Number(actualPointsEarned).toFixed(2)} pts`;
       }
       
       Alert.alert(
@@ -512,10 +746,123 @@ export default function CashRegisterScreen({ navigation }: any) {
   };
 
   const resetPaymentState = () => {
+    // Retirer le client après la vente
     setSelectedCustomer(null);
     setAmountGiven(0);
     setChangeAmount(0);
     setSaraliReference('');
+    setLoyaltyPointsUsed(0);
+    setLoyaltyPointsEarned(0);
+    setLoyaltyDiscountAmount(0);
+  };
+
+  const handleRemoveCustomer = () => {
+    Alert.alert(
+      'Retirer le client',
+      `Voulez-vous retirer le client "${selectedCustomer?.name || ''} ${selectedCustomer?.first_name || ''}" ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Retirer',
+          style: 'destructive',
+          onPress: () => {
+            setSelectedCustomer(null);
+            setLoyaltyPointsUsed(0);
+            setLoyaltyPointsEarned(0);
+            setLoyaltyDiscountAmount(0);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleOpenLoyaltyPointsModal = () => {
+    setLoyaltyPointsInput(loyaltyPointsUsed > 0 ? loyaltyPointsUsed.toString() : '');
+    setLoyaltyPointsModalVisible(true);
+  };
+
+  const handleConfirmLoyaltyPoints = async () => {
+    const points = parseFloat(loyaltyPointsInput || '0');
+    const availablePoints = getLoyaltyPointsAsNumber(selectedCustomer?.loyalty_points);
+    const subtotal = scanner.getTotalValue();
+    
+    if (points > 0 && points <= availablePoints) {
+      // Calculer immédiatement la valeur en FCFA des points utilisés
+      if (loyaltyProgram) {
+        try {
+          const valueResponse = await loyaltyService.calculatePointsValue(points);
+          if (valueResponse && valueResponse.success) {
+            const calculatedDiscount = valueResponse.value_fcfa || 0;
+            
+            // Limiter la réduction au subtotal (ne pas permettre un total négatif)
+            const maxDiscount = subtotal;
+            const actualDiscount = Math.min(calculatedDiscount, maxDiscount);
+            
+            // Si la réduction est limitée, ajuster le nombre de points utilisés
+            if (calculatedDiscount > maxDiscount && loyaltyProgram.amount_per_point > 0) {
+              const adjustedPoints = (actualDiscount / parseFloat(loyaltyProgram.amount_per_point || '100'));
+              setLoyaltyPointsUsed(adjustedPoints);
+              setLoyaltyDiscountAmount(actualDiscount);
+              setLoyaltyPointsModalVisible(false);
+              
+              Alert.alert(
+                'Réduction limitée',
+                `La réduction de ${calculatedDiscount.toLocaleString()} FCFA dépasse le total de ${subtotal.toLocaleString()} FCFA.\n\nSeulement ${actualDiscount.toLocaleString()} FCFA seront déduits (${adjustedPoints.toFixed(2)} points).`,
+                [{ text: 'OK' }]
+              );
+              console.log('✅ [LOYALTY] Points ajustés:', adjustedPoints, '→ Réduction limitée:', actualDiscount, 'FCFA');
+            } else {
+              setLoyaltyPointsUsed(points);
+              setLoyaltyDiscountAmount(actualDiscount);
+              setLoyaltyPointsModalVisible(false);
+              console.log('✅ [LOYALTY] Points utilisés:', points, '→ Réduction:', actualDiscount, 'FCFA');
+            }
+          }
+        } catch (error) {
+          console.error('❌ [LOYALTY] Erreur calcul valeur points:', error);
+          Alert.alert('Erreur', 'Impossible de calculer la valeur des points.');
+        }
+      } else {
+        setLoyaltyPointsUsed(points);
+        setLoyaltyPointsModalVisible(false);
+      }
+    } else {
+      Alert.alert('Erreur', `Nombre de points invalide. Solde disponible: ${formatLoyaltyPoints(selectedCustomer?.loyalty_points)} points`);
+    }
+  };
+
+  const handleCancelLoyaltyPoints = () => {
+    setLoyaltyPointsModalVisible(false);
+    setLoyaltyPointsInput('');
+  };
+
+  // Fonctions pour la modification du prix unitaire
+  const handleOpenPriceEditModal = (item: any) => {
+    setSelectedItemForPriceEdit(item);
+    setPriceInput(item.unitPrice?.toString() || '0');
+    setPriceEditModalVisible(true);
+  };
+
+  const handleConfirmPriceEdit = () => {
+    if (!selectedItemForPriceEdit) return;
+    
+    const newPrice = parseFloat(priceInput || '0');
+    
+    if (isNaN(newPrice) || newPrice < 0) {
+      Alert.alert('Erreur', 'Veuillez saisir un prix valide (≥ 0)');
+      return;
+    }
+    
+    scanner.updateUnitPrice(selectedItemForPriceEdit.id, newPrice);
+    setPriceEditModalVisible(false);
+    setSelectedItemForPriceEdit(null);
+    setPriceInput('');
+  };
+
+  const handleCancelPriceEdit = () => {
+    setPriceEditModalVisible(false);
+    setSelectedItemForPriceEdit(null);
+    setPriceInput('');
   };
 
   const removeItem = (itemId: string) => {
@@ -527,6 +874,27 @@ export default function CashRegisterScreen({ navigation }: any) {
         { text: 'Supprimer', style: 'destructive', onPress: () => scanner.removeItem(itemId) }
       ]
     );
+  };
+
+  // Fonction helper pour formater les points de fidélité de manière sûre
+  const formatLoyaltyPoints = (points: any): string => {
+    if (points === null || points === undefined) {
+      return '0.00';
+    }
+    const numPoints = typeof points === 'string' ? parseFloat(points) : Number(points);
+    if (isNaN(numPoints)) {
+      return '0.00';
+    }
+    return numPoints.toFixed(2);
+  };
+
+  // Fonction helper pour obtenir les points de fidélité comme nombre
+  const getLoyaltyPointsAsNumber = (points: any): number => {
+    if (points === null || points === undefined) {
+      return 0;
+    }
+    const numPoints = typeof points === 'string' ? parseFloat(points) : Number(points);
+    return isNaN(numPoints) ? 0 : numPoints;
   };
 
   const renderProduct = ({ item }: { item: Product }) => {
@@ -644,19 +1012,68 @@ export default function CashRegisterScreen({ navigation }: any) {
           </View>
         )}
 
-        {/* Liste des articles scannés */}
-        <View style={styles.articlesSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              Articles {scanner.scanList.length > 0 && `(${scanner.getTotalItems()})`}
+        {/* Client sélectionné avec fidélité - Ultra compact */}
+        {selectedCustomer && (
+          <View style={styles.selectedCustomerCard}>
+            <View style={styles.selectedCustomerInfo}>
+              <Ionicons name="person" size={16} color={theme.colors.primary[500]} />
+              <View style={styles.selectedCustomerDetails}>
+                <View style={styles.selectedCustomerHeader}>
+                  <Text style={styles.selectedCustomerName} numberOfLines={1}>
+                    {selectedCustomer.name} {selectedCustomer.first_name || ''}
             </Text>
-            {scanner.scanList.length > 0 && (
-              <Text style={styles.sectionTotal}>
-                {scanner.getTotalValue().toLocaleString()} FCFA
+                  {selectedCustomer.is_loyalty_member && (
+                    <View style={styles.selectedCustomerLoyaltyBadge}>
+                      <Ionicons name="star" size={10} color={theme.colors.primary[500]} />
+                      <Text style={styles.selectedCustomerLoyaltyBadgeText}>
+                        {formatLoyaltyPoints(selectedCustomer.loyalty_points)}
               </Text>
+                    </View>
             )}
           </View>
           
+                {/* Section Fidélité ultra compacte */}
+                {selectedCustomer.is_loyalty_member && (
+                  <View style={styles.loyaltyCompactSection}>
+                    {(loyaltyDiscountAmount > 0 || loyaltyPointsEarned > 0) && (
+                      <View style={styles.loyaltyCompactInfo}>
+                        {loyaltyDiscountAmount > 0 && (
+                          <Text style={styles.loyaltyCompactValue}>
+                            -{loyaltyDiscountAmount.toLocaleString()} FCFA
+                          </Text>
+                        )}
+                        {loyaltyPointsEarned > 0 && (
+                          <Text style={styles.loyaltyCompactValue}>
+                            +{loyaltyPointsEarned.toFixed(2)} pts
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                    
+                    <TouchableOpacity
+                      style={styles.loyaltyUseButtonCompact}
+                      onPress={handleOpenLoyaltyPointsModal}
+                    >
+                      <Ionicons name="gift-outline" size={12} color={theme.colors.primary[500]} />
+                      <Text style={styles.loyaltyUseButtonCompactText}>
+                        {loyaltyPointsUsed > 0 ? 'Modifier' : 'Utiliser'} points
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.removeCustomerButton}
+              onPress={handleRemoveCustomer}
+            >
+              <Ionicons name="close-circle" size={20} color={theme.colors.error[500]} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Liste des articles scannés */}
+        <View style={styles.articlesSection}>
           <ScrollView style={styles.articlesList} showsVerticalScrollIndicator={false}>
             {scanner.scanList.length === 0 ? (
               <View style={styles.emptyCart}>
@@ -665,7 +1082,10 @@ export default function CashRegisterScreen({ navigation }: any) {
                 <Text style={styles.emptyCartSubtext}>Scannez des produits pour commencer</Text>
               </View>
             ) : (
-              scanner.scanList.map((item) => (
+              <>
+                
+                {/* Articles */}
+                {scanner.scanList.map((item) => (
                 <View key={item.id} style={styles.articleCard}>
                   <View style={styles.articleInfo}>
                     <Text style={styles.articleName} numberOfLines={1}>
@@ -696,10 +1116,17 @@ export default function CashRegisterScreen({ navigation }: any) {
                       </TouchableOpacity>
                     </View>
                     
-                    <View style={styles.articlePrice}>
-                      <Text style={styles.unitPrice}>{item.unitPrice?.toLocaleString()} FCFA</Text>
+                    <TouchableOpacity 
+                      style={styles.articlePrice}
+                      onPress={() => handleOpenPriceEditModal(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.priceContainer}>
+                        <Text style={styles.unitPrice}>{item.unitPrice?.toLocaleString()} FCFA</Text>
+                        <Ionicons name="pencil" size={14} color={theme.colors.primary[500]} />
+                      </View>
                       <Text style={styles.totalPrice}>{item.totalPrice?.toLocaleString()} FCFA</Text>
-                    </View>
+                    </TouchableOpacity>
                     
                     <TouchableOpacity 
                       style={styles.removeBtn}
@@ -709,10 +1136,44 @@ export default function CashRegisterScreen({ navigation }: any) {
                     </TouchableOpacity>
                   </View>
                 </View>
-              ))
+              ))}
+              </>
             )}
           </ScrollView>
         </View>
+
+        {/* Résumé compact en bas */}
+        {scanner.scanList.length > 0 && (
+          <View style={styles.summaryBar}>
+            <View style={styles.summaryContent}>
+              <View style={styles.summaryLeft}>
+                <View style={styles.summaryItem}>
+                  <Ionicons name="cube-outline" size={16} color={theme.colors.text.secondary} />
+                  <Text style={styles.summaryItems}>{scanner.getTotalItems()} art.</Text>
+                </View>
+                {loyaltyDiscountAmount > 0 && (
+                  <View style={styles.summaryItem}>
+                    <Ionicons name="gift-outline" size={16} color={theme.colors.error[600]} />
+                    <Text style={styles.summaryDiscount}>
+                      -{loyaltyDiscountAmount.toLocaleString()} FCFA
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.summaryRight}>
+                <Text style={styles.summaryTotalLabel}>Total</Text>
+                <Text style={styles.summaryTotal}>
+                  {(() => {
+                    const subtotal = scanner.getTotalValue();
+                    const discount = Math.min(loyaltyDiscountAmount, subtotal); // Limiter la réduction au subtotal
+                    const total = Math.max(0, subtotal - discount); // Ne pas permettre un total négatif
+                    return total.toLocaleString();
+                  })()} FCFA
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
 
       </View>
@@ -737,26 +1198,30 @@ export default function CashRegisterScreen({ navigation }: any) {
         visible={paymentModalVisible}
         onClose={() => setPaymentModalVisible(false)}
         onSelectMethod={handlePaymentMethodSelect}
-        totalAmount={scanner.getTotalValue()}
+        totalAmount={Math.max(0, scanner.getTotalValue() - Math.min(loyaltyDiscountAmount, scanner.getTotalValue()))}
       />
 
       <CashPaymentModal
         visible={cashPaymentModalVisible}
         onClose={() => setCashPaymentModalVisible(false)}
         onConfirm={handleCashPaymentConfirm}
-        totalAmount={scanner.getTotalValue()}
+        totalAmount={Math.max(0, scanner.getTotalValue() - Math.min(loyaltyDiscountAmount, scanner.getTotalValue()))}
       />
 
       <SaraliPaymentModal
         visible={saraliPaymentModalVisible}
         onClose={() => setSaraliPaymentModalVisible(false)}
         onConfirm={handleSaraliPaymentConfirm}
-        totalAmount={scanner.getTotalValue()}
+        totalAmount={Math.max(0, scanner.getTotalValue() - Math.min(loyaltyDiscountAmount, scanner.getTotalValue()))}
       />
 
       <CustomerSelectorModal
         visible={customerSelectorModalVisible}
-        onClose={() => setCustomerSelectorModalVisible(false)}
+        onClose={() => {
+          setCustomerSelectorModalVisible(false);
+          // Réinitialiser le mode de paiement en attente si le modal est fermé sans sélection
+          setPendingPaymentMethod(null);
+        }}
         onSelectCustomer={handleCustomerSelect}
         onCreateCustomer={handleCustomerCreate}
       />
@@ -776,6 +1241,127 @@ export default function CashRegisterScreen({ navigation }: any) {
           console.log('✅ Ticket imprimé avec succès');
         }}
       />
+
+      {/* Modal pour saisir les points de fidélité */}
+      <Modal
+        visible={loyaltyPointsModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCancelLoyaltyPoints}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.loyaltyPointsModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Utiliser des points</Text>
+              <TouchableOpacity onPress={handleCancelLoyaltyPoints}>
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalContent}>
+              <Text style={styles.modalLabel}>
+                Solde disponible: {formatLoyaltyPoints(selectedCustomer?.loyalty_points)} points
+              </Text>
+              
+              <Text style={styles.modalSubLabel}>
+                Combien de points voulez-vous utiliser ?
+              </Text>
+              
+              <TextInput
+                style={styles.modalInput}
+                value={loyaltyPointsInput}
+                onChangeText={setLoyaltyPointsInput}
+                placeholder="0"
+                keyboardType="decimal-pad"
+                autoFocus={true}
+              />
+              
+              {loyaltyPointsInput && parseFloat(loyaltyPointsInput) > 0 && loyaltyProgram && (
+                <View style={styles.modalPreview}>
+                  <Text style={styles.modalPreviewLabel}>Valeur estimée:</Text>
+                  <Text style={styles.modalPreviewValue}>
+                    {(parseFloat(loyaltyPointsInput) * parseFloat(loyaltyProgram.amount_per_point || '100')).toLocaleString()} FCFA
+                  </Text>
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={handleCancelLoyaltyPoints}
+              >
+                <Text style={styles.modalButtonCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={handleConfirmLoyaltyPoints}
+              >
+                <Text style={styles.modalButtonConfirmText}>Utiliser</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de modification du prix unitaire */}
+      <Modal
+        visible={priceEditModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCancelPriceEdit}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.priceEditModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Modifier le prix</Text>
+              <TouchableOpacity onPress={handleCancelPriceEdit}>
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalContent}>
+              <Text style={styles.priceEditProductName}>
+                {selectedItemForPriceEdit?.productName}
+              </Text>
+              <Text style={styles.modalLabel}>Prix unitaire (FCFA)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={priceInput}
+                onChangeText={setPriceInput}
+                placeholder="0"
+                keyboardType="numeric"
+                autoFocus={true}
+                selectTextOnFocus={true}
+              />
+              <Text style={styles.modalSubLabel}>
+                Quantité: {selectedItemForPriceEdit?.quantity || 1}
+                {priceInput && !isNaN(parseFloat(priceInput)) && parseFloat(priceInput) >= 0 && (
+                  <Text style={styles.modalPreviewValue}>
+                    {'\n'}Total: {(parseFloat(priceInput) * (selectedItemForPriceEdit?.quantity || 1)).toLocaleString()} FCFA
+                  </Text>
+                )}
+              </Text>
+            </View>
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={handleCancelPriceEdit}
+              >
+                <Text style={styles.modalButtonCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={handleConfirmPriceEdit}
+              >
+                <Text style={styles.modalButtonConfirmText}>Confirmer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -846,25 +1432,98 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  articlesSection: {
-    flex: 1,
-    marginBottom: 20,
-  },
-  sectionHeader: {
+  selectedCustomerCard: {
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 8,
+    padding: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    marginTop: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: theme.colors.primary[200],
+    ...theme.shadows.sm,
   },
-  sectionTitle: {
-    fontSize: 16,
+  selectedCustomerInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flex: 1,
+    gap: 8,
+  },
+  selectedCustomerDetails: {
+    flex: 1,
+  },
+  selectedCustomerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+    gap: 6,
+  },
+  selectedCustomerName: {
+    fontSize: 14,
     fontWeight: '600',
     color: theme.colors.text.primary,
+    flex: 1,
   },
-  sectionTotal: {
-    fontSize: 15,
-    fontWeight: 'bold',
+  selectedCustomerLoyaltyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: theme.colors.primary[100],
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: theme.colors.primary[300],
+  },
+  selectedCustomerLoyaltyBadgeText: {
+    fontSize: 10,
+    color: theme.colors.primary[700],
+    fontWeight: '700',
+  },
+  loyaltyCompactSection: {
+    marginTop: 4,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.neutral[200],
+  },
+  loyaltyCompactInfo: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  loyaltyCompactValue: {
+    fontSize: 11,
+    fontWeight: '600',
     color: theme.colors.primary[600],
+  },
+  loyaltyUseButtonCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: theme.colors.primary[50],
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.primary[200],
+  },
+  loyaltyUseButtonCompactText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
+  },
+  removeCustomerButton: {
+    padding: 2,
+    marginTop: -2,
+  },
+  articlesSection: {
+    flex: 1,
+    marginBottom: 80, // Espace pour le résumé en bas
   },
   validateButton: {
     flexDirection: 'row',
@@ -985,11 +1644,19 @@ const styles = StyleSheet.create({
   },
   articlePrice: {
     alignItems: 'flex-end',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
   },
   unitPrice: {
     fontSize: 11,
     color: theme.colors.text.secondary,
-    marginBottom: 1,
   },
   totalPrice: {
     fontSize: 14,
@@ -1058,5 +1725,255 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.primary[600],
   },
-
+  loyaltySection: {
+    marginBottom: 12,
+  },
+  loyaltyInfoCard: {
+    backgroundColor: theme.colors.primary[50],
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.primary[200],
+  },
+  loyaltyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  loyaltyHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loyaltyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  loyaltyPoints: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.primary[600],
+  },
+  loyaltyDiscount: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.primary[200],
+  },
+  loyaltyDiscountLabel: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+  },
+  loyaltyDiscountAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.success[600],
+  },
+  loyaltyEarned: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  loyaltyEarnedLabel: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+  },
+  loyaltyEarnedAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
+  },
+  loyaltyUseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary[100],
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 8,
+    gap: 8,
+  },
+  loyaltyUseButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
+  },
+  summaryBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: theme.colors.background.primary,
+    borderTopWidth: 2,
+    borderTopColor: theme.colors.primary[300],
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    ...theme.shadows.lg,
+  },
+  summaryContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  summaryItems: {
+    fontSize: 13,
+    color: theme.colors.text.secondary,
+    fontWeight: '600',
+  },
+  summaryDiscount: {
+    fontSize: 13,
+    color: theme.colors.error[600],
+    fontWeight: '600',
+  },
+  summaryRight: {
+    alignItems: 'flex-end',
+    backgroundColor: theme.colors.primary[50],
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.primary[200],
+  },
+  summaryTotalLabel: {
+    fontSize: 11,
+    color: theme.colors.text.secondary,
+    fontWeight: '600',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  summaryTotal: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: theme.colors.primary[600],
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loyaltyPointsModal: {
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 400,
+    ...theme.shadows.lg,
+  },
+  priceEditModal: {
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 400,
+    ...theme.shadows.lg,
+  },
+  priceEditProductName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  modalContent: {
+    padding: 16,
+  },
+  modalLabel: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+    marginBottom: 8,
+  },
+  modalSubLabel: {
+    fontSize: 14,
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+    fontWeight: '600',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[300],
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: theme.colors.text.primary,
+    backgroundColor: theme.colors.background.secondary,
+    marginBottom: 12,
+  },
+  modalPreview: {
+    backgroundColor: theme.colors.primary[50],
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.primary[200],
+  },
+  modalPreviewLabel: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginBottom: 4,
+  },
+  modalPreviewValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.primary[600],
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.neutral[200],
+  },
+  modalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: theme.colors.neutral[100],
+  },
+  modalButtonCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  modalButtonConfirm: {
+    backgroundColor: theme.colors.primary[500],
+  },
+  modalButtonConfirmText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
 });

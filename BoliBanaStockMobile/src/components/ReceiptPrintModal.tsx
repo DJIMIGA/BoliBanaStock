@@ -7,11 +7,27 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  FlatList,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import receiptPrinterService, { ReceiptData } from '../services/receiptPrinterService';
 import { receiptService } from '../services/api';
+
+// Timeout utilitaire pour éviter les spinners infinis
+const withTimeout = async <T,>(promise: Promise<T>, ms = 15000, label = 'Opération') => {
+  let timeoutId: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} expirée après ${ms / 1000}s`)), ms);
+  });
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    return result as T;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 interface ReceiptPrintModalProps {
   visible: boolean;
@@ -26,11 +42,15 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
   saleId,
   onSuccess,
 }) => {
-  const [loading, setLoading] = useState(false);
+  // Remplacer 'loading' global par des états séparés
+  const [loadingBluetooth, setLoadingBluetooth] = useState(false);
+  const [loadingPdf, setLoadingPdf] = useState(false);
   const [bluetoothPrinters, setBluetoothPrinters] = useState<any[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<any>(null);
   const [printerConnected, setPrinterConnected] = useState(false);
   const [discoveringPrinters, setDiscoveringPrinters] = useState(false);
+  const [connectingToPrinter, setConnectingToPrinter] = useState(false);
+  const [showPrinterList, setShowPrinterList] = useState(false);
 
   // Réinitialiser l'état quand la modal s'ouvre
   React.useEffect(() => {
@@ -38,35 +58,34 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
       setBluetoothPrinters([]);
       setSelectedPrinter(null);
       setPrinterConnected(false);
+      setShowPrinterList(false);
+      setLoadingBluetooth(false);
+      setLoadingPdf(false);
     }
   }, [visible]);
 
   const handleBluetoothPrint = async () => {
-    setLoading(true);
+    if (loadingBluetooth || connectingToPrinter || discoveringPrinters) return;
+    setLoadingBluetooth(true);
     try {
       console.log('🔵 [RECEIPT] Impression Bluetooth...');
       
-      // Générer les données du ticket
-      const receiptResponse = await receiptService.generateReceipt({
-        sale_id: saleId,
-        printer_type: 'escpos',
-      });
+      // Générer les données du ticket (avec timeout)
+      const receiptResponse = await withTimeout(
+        receiptService.generateReceipt({
+          sale_id: saleId,
+          printer_type: 'escpos',
+        }),
+        15000,
+        'Génération du ticket'
+      );
       
       if (!receiptResponse.success) {
         throw new Error(receiptResponse.error || 'Erreur lors de la génération du ticket');
       }
       
       const receiptData: ReceiptData = receiptResponse.receipt;
-      
-      // DEBUG: Afficher les données reçues dans la console
       console.log('🧾 [RECEIPT] Données complètes reçues:', JSON.stringify(receiptData, null, 2));
-      console.log('🧾 [RECEIPT] Customer dans receiptData:', receiptData.customer);
-      console.log('🧾 [RECEIPT] Customer présent:', receiptData.customer ? 'OUI' : 'NON');
-      if (receiptData.customer) {
-        console.log('🧾 [RECEIPT] Customer name:', receiptData.customer.name);
-        console.log('🧾 [RECEIPT] Customer first_name:', receiptData.customer.first_name);
-        console.log('🧾 [RECEIPT] Customer phone:', receiptData.customer.phone);
-      }
       
       // Si aucune imprimante n'est connectée, proposer de découvrir
       if (!receiptPrinterService.isConnected()) {
@@ -81,8 +100,12 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
         }
       }
       
-      // Imprimer le ticket
-      await receiptPrinterService.printReceipt(receiptData);
+      // Imprimer le ticket (avec timeout)
+      await withTimeout(
+        receiptPrinterService.printReceipt(receiptData),
+        15000,
+        'Impression du ticket'
+      );
       
       Alert.alert(
         'Impression réussie',
@@ -97,26 +120,31 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
       
     } catch (error: any) {
       console.error('❌ [RECEIPT] Erreur impression Bluetooth:', error);
+      const message = error?.message || 'Erreur inconnue lors de l\'impression';
       Alert.alert(
-        'Erreur d\'impression',
-        error.message || 'Erreur lors de l\'impression du ticket',
-        [{ text: 'OK' }]
+        'Erreur',
+        message.includes('expirée') ? message : `${message}\n\nVérifiez la connexion Bluetooth et réessayez.`
       );
     } finally {
-      setLoading(false);
+      setLoadingBluetooth(false);
     }
   };
 
   const handlePDFGeneration = async () => {
-    setLoading(true);
+    if (loadingPdf) return;
+    setLoadingPdf(true);
     try {
-      console.log('📄 [RECEIPT] Génération PDF...');
+      console.log('🧾 [RECEIPT] Génération PDF...');
       
-      // Générer les données du ticket
-      const receiptResponse = await receiptService.generateReceipt({
-        sale_id: saleId,
-        printer_type: 'pdf',
-      });
+      // Générer les données du ticket (avec timeout)
+      const receiptResponse = await withTimeout(
+        receiptService.generateReceipt({
+          sale_id: saleId,
+          printer_type: 'pdf',
+        }),
+        15000,
+        'Génération du ticket'
+      );
       
       if (!receiptResponse.success) {
         throw new Error(receiptResponse.error || 'Erreur lors de la génération du ticket');
@@ -124,20 +152,13 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
       
       const receiptData: ReceiptData = receiptResponse.receipt;
       
-      // DEBUG: Afficher les données reçues dans la console
-      console.log('🧾 [RECEIPT PDF] Données complètes reçues:', JSON.stringify(receiptData, null, 2));
-      console.log('🧾 [RECEIPT PDF] Customer dans receiptData:', receiptData.customer);
-      console.log('🧾 [RECEIPT PDF] Customer présent:', receiptData.customer ? 'OUI' : 'NON');
-      if (receiptData.customer) {
-        console.log('🧾 [RECEIPT PDF] Customer name:', receiptData.customer.name);
-        console.log('🧾 [RECEIPT PDF] Customer first_name:', receiptData.customer.first_name);
-        console.log('🧾 [RECEIPT PDF] Customer phone:', receiptData.customer.phone);
-      }
+      // Générer le PDF (avec timeout)
+      const pdfUri = await withTimeout(
+        receiptPrinterService.generateReceiptPDF(receiptData),
+        15000,
+        'Génération du PDF'
+      );
       
-      // Générer le PDF
-      const pdfUri = await receiptPrinterService.generateReceiptPDF(receiptData);
-      
-      // Proposer de partager le PDF
       Alert.alert(
         'PDF généré',
         `Ticket ${receiptData.sale.reference} généré avec succès !`,
@@ -161,13 +182,14 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
       
     } catch (error: any) {
       console.error('❌ [RECEIPT] Erreur génération PDF:', error);
+      const message = error?.message || 'Erreur lors de la génération du PDF';
       Alert.alert(
         'Erreur de génération',
-        error.message || 'Erreur lors de la génération du PDF',
+        message.includes('expirée') ? message : message,
         [{ text: 'OK' }]
       );
     } finally {
-      setLoading(false);
+      setLoadingPdf(false);
     }
   };
 
@@ -192,15 +214,16 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
       if (printers.length === 1) {
         await connectToPrinter(printers[0]);
       } else {
-        // Afficher la liste des imprimantes
-        showPrinterSelection(printers);
+        // Afficher la liste des imprimantes dans l'interface
+        setShowPrinterList(true);
       }
       
     } catch (error: any) {
       console.error('❌ [BLUETOOTH] Erreur découverte:', error);
+      const errorMessage = error?.message || 'Erreur inconnue lors de la découverte des imprimantes Bluetooth';
       Alert.alert(
         'Erreur de découverte',
-        'Erreur lors de la découverte des imprimantes Bluetooth',
+        errorMessage + '\n\nAssurez-vous que:\n- Le Bluetooth est activé\n- Vous utilisez un development build (pas Expo Go)\n- Les permissions sont accordées',
         [{ text: 'OK' }]
       );
     } finally {
@@ -208,24 +231,39 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
     }
   };
 
-  const showPrinterSelection = (printers: any[]) => {
-    const printerOptions = printers.map(printer => ({
-      text: printer.device_name,
-      onPress: () => connectToPrinter(printer),
-    }));
-    
-    printerOptions.push({ text: 'Annuler', style: 'cancel' as const });
-    
-    Alert.alert(
-      'Sélectionner une imprimante',
-      'Choisissez l\'imprimante Bluetooth à utiliser :',
-      printerOptions
-    );
+  const handleSelectPrinter = async (printer: any) => {
+    setShowPrinterList(false);
+    await connectToPrinter(printer);
+  };
+
+  const handleDisconnectPrinter = async () => {
+    try {
+      await receiptPrinterService.disconnectPrinter();
+      setSelectedPrinter(null);
+      setPrinterConnected(false);
+      Alert.alert(
+        'Déconnexion réussie',
+        'Vous avez été déconnecté de l\'imprimante',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      console.error('❌ [BLUETOOTH] Erreur déconnexion:', error);
+      // Même en cas d'erreur, on réinitialise l'état local
+      setSelectedPrinter(null);
+      setPrinterConnected(false);
+      Alert.alert(
+        'Déconnexion',
+        'Déconnexion effectuée (avec avertissement)',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const connectToPrinter = async (printer: any) => {
+    setConnectingToPrinter(true);
     try {
       console.log('🔗 [BLUETOOTH] Connexion à:', printer.device_name);
+      console.log('🔗 [BLUETOOTH] Adresse:', printer.device_address);
       
       const connected = await receiptPrinterService.connectToPrinter(printer);
       
@@ -246,11 +284,32 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
       }
     } catch (error: any) {
       console.error('❌ [BLUETOOTH] Erreur connexion:', error);
+      const errorMessage = error?.message || 'Erreur inconnue lors de la connexion';
+      
+      // Afficher un message d'erreur détaillé
+      let userMessage = 'Impossible de se connecter à l\'imprimante.\n\n';
+      
+      if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+        userMessage += 'La connexion a expiré. Vérifiez que l\'imprimante est allumée et à proximité.';
+      } else if (errorMessage.includes('permission') || errorMessage.includes('Permission')) {
+        userMessage += 'Permissions Bluetooth insuffisantes. Vérifiez les paramètres de l\'application.';
+      } else if (errorMessage.includes('refused') || errorMessage.includes('Refused')) {
+        userMessage += 'Connexion refusée. Assurez-vous que l\'imprimante est en mode découverte.';
+      } else if (errorMessage.includes('not found') || errorMessage.includes('Not found')) {
+        userMessage += 'Imprimante introuvable. Relancez la découverte.';
+      } else {
+        userMessage += `Détails: ${errorMessage}`;
+      }
+      
+      userMessage += '\n\nVérifiez que:\n- L\'imprimante est allumée\n- Le Bluetooth est activé\n- L\'imprimante est à proximité';
+      
       Alert.alert(
         'Erreur de connexion',
-        'Erreur lors de la connexion à l\'imprimante',
+        userMessage,
         [{ text: 'OK' }]
       );
+    } finally {
+      setConnectingToPrinter(false);
     }
   };
 
@@ -281,15 +340,15 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
             <TouchableOpacity
               style={[styles.optionCard, styles.bluetoothCard]}
               onPress={handleBluetoothPrint}
-              disabled={loading}
+              disabled={loadingBluetooth}
             >
               <View style={styles.optionIcon}>
                 <Ionicons name="bluetooth" size={24} color={theme.colors.primary[500]} />
               </View>
               <View style={styles.optionContent}>
-                <Text style={styles.optionTitle}>Imprimer via Bluetooth</Text>
+                <Text style={styles.optionTitle}>Imprimer via ESC/POS (Bluetooth)</Text>
                 <Text style={styles.optionDescription}>
-                  Impression directe sur imprimante thermique Bluetooth
+                  Impression directe sur imprimante thermique ESC/POS (par défaut)
                 </Text>
                 {printerConnected && selectedPrinter && (
                   <Text style={styles.connectedText}>
@@ -297,7 +356,7 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
                   </Text>
                 )}
               </View>
-              {loading && (
+              {loadingBluetooth && (
                 <ActivityIndicator size="small" color={theme.colors.primary[500]} />
               )}
             </TouchableOpacity>
@@ -306,41 +365,75 @@ const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
             <TouchableOpacity
               style={[styles.optionCard, styles.pdfCard]}
               onPress={handlePDFGeneration}
-              disabled={loading}
+              disabled={loadingPdf}
             >
               <View style={styles.optionIcon}>
                 <Ionicons name="document-text" size={24} color={theme.colors.success[500]} />
               </View>
               <View style={styles.optionContent}>
-                <Text style={styles.optionTitle}>Générer PDF</Text>
+                <Text style={styles.optionTitle}>Générer un PDF</Text>
                 <Text style={styles.optionDescription}>
-                  Créer un fichier PDF à partager ou imprimer
+                  Créer un fichier PDF à partager ou imprimer (alternative)
                 </Text>
               </View>
-              {loading && (
+              {loadingPdf && (
                 <ActivityIndicator size="small" color={theme.colors.success[500]} />
               )}
             </TouchableOpacity>
 
             {/* Bluetooth Management */}
-            {!printerConnected && (
-              <TouchableOpacity
-                style={styles.discoverButton}
-                onPress={discoverAndConnectPrinter}
-                disabled={discoveringPrinters}
-              >
-                <Ionicons 
-                  name="search" 
-                  size={16} 
-                  color="white" 
+            {/* [Supprimé] Le bouton Découvrir n'est plus affiché ici; la découverte est lancée automatiquement lors de l'appui sur ESC/POS
+            et une liste est affichée si plusieurs imprimantes sont trouvées. */}
+
+            {/* Liste des imprimantes trouvées */}
+            {showPrinterList && bluetoothPrinters.length > 0 && (
+              <View style={styles.printerListContainer}>
+                <View style={styles.printerListHeader}>
+                  <Text style={styles.printerListTitle}>
+                    Imprimantes trouvées ({bluetoothPrinters.length})
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setShowPrinterList(false)}
+                    style={styles.closePrinterListButton}
+                  >
+                    <Ionicons name="close" size={20} color={theme.colors.text.primary} />
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={bluetoothPrinters}
+                  keyExtractor={(item, index) => item.device_address || `printer-${index}`}
+                  renderItem={({ item: printer }) => (
+                    <TouchableOpacity
+                      style={styles.printerItem}
+                      onPress={() => handleSelectPrinter(printer)}
+                      disabled={connectingToPrinter}
+                    >
+                      <View style={styles.printerItemContent}>
+                        <Ionicons 
+                          name="bluetooth" 
+                          size={20} 
+                          color={theme.colors.primary[500]} 
+                          style={styles.printerItemIcon}
+                        />
+                        <View style={styles.printerItemText}>
+                          <Text style={styles.printerItemName}>{printer.device_name}</Text>
+                          <Text style={styles.printerItemAddress}>{printer.device_address}</Text>
+                        </View>
+                      </View>
+                      {connectingToPrinter && (
+                        <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                      )}
+                      <Ionicons 
+                        name="chevron-forward" 
+                        size={20} 
+                        color={theme.colors.text.secondary} 
+                      />
+                    </TouchableOpacity>
+                  )}
+                  style={styles.printerList}
+                  contentContainerStyle={styles.printerListContent}
                 />
-                <Text style={styles.discoverButtonText}>
-                  {discoveringPrinters ? 'Recherche...' : 'Découvrir imprimantes'}
-                </Text>
-                {discoveringPrinters && (
-                  <ActivityIndicator size="small" color="white" style={{ marginLeft: 8 }} />
-                )}
-              </TouchableOpacity>
+              </View>
             )}
           </View>
         </View>
@@ -448,6 +541,85 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     marginLeft: 8,
+  },
+  disconnectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.error[500] || '#dc3545',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  disconnectButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  printerListContainer: {
+    marginTop: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+    backgroundColor: theme.colors.neutral[50],
+    maxHeight: 300,
+  },
+  printerListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+    backgroundColor: theme.colors.neutral[100],
+  },
+  printerListTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  closePrinterListButton: {
+    padding: 4,
+  },
+  printerList: {
+    maxHeight: 250,
+  },
+  printerListContent: {
+    padding: 8,
+  },
+  printerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    marginBottom: 8,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[200],
+  },
+  printerItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  printerItemIcon: {
+    marginRight: 12,
+  },
+  printerItemText: {
+    flex: 1,
+  },
+  printerItemName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.primary,
+    marginBottom: 4,
+  },
+  printerItemAddress: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
   },
 });
 
