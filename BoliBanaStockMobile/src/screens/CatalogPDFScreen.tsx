@@ -492,7 +492,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
               ...prod, 
               image_url: correctedUrl
             });
-            return;
+            continue; // Continuer avec le produit suivant au lieu de sortir de la fonction
           }
           
           // Lire le fichier en base64
