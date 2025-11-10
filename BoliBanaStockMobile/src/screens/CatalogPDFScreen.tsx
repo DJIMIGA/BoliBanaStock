@@ -567,9 +567,10 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
       const html = buildCatalogHtml(preparedCatalog);
       
       // Vérifier la taille du HTML (limite approximative de 10MB pour éviter les erreurs de mémoire)
-      const htmlSize = new Blob([html]).size;
+      // Utiliser la longueur de la chaîne en bytes (approximation UTF-8)
+      const htmlSize = new TextEncoder().encode(html).length;
       const htmlSizeMB = htmlSize / (1024 * 1024);
-      console.log(`📊 [PDF] Taille du HTML: ${htmlSizeMB.toFixed(2)} MB`);
+      console.log(`📊 [PDF] Taille du HTML: ${htmlSizeMB.toFixed(2)} MB (${html.length} caractères)`);
       
       if (htmlSizeMB > 10) {
         console.warn(`⚠️ [PDF] HTML très volumineux (${htmlSizeMB.toFixed(2)} MB), risque d'erreur de mémoire`);
