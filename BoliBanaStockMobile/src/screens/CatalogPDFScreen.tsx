@@ -415,7 +415,16 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
     const productsWithImages: any[] = [];
     
     for (const prod of catalog.products) {
-      console.log(`🖼️ [PREPARE_IMAGES] Produit: ${prod.name}, image_url: ${prod.image_url}`);
+      console.log(`🖼️ [PREPARE_IMAGES] Produit: ${prod.name}, image_url: ${prod.image_url}, image_data: ${prod.image_data ? 'présent' : 'absent'}`);
+      
+      // IMPORTANT: Le backend fournit maintenant image_data (base64) directement
+      // Utiliser image_data si disponible, sinon essayer de télécharger depuis image_url
+      if (prod?.image_data) {
+        // Le backend a déjà fourni l'image en base64, l'utiliser directement
+        console.log(`✅ [PREPARE_IMAGES] Image base64 déjà fournie par le backend pour ${prod.name} (${Math.round(prod.image_data.length / 1024)} KB)`);
+        productsWithImages.push(prod);
+        continue;
+      }
       
       if (prod?.image_url) {
         // Corriger les erreurs de frappe dans les URLs S3 (même approche que ProductImage)
@@ -470,7 +479,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
         }
         
         // IMPORTANT: expo-print ne peut pas charger des images depuis des URLs externes
-        // Il faut convertir les images en base64 pour les inclure dans le PDF
+        // Essayer de télécharger et convertir en base64 seulement si image_data n'est pas disponible
         try {
           console.log(`📥 [PREPARE_IMAGES] Téléchargement de l'image pour ${prod.name}...`);
           
