@@ -565,8 +565,27 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
       const preparedCatalog = await prepareImagesForPdf(catalog);
       
       const html = buildCatalogHtml(preparedCatalog);
-      const { uri } = await Print.printToFileAsync({ html });
-      console.log('📝 PDF généré:', uri);
+      
+      // Vérifier la taille du HTML (limite approximative de 10MB pour éviter les erreurs de mémoire)
+      const htmlSize = new Blob([html]).size;
+      const htmlSizeMB = htmlSize / (1024 * 1024);
+      console.log(`📊 [PDF] Taille du HTML: ${htmlSizeMB.toFixed(2)} MB`);
+      
+      if (htmlSizeMB > 10) {
+        console.warn(`⚠️ [PDF] HTML très volumineux (${htmlSizeMB.toFixed(2)} MB), risque d'erreur de mémoire`);
+        Alert.alert(
+          'Attention',
+          `Le catalogue est très volumineux (${htmlSizeMB.toFixed(2)} MB). La génération du PDF peut échouer. Essayez de réduire le nombre de produits ou de désactiver les images.`,
+          [{ text: 'Continuer quand même', onPress: () => {} }, { text: 'Annuler', style: 'cancel' }]
+        );
+      }
+      
+      console.log('📝 [PDF] Génération du PDF...');
+      const { uri } = await Print.printToFileAsync({ 
+        html,
+        base64: false, // Ne pas utiliser base64 pour le HTML lui-même
+      });
+      console.log('✅ [PDF] PDF généré avec succès:', uri);
       setLastCatalog(catalog);
       setLastPdfUri(uri);
 
@@ -628,8 +647,26 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
         }
       }
     } catch (e: any) {
-      console.error('❌ Erreur génération/partage PDF:', e);
-      Alert.alert('Erreur', e?.message || 'Impossible de générer le PDF');
+      console.error('❌ [PDF] Erreur génération/partage PDF:', e);
+      console.error('❌ [PDF] Type d\'erreur:', typeof e);
+      console.error('❌ [PDF] Message d\'erreur:', e?.message);
+      console.error('❌ [PDF] Stack trace:', e?.stack);
+      
+      // Messages d'erreur plus spécifiques
+      let errorMessage = 'Impossible de générer le PDF';
+      if (e?.message) {
+        if (e.message.includes('writing the pdf') || e.message.includes('pdf date')) {
+          errorMessage = 'Erreur lors de l\'écriture du PDF. Le catalogue est peut-être trop volumineux. Essayez de réduire le nombre de produits ou de désactiver les images.';
+        } else if (e.message.includes('memory') || e.message.includes('Memory')) {
+          errorMessage = 'Erreur de mémoire. Le catalogue est trop volumineux. Essayez de réduire le nombre de produits ou de désactiver les images.';
+        } else if (e.message.includes('timeout') || e.message.includes('Timeout')) {
+          errorMessage = 'Délai d\'attente dépassé. Le catalogue est peut-être trop volumineux.';
+        } else {
+          errorMessage = e.message;
+        }
+      }
+      
+      Alert.alert('Erreur de génération PDF', errorMessage);
     }
   };
 
