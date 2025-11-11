@@ -27,9 +27,27 @@ Le système BoliBanaStock prend maintenant en charge l'impression thermique dire
 ## Configuration de l'imprimante
 
 ### 1. Configuration réseau
+
+#### Imprimante avec connexion réseau directe (Ethernet/WiFi)
 1. **Adresse IP**: Saisissez l'adresse IP de votre imprimante thermique
 2. **Port**: Utilisez le port par défaut (9100) ou le port configuré sur votre imprimante
 3. **Test de connexion**: Utilisez le bouton "Tester la connexion" pour vérifier l'accessibilité
+
+#### Imprimante Bluetooth/USB uniquement (via PC)
+Si votre imprimante ne se connecte que via Bluetooth ou USB, vous pouvez utiliser le PC comme pont réseau :
+
+**Étapes rapides :**
+1. Connectez l'imprimante au PC (USB ou Bluetooth)
+2. Partagez l'imprimante dans Windows (Paramètres → Imprimantes → Partager)
+3. Trouvez l'adresse IP du PC :
+   - Ouvrez PowerShell : `ipconfig`
+   - Cherchez "Adresse IPv4" (ex: `192.168.1.50`)
+4. Configurez dans l'app mobile :
+   - **Adresse IP** : Adresse IP du PC (ex: `192.168.1.50`)
+   - **Port** : `9100`
+5. **Important** : Autorisez le port 9100 dans le pare-feu Windows
+
+📖 **Guide détaillé** : Voir `GUIDE_IMPRIMANTE_BLUETOOTH_VIA_PC.md`
 
 ### 2. Paramètres d'impression
 - **Densité**: Contrôle l'intensité d'impression (1-15)
