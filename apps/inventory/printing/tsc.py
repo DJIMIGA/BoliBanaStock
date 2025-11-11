@@ -110,24 +110,42 @@ def render_label_batch_tsc(batch: LabelBatch) -> Tuple[str, str]:
     commands: list[str] = header[:]
 
     # Layout optimisé (positions fixes en mm)
-    margin_top = 1.0
-    margin_bottom = 0.5
+    # Réduire les marges pour mieux utiliser l'espace vertical
+    margin_top = 0.5  # Réduit de 1.0 à 0.5mm
+    margin_bottom = 1.0  # Augmenté pour laisser de la place au prix
     margin_left = 2.0
     margin_right = 2.0
     
-    # Positions fixes en mm (optimisées)
-    name_y_mm = margin_top + 1.0  # Nom à 2mm du haut
-    name_height_mm = 3.0
-    spacing_after_name = 2.0
+    # Espace disponible verticalement
+    available_height = height_mm - margin_top - margin_bottom  # 40 - 0.5 - 1.0 = 38.5mm
+    
+    # Positions fixes en mm (optimisées pour mieux utiliser l'espace)
+    name_y_mm = margin_top + 0.5  # Nom à 1mm du haut (réduit)
+    name_height_mm = 2.5  # Réduit
+    spacing_after_name = 1.5  # Réduit de 2.0 à 1.5mm
     barcode_y_mm = name_y_mm + name_height_mm + spacing_after_name  # Code-barres après le nom
-    barcode_height_mm = 8.0  # Hauteur réduite
+    barcode_height_mm = 7.0  # Réduit de 8.0 à 7.0mm
     spacing_after_barcode = -1.5  # Légende très proche (superposée)
     legend_y_mm = barcode_y_mm + barcode_height_mm + spacing_after_barcode
-    legend_height_mm = 2.5
-    spacing_after_legend = -0.10  # CUG légèrement superposé
+    legend_height_mm = 2.0  # Réduit
+    spacing_after_legend = 0.5  # Espace positif au lieu de négatif
     cug_y_mm = legend_y_mm + legend_height_mm + spacing_after_legend
-    spacing_after_cug = 3.5  # Espace entre CUG et prix
+    spacing_after_cug = 2.5  # Réduit de 3.5 à 2.5mm
     price_y_mm = cug_y_mm + spacing_after_cug
+    
+    # Vérifier que le prix reste dans les limites
+    price_height_mm = 2.5  # Hauteur estimée du prix
+    final_y = price_y_mm + price_height_mm
+    
+    # Si on dépasse, ajuster en remontant tout
+    if final_y > height_mm - margin_bottom:
+        overflow = final_y - (height_mm - margin_bottom)
+        # Remonter tous les éléments
+        name_y_mm = max(margin_top + 0.3, name_y_mm - overflow / 2)
+        barcode_y_mm = name_y_mm + name_height_mm + spacing_after_name
+        legend_y_mm = barcode_y_mm + barcode_height_mm + spacing_after_barcode
+        cug_y_mm = legend_y_mm + legend_height_mm + spacing_after_legend
+        price_y_mm = cug_y_mm + spacing_after_cug
     
     # Positions X fixes
     name_x = _mm_to_dots(margin_left + 2.0, dpi)  # Nom à gauche
@@ -239,6 +257,15 @@ def render_label_batch_tsc(batch: LabelBatch) -> Tuple[str, str]:
                     price_x = max(_mm_to_dots(margin_left, dpi), price_x)
                 
                 price_y = _mm_to_dots(price_y_mm, dpi)
+                
+                # Vérification finale : s'assurer que le prix reste dans les limites verticales
+                price_height_dots = _mm_to_dots(price_height_mm, dpi)
+                max_y_allowed = _mm_to_dots(height_mm - margin_bottom, dpi)
+                if price_y + price_height_dots > max_y_allowed:
+                    # Remonter le prix si nécessaire
+                    price_y = max_y_allowed - price_height_dots - _mm_to_dots(0.5, dpi)  # Marge de sécurité
+                    price_y = max(_mm_to_dots(margin_top, dpi), price_y)  # Ne pas dépasser en haut
+                
                 commands.append(f"TEXT {price_x},{price_y},\"2\",0,1,1,\"{price_escaped}\"")
             
             # Imprimer 1
