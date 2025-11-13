@@ -139,9 +139,44 @@ class ProductSerializer(serializers.ModelSerializer):
                 from django.conf import settings
                 if getattr(settings, 'AWS_S3_ENABLED', False):
                     region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
-                    # Nettoyer le chemin pour éviter les duplications
-                    cleaned_path = clean_image_path(image_field.name)
-                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{cleaned_path}"
+                    image_path = image_field.name
+                    
+                    # ÉTAPE 1: Corriger TOUS les "produccts" → "products" AVANT toute autre opération
+                    # Utiliser replace() globalement pour s'assurer que toutes les occurrences sont corrigées
+                    image_path = image_path.replace('produccts', 'products')
+                    
+                    # ÉTAPE 2: Nettoyer le chemin et gérer la duplication
+                    # Pattern attendu dans S3: assets/products/site-XXX/assets/products/site-XXX/filename
+                    # Pattern stocké en DB: assets/products/site-XXX/filename
+                    import re
+                    
+                    # Vérifier d'abord si la duplication existe déjà (après correction)
+                    duplication_pattern = r'^assets/products/(site-\d+)/assets/products/\1/(.+)$'
+                    duplication_match = re.match(duplication_pattern, image_path)
+                    
+                    if not duplication_match:
+                        # La duplication n'existe pas, vérifier si on peut l'ajouter
+                        single_pattern = r'^assets/products/(site-\d+)/(.+)$'
+                        single_match = re.match(single_pattern, image_path)
+                        
+                        if single_match:
+                            # Le chemin n'a pas la duplication, l'ajouter
+                            site_id = single_match.group(1)
+                            filename = single_match.group(2)
+                            image_path = f'assets/products/{site_id}/assets/products/{site_id}/{filename}'
+                        else:
+                            # Cas spécial : chemin avec duplication partielle ou malformé
+                            # Essayer d'extraire le site_id et filename de n'importe quel pattern
+                            mixed_pattern = r'assets/products/(site-\d+).*?/(.+)$'
+                            mixed_match = re.search(mixed_pattern, image_path)
+                            if mixed_match:
+                                site_id = mixed_match.group(1)
+                                filename = mixed_match.group(2)
+                                # Reconstruire le chemin correctement
+                                image_path = f'assets/products/{site_id}/assets/products/{site_id}/{filename}'
+                            # Si aucun pattern ne correspond, garder le chemin tel quel (image_path reste inchangé)
+                    
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{image_path}"
                 else:
                     request = self.context.get('request')
                     url = image_field.url
@@ -152,8 +187,9 @@ class ProductSerializer(serializers.ModelSerializer):
                             return request.build_absolute_uri(url)
                     media_url = getattr(settings, 'MEDIA_URL', '/media/')
                     if media_url.startswith('http'):
-                        cleaned_path = clean_image_path(image_field.name)
-                        return f"{media_url.rstrip('/')}/{cleaned_path}"
+                        # Utiliser le chemin tel qu'il est stocké dans la base de données
+                        image_path = image_field.name
+                        return f"{media_url.rstrip('/')}/{image_path}"
                     return f"https://web-production-e896b.up.railway.app{url}"
             except (ValueError, AttributeError) as e:
                 print(f"⚠️ Erreur dans get_image_url: {e}")
@@ -286,9 +322,44 @@ class ProductListSerializer(serializers.ModelSerializer):
                 from django.conf import settings
                 if getattr(settings, 'AWS_S3_ENABLED', False):
                     region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
-                    # Nettoyer le chemin pour éviter les duplications
-                    cleaned_path = clean_image_path(image_field.name)
-                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{cleaned_path}"
+                    image_path = image_field.name
+                    
+                    # ÉTAPE 1: Corriger TOUS les "produccts" → "products" AVANT toute autre opération
+                    # Utiliser replace() globalement pour s'assurer que toutes les occurrences sont corrigées
+                    image_path = image_path.replace('produccts', 'products')
+                    
+                    # ÉTAPE 2: Nettoyer le chemin et gérer la duplication
+                    # Pattern attendu dans S3: assets/products/site-XXX/assets/products/site-XXX/filename
+                    # Pattern stocké en DB: assets/products/site-XXX/filename
+                    import re
+                    
+                    # Vérifier d'abord si la duplication existe déjà (après correction)
+                    duplication_pattern = r'^assets/products/(site-\d+)/assets/products/\1/(.+)$'
+                    duplication_match = re.match(duplication_pattern, image_path)
+                    
+                    if not duplication_match:
+                        # La duplication n'existe pas, vérifier si on peut l'ajouter
+                        single_pattern = r'^assets/products/(site-\d+)/(.+)$'
+                        single_match = re.match(single_pattern, image_path)
+                        
+                        if single_match:
+                            # Le chemin n'a pas la duplication, l'ajouter
+                            site_id = single_match.group(1)
+                            filename = single_match.group(2)
+                            image_path = f'assets/products/{site_id}/assets/products/{site_id}/{filename}'
+                        else:
+                            # Cas spécial : chemin avec duplication partielle ou malformé
+                            # Essayer d'extraire le site_id et filename de n'importe quel pattern
+                            mixed_pattern = r'assets/products/(site-\d+).*?/(.+)$'
+                            mixed_match = re.search(mixed_pattern, image_path)
+                            if mixed_match:
+                                site_id = mixed_match.group(1)
+                                filename = mixed_match.group(2)
+                                # Reconstruire le chemin correctement
+                                image_path = f'assets/products/{site_id}/assets/products/{site_id}/{filename}'
+                            # Si aucun pattern ne correspond, garder le chemin tel quel (image_path reste inchangé)
+                    
+                    return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{image_path}"
                 else:
                     request = self.context.get('request')
                     url = image_field.url
@@ -299,8 +370,9 @@ class ProductListSerializer(serializers.ModelSerializer):
                             return request.build_absolute_uri(url)
                     media_url = getattr(settings, 'MEDIA_URL', '/media/')
                     if media_url.startswith('http'):
-                        cleaned_path = clean_image_path(image_field.name)
-                        return f"{media_url.rstrip('/')}/{cleaned_path}"
+                        # Utiliser le chemin tel qu'il est stocké dans la base de données
+                        image_path = image_field.name
+                        return f"{media_url.rstrip('/')}/{image_path}"
                     return f"https://web-production-e896b.up.railway.app{url}"
             except (ValueError, AttributeError) as e:
                 print(f"⚠️ Erreur dans get_image_url: {e}")

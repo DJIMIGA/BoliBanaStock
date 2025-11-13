@@ -13,9 +13,11 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppDispatch, RootState } from '../store';
 import { signup, clearError } from '../store/slices/authSlice';
 import theme, { actionColors } from '../utils/theme';
+import Logo from '../components/Logo';
 
 interface SignupFormData {
   username: string;
@@ -29,6 +31,7 @@ interface SignupFormData {
 const SignupScreen: React.FC = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch<AppDispatch>();
+  const insets = useSafeAreaInsets();
   const { loading, error } = useSelector((state: RootState) => state.auth);
   const [formData, setFormData] = useState<SignupFormData>({
     username: '',
@@ -110,15 +113,35 @@ const SignupScreen: React.FC = () => {
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, 20) }
+        ]}
+      >
         <View style={styles.header}>
-          <Text style={styles.title}>Créer un compte</Text>
-          <Text style={styles.subtitle}>
-            Rejoignez BoliBana Stock pour gérer votre entreprise, votre stock et votre caisse efficacement
-          </Text>
+          <View style={styles.logoWrapper}>
+            <Logo size={90} showBackground={true} />
+          </View>
+          <Text style={styles.brandName}>BoliBana Stock</Text>
+          <View style={styles.badgesContainer}>
+            <View style={[styles.badge, styles.badgeGestion]}>
+              <Text style={styles.badgeText}>Gestion</Text>
+            </View>
+            <View style={[styles.badge, styles.badgeStock]}>
+              <Text style={styles.badgeText}>Stock</Text>
+            </View>
+            <View style={[styles.badge, styles.badgeCaisse]}>
+              <Text style={styles.badgeText}>Caisse</Text>
+            </View>
+            <View style={[styles.badge, styles.badgeClient]}>
+              <Text style={styles.badgeText}>Client</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.form}>
+          <Text style={styles.formTitle}>Créer un compte</Text>
           {/* Informations de base */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Informations de base</Text>
@@ -231,69 +254,116 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
+    padding: 16,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
     marginTop: 20,
+    paddingTop: 10,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
-    marginBottom: 8,
+  logoWrapper: {
+    marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  subtitle: {
-    fontSize: 16,
-    color: theme.colors.text.secondary,
+  brandName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.colors.primary[500],
+    marginBottom: 6,
     textAlign: 'center',
-    lineHeight: 22,
+    letterSpacing: 0.5,
+  },
+  formTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
+    marginBottom: 20,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  badgesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginHorizontal: 3,
+    marginVertical: 2,
+  },
+  badgeGestion: {
+    backgroundColor: theme.colors.secondary[100],
+    borderColor: theme.colors.secondary[400],
+  },
+  badgeStock: {
+    backgroundColor: theme.colors.primary[100],
+    borderColor: theme.colors.primary[400],
+  },
+  badgeCaisse: {
+    backgroundColor: theme.colors.success[100],
+    borderColor: theme.colors.success[400],
+  },
+  badgeClient: {
+    backgroundColor: theme.colors.secondary[100],
+    borderColor: theme.colors.secondary[500],
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
   },
   form: {
     flex: 1,
   },
   section: {
     backgroundColor: theme.colors.background.primary,
-    borderRadius: 12,
-    marginBottom: 20,
-    padding: 20,
+    borderRadius: 10,
+    marginBottom: 12,
+    padding: 14,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: theme.colors.text.primary,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   input: {
     borderWidth: 1,
     borderColor: theme.colors.neutral[300],
     borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    padding: 10,
+    fontSize: 15,
     backgroundColor: theme.colors.background.primary,
     color: theme.colors.text.primary,
   },
   button: {
-    padding: 16,
+    padding: 14,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+    marginTop: 8,
   },
   buttonPrimary: {
     backgroundColor: actionColors.primary,
@@ -303,21 +373,22 @@ const styles = StyleSheet.create({
   },
   buttonTextPrimary: {
     color: theme.colors.text.inverse,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
   loginLink: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 12,
+    marginBottom: 10,
   },
   loginText: {
-    fontSize: 16,
+    fontSize: 14,
     color: theme.colors.text.secondary,
   },
   loginLinkText: {
-    fontSize: 16,
+    fontSize: 14,
     color: actionColors.primary,
     fontWeight: '600',
   },

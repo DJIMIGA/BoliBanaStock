@@ -82,6 +82,17 @@ export default function DashboardScreen({ navigation }: any) {
     }
   };
 
+  const loadConfiguration = async () => {
+    try {
+      const response = await configurationService.getConfiguration();
+      if (response.success) {
+        setConfiguration(response.configuration);
+      }
+    } catch (error) {
+      console.error('Erreur chargement configuration:', error);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadDashboard();
@@ -110,6 +121,7 @@ export default function DashboardScreen({ navigation }: any) {
 
   useEffect(() => {
     loadDashboard();
+    loadConfiguration();
   }, []);
 
   const StatCard = ({ title, value, icon, color, onPress }: any) => (
@@ -124,19 +136,26 @@ export default function DashboardScreen({ navigation }: any) {
     </TouchableOpacity>
   );
 
-  const ActionButton = ({ title, icon, onPress, color, hasPending }: any) => (
-    <TouchableOpacity style={[styles.actionButton, { backgroundColor: color }]} onPress={onPress}>
-      <View style={styles.actionButtonContent}>
-        <Ionicons name={icon} size={24} color="white" />
-        {hasPending && (
-          <View style={styles.actionBadge}>
-            <Ionicons name="ellipse" size={6} color={theme.colors.warning[500]} />
-          </View>
-        )}
-      </View>
-      <Text style={styles.actionText}>{title}</Text>
-    </TouchableOpacity>
-  );
+  const ActionButton = ({ title, icon, onPress, color, hasPending }: any) => {
+    // Utiliser une couleur de badge adaptée selon la couleur du bouton
+    const badgeColor = color === actionColors.error 
+      ? theme.colors.error[500] 
+      : theme.colors.warning[500];
+    
+    return (
+      <TouchableOpacity style={[styles.actionButton, { backgroundColor: color }]} onPress={onPress}>
+        <View style={styles.actionButtonContent}>
+          <Ionicons name={icon} size={20} color="white" />
+          {hasPending && (
+            <View style={[styles.actionBadge, { backgroundColor: badgeColor }]}>
+              <Ionicons name="ellipse" size={8} color="white" />
+            </View>
+          )}
+        </View>
+        <Text style={styles.actionText}>{title}</Text>
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -159,7 +178,14 @@ export default function DashboardScreen({ navigation }: any) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Tableau de bord</Text>
+          <View style={styles.headerIconContainer}>
+            <Ionicons name="home" size={24} color={theme.colors.primary[500]} />
+          </View>
+          <View style={styles.headerCenter}>
+            <Text style={styles.title}>
+              {configuration?.nom_societe || 'Tableau de bord'}
+            </Text>
+          </View>
           <View style={styles.headerActions}>
             <TouchableOpacity 
               style={styles.headerButton}
@@ -236,6 +262,13 @@ export default function DashboardScreen({ navigation }: any) {
               hasPending={draftStatus.hasReceptionDraft}
             />
             <ActionButton
+              title="Casse"
+              icon="trash-outline"
+              color={actionColors.error}
+              onPress={() => navigation.navigate('Loss')}
+              hasPending={draftStatus.hasLossDraft}
+            />
+            <ActionButton
               title="Rapports"
               icon="bar-chart-outline"
               color={actionColors.secondary}
@@ -289,10 +322,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: theme.colors.background.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.neutral[200],
+    borderBottomColor: '#e0e0e0',
+  },
+  headerIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.primary[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 12,
   },
   headerActions: {
     flexDirection: 'row',
@@ -345,9 +392,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: theme.colors.text.primary,
+    color: '#333',
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '400',
   },
   statsContainer: {
     padding: 20,
@@ -391,7 +444,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   actionsContainer: {
-    padding: 20,
+    padding: 16,
   },
   actionsGrid: {
     flexDirection: 'row',
@@ -400,9 +453,9 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     backgroundColor: actionColors.success,
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
     width: '48%',
     alignItems: 'center',
     ...theme.shadows.md,
@@ -414,18 +467,23 @@ const styles = StyleSheet.create({
   },
   actionBadge: {
     position: 'absolute',
-    top: -2,
-    right: -6,
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 2,
+    top: -4,
+    right: -4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: theme.colors.warning[500],
+    borderWidth: 2,
+    borderColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
     ...theme.shadows.sm,
   },
   actionText: {
     color: theme.colors.text.inverse,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    marginTop: 5,
+    marginTop: 4,
   },
   menuContainer: {
     padding: 20,

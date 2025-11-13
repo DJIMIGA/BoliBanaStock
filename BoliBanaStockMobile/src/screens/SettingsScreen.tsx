@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import { AppDispatch } from '../store';
 import { logout } from '../store/slices/authSlice';
+import theme from '../utils/theme';
 
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -36,56 +38,63 @@ const SettingsScreen: React.FC = () => {
       id: 'configuration',
       title: 'Configuration',
       subtitle: 'Paramètres de votre entreprise',
-      icon: '⚙️',
+      icon: 'settings',
+      iconColor: theme.colors.primary[500],
+      iconBg: theme.colors.primary[100],
       onPress: () => navigation.navigate('Configuration' as never),
     },
     {
       id: 'profile',
       title: 'Profil utilisateur',
       subtitle: 'Gérer votre compte',
-      icon: '👤',
+      icon: 'person',
+      iconColor: theme.colors.info[500],
+      iconBg: theme.colors.info[100],
       onPress: () => navigation.navigate('Profile' as never),
     },
     {
       id: 'notifications',
       title: 'Notifications',
       subtitle: 'Gérer les alertes',
-      icon: '🔔',
+      icon: 'notifications',
+      iconColor: theme.colors.warning[500],
+      iconBg: theme.colors.warning[100],
       onPress: () => Alert.alert('Info', 'Notifications - À venir'),
     },
     {
       id: 'backup',
       title: 'Sauvegarde',
       subtitle: 'Exporter vos données',
-      icon: '💾',
+      icon: 'save',
+      iconColor: theme.colors.success[500],
+      iconBg: theme.colors.success[100],
       onPress: () => Alert.alert('Info', 'Sauvegarde - À venir'),
     },
     {
       id: 'about',
       title: 'À propos',
       subtitle: 'Informations sur l\'application',
-      icon: 'ℹ️',
+      icon: 'information-circle',
+      iconColor: theme.colors.info[500],
+      iconBg: theme.colors.info[100],
       onPress: () => Alert.alert('Info', 'À propos - À venir'),
-    },
-    {
-      id: 'test-scanner',
-      title: 'Test Scanner',
-      subtitle: 'Diagnostiquer le scanner de codes-barres',
-      icon: '🔍',
-      onPress: () => navigation.navigate('TestScanner' as never),
     },
     {
       id: 'categories',
       title: 'Gestion des catégories',
       subtitle: 'Créer et gérer les catégories de produits',
-      icon: '📁',
+      icon: 'folder',
+      iconColor: theme.colors.secondary[500],
+      iconBg: theme.colors.secondary[100],
       onPress: () => navigation.navigate('Categories' as never),
     },
     {
       id: 'brands',
       title: 'Gestion des marques',
       subtitle: 'Créer et gérer les marques de produits',
-      icon: '🏷️',
+      icon: 'pricetag',
+      iconColor: theme.colors.primary[500],
+      iconBg: theme.colors.primary[100],
       onPress: () => navigation.navigate('Brands' as never),
     },
   ];
@@ -93,8 +102,14 @@ const SettingsScreen: React.FC = () => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Paramètres</Text>
-        <Text style={styles.subtitle}>Gérez votre application</Text>
+        <View style={styles.headerIconContainer}>
+          <Ionicons name="options" size={24} color={theme.colors.primary[500]} />
+        </View>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Paramètres</Text>
+          <Text style={styles.subtitle}>Gérez votre application</Text>
+        </View>
+        <View style={styles.headerRight} />
       </View>
 
       <View style={styles.content}>
@@ -108,13 +123,15 @@ const SettingsScreen: React.FC = () => {
               onPress={item.onPress}
             >
               <View style={styles.menuItemLeft}>
-                <Text style={styles.menuIcon}>{item.icon}</Text>
+                <View style={[styles.menuIconContainer, { backgroundColor: item.iconBg }]}>
+                  <Ionicons name={item.icon as any} size={20} color={item.iconColor} />
+                </View>
                 <View style={styles.menuText}>
                   <Text style={styles.menuTitle}>{item.title}</Text>
                   <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
                 </View>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
             </TouchableOpacity>
           ))}
         </View>
@@ -127,7 +144,9 @@ const SettingsScreen: React.FC = () => {
             onPress={handleLogout}
           >
             <View style={styles.menuItemLeft}>
-              <Text style={styles.menuIcon}>🚪</Text>
+              <View style={[styles.menuIconContainer, { backgroundColor: theme.colors.error[100] }]}>
+                <Ionicons name="log-out" size={20} color={theme.colors.error[500]} />
+              </View>
               <View style={styles.menuText}>
                 <Text style={[styles.menuTitle, styles.dangerText]}>
                   Déconnexion
@@ -137,7 +156,7 @@ const SettingsScreen: React.FC = () => {
                 </Text>
               </View>
             </View>
-            <Text style={styles.menuArrow}>›</Text>
+            <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
           </TouchableOpacity>
         </View>
 
@@ -166,20 +185,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   header: {
-    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
     backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    borderBottomColor: '#e0e0e0',
+  },
+  headerIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.primary[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 12,
+  },
+  headerRight: {
+    width: 40,
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 4,
+    color: '#333',
+    marginBottom: 2,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#64748b',
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '400',
   },
   content: {
     padding: 20,
@@ -214,11 +254,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  menuIcon: {
-    fontSize: 24,
-    marginRight: 16,
-    width: 32,
-    textAlign: 'center',
+  menuIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   menuText: {
     flex: 1,

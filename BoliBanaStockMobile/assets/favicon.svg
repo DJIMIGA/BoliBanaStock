@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Favicon simplifié pour navigateurs -->
+    <defs>
+        <linearGradient id="bgGradient" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#2B3A67"/>
+            <stop offset="1" stop-color="#1F274D"/>
+        </linearGradient>
+        <linearGradient id="boxGradient" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#FFD700"/>
+            <stop offset="1" stop-color="#FFCD33"/>
+        </linearGradient>
+    </defs>
+    
+    <!-- Fond arrondi -->
+    <rect width="256" height="256" rx="56" fill="url(#bgGradient)"/>
+    
+    <!-- Boîtes empilées simplifiées -->
+    <!-- Boîte arrière -->
+    <rect x="48" y="112" width="80" height="64" rx="8" fill="#2E8B57" opacity="0.8" transform="skewY(-5)"/>
+    
+    <!-- Boîte du milieu -->
+    <rect x="72" y="80" width="80" height="64" rx="8" fill="#2E8B57" opacity="0.9" transform="skewY(-5)"/>
+    
+    <!-- Boîte avant (principale) -->
+    <rect x="96" y="48" width="80" height="64" rx="8" fill="url(#boxGradient)" transform="skewY(-5)"/>
+    
+    <!-- Petite flèche de croissance -->
+    <path d="M160 160 L176 144 L192 160 L184 160 L184 192 L168 192 L168 160 Z" fill="#2E8B57"/>
+</svg>
+

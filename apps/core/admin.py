@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Configuration, Activite, Notification, Parametre
+from .models import Configuration, Activite, Notification, Parametre, PasswordResetToken
 
 @admin.register(Configuration)
 class ConfigurationAdmin(admin.ModelAdmin):
@@ -34,4 +34,17 @@ class ParametreAdmin(admin.ModelAdmin):
     list_filter = ('type_valeur', 'est_actif')
     search_fields = ('cle', 'valeur', 'description')
     readonly_fields = ('created_at', 'updated_at', 'created_by', 'updated_by')
-    ordering = ('cle',) 
+    ordering = ('cle',)
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'code', 'created_at', 'expires_at', 'used', 'is_valid_display')
+    list_filter = ('used', 'created_at', 'expires_at')
+    search_fields = ('user__username', 'user__email', 'code')
+    readonly_fields = ('created_at', 'is_valid_display')
+    ordering = ('-created_at',)
+    
+    def is_valid_display(self, obj):
+        return obj.is_valid()
+    is_valid_display.boolean = True
+    is_valid_display.short_description = 'Valide' 

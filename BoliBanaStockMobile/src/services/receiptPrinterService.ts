@@ -600,6 +600,8 @@ class ReceiptPrinterService {
 
   private formatNumberForPDF(n: number): string {
     // Formatter avec espaces comme séparateurs de milliers (ex: 2 000 au lieu de 2000)
+    // Préserver le signe négatif
+    const isNegative = n < 0;
     const num = Math.abs(n);
     const intPart = Math.floor(num);
     const decPart = Math.round((num - intPart) * 100);
@@ -611,6 +613,11 @@ class ReceiptPrinterService {
     // Ajouter les décimales si nécessaire
     if (decPart > 0) {
       formatted += ',' + (decPart < 10 ? '0' + decPart : decPart);
+    }
+    
+    // Ajouter le signe négatif si nécessaire
+    if (isNegative) {
+      formatted = '-' + formatted;
     }
     
     return formatted;
@@ -852,7 +859,8 @@ class ReceiptPrinterService {
         console.warn('⚠️ [ESC/POS] Activation mode gras échouée:', boldError);
       }
       
-      // En-tête du ticket - Nom de société en grande taille
+      // En-tête du ticket - Nom de société en grande taille et centré
+      await this.BluetoothEscposPrinter.printerAlign(this.BluetoothEscposPrinter.ALIGN.CENTER);
       // Ne pas inclure \n dans escposTextLarge, il sera géré par la fonction
       await this.escposTextLarge(site.company_name);
       await this.escposText('\n'); // Ligne vide après le nom
@@ -1119,7 +1127,7 @@ class ReceiptPrinterService {
                       console.log(`✅ [BARCODE] Code-barres imprimé avec printBarCode ${barcodeType.name} (format 4 - 2 args)`);
                       break;
                     } catch (format4Error: any) {
-                      console.error(`❌ [BARCODE] Tous les formats printBarCode ont échoué pour ${barcodeType.name}`);
+                    console.error(`❌ [BARCODE] Tous les formats printBarCode ont échoué pour ${barcodeType.name}`);
                     }
                   }
                 }
@@ -1296,8 +1304,8 @@ class ReceiptPrinterService {
                     await this.escposText('\n');
                     barcodePrinted = true;
                     console.log('✅ [BARCODE] Code-barres CODE39 imprimé avec printBarCode (4 args)');
-                  } catch (code39Error: any) {
-                    console.error('❌ [BARCODE] Erreur CODE39 printBarCode:', code39Error?.message);
+                } catch (code39Error: any) {
+                  console.error('❌ [BARCODE] Erreur CODE39 printBarCode:', code39Error?.message);
                   }
                 }
               }

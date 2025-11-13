@@ -181,6 +181,7 @@ const ConfigurationScreen: React.FC = () => {
     }
   };
 
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -193,8 +194,14 @@ const ConfigurationScreen: React.FC = () => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Configuration</Text>
-        <Text style={styles.subtitle}>Paramètres de votre entreprise</Text>
+        <View style={styles.headerIconContainer}>
+          <Ionicons name="settings" size={24} color={theme.colors.primary[500]} />
+        </View>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Configuration</Text>
+          <Text style={styles.subtitle}>Paramètres de votre entreprise</Text>
+        </View>
+        <View style={styles.headerRight} />
       </View>
 
       {configuration && (
@@ -314,6 +321,52 @@ const ConfigurationScreen: React.FC = () => {
             </View>
           </View>
 
+          {/* Actions */}
+          <View style={styles.actions}>
+            {editing ? (
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonSecondary]}
+                  onPress={() => {
+                    setFormData(configuration);
+                    setEditing(false);
+                  }}
+                  disabled={saving}
+                >
+                  <Text style={styles.buttonTextSecondary}>Annuler</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonPrimary]}
+                  onPress={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text style={styles.buttonTextPrimary}>Sauvegarder</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonSecondary]}
+                  onPress={handleReset}
+                  disabled={saving}
+                >
+                  <Text style={styles.buttonTextSecondary}>Réinitialiser</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonPrimary]}
+                  onPress={() => setEditing(true)}
+                  disabled={saving}
+                >
+                  <Text style={styles.buttonTextPrimary}>Modifier</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
           {/* Programme de fidélité */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -374,20 +427,20 @@ const ConfigurationScreen: React.FC = () => {
                       <Text style={styles.loyaltyConfigLabel}>Points</Text>
                       <TextInput
                         style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
-                        value={loyaltyFormData.points_per_amount}
+                        value={Math.round(parseFloat(loyaltyFormData.points_per_amount) || 1).toString()}
                         onChangeText={(text) =>
-                          setLoyaltyFormData(prev => ({ ...prev, points_per_amount: text }))
+                          setLoyaltyFormData(prev => ({ ...prev, points_per_amount: text.replace(/[^0-9]/g, '') }))
                         }
                         editable={loyaltyEditing}
                         placeholder="1"
-                        keyboardType="decimal-pad"
+                        keyboardType="numeric"
                       />
                     </View>
                     
                     <Text style={styles.loyaltyConfigEquals}>pour</Text>
                     
                     <View style={styles.loyaltyConfigInput}>
-                      <Text style={styles.loyaltyConfigLabel}>FCFA dépensés</Text>
+                      <Text style={styles.loyaltyConfigLabel}>dépensés</Text>
                       <TextInput
                         style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
                         value={loyaltyFormData.amount_for_points}
@@ -404,7 +457,7 @@ const ConfigurationScreen: React.FC = () => {
                   <View style={styles.exampleBox}>
                     <Ionicons name="information-circle" size={16} color={theme.colors.primary[500]} />
                     <Text style={styles.exampleText}>
-                      Exemple: {loyaltyFormData.points_per_amount} point(s) pour {parseInt(loyaltyFormData.amount_for_points) || 1000} FCFA dépensés
+                      Exemple: {Math.round(parseFloat(loyaltyFormData.points_per_amount) || 1)} point(s) pour {Math.round(parseFloat(loyaltyFormData.amount_for_points) || 1000)} dépensés
                     </Text>
                   </View>
                 </View>
@@ -413,7 +466,7 @@ const ConfigurationScreen: React.FC = () => {
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Valeur d'un point</Text>
                   <Text style={styles.helpText}>
-                    Définissez la valeur en FCFA d'un point de fidélité
+                    Définissez la valeur d'un point de fidélité
                   </Text>
                   
                   <View style={styles.loyaltyConfigRow}>
@@ -421,22 +474,22 @@ const ConfigurationScreen: React.FC = () => {
                       <Text style={styles.loyaltyConfigLabel}>1 point =</Text>
                       <TextInput
                         style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
-                        value={loyaltyFormData.amount_per_point}
+                        value={Math.round(parseFloat(loyaltyFormData.amount_per_point) || 100).toString()}
                         onChangeText={(text) =>
-                          setLoyaltyFormData(prev => ({ ...prev, amount_per_point: text }))
+                          setLoyaltyFormData(prev => ({ ...prev, amount_per_point: text.replace(/[^0-9]/g, '') }))
                         }
                         editable={loyaltyEditing}
                         placeholder="100"
-                        keyboardType="decimal-pad"
+                        keyboardType="numeric"
                       />
                     </View>
-                    <Text style={styles.loyaltyConfigEquals}>FCFA de réduction</Text>
+                    <Text style={styles.loyaltyConfigEquals}>de réduction</Text>
                   </View>
                   
                   <View style={styles.exampleBox}>
                     <Ionicons name="information-circle" size={16} color={theme.colors.primary[500]} />
                     <Text style={styles.exampleText}>
-                      Exemple: 1 point = {parseFloat(loyaltyFormData.amount_per_point) || 100} FCFA de réduction
+                      Exemple: 1 point = {Math.round(parseFloat(loyaltyFormData.amount_per_point) || 100)} de réduction
                     </Text>
                   </View>
                 </View>
@@ -478,52 +531,6 @@ const ConfigurationScreen: React.FC = () => {
             )}
           </View>
 
-          {/* Actions */}
-          <View style={styles.actions}>
-            {editing ? (
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonSecondary]}
-                  onPress={() => {
-                    setFormData(configuration);
-                    setEditing(false);
-                  }}
-                  disabled={saving}
-                >
-                  <Text style={styles.buttonTextSecondary}>Annuler</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonPrimary]}
-                  onPress={handleSave}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <Text style={styles.buttonTextPrimary}>Sauvegarder</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonSecondary]}
-                  onPress={handleReset}
-                  disabled={saving}
-                >
-                  <Text style={styles.buttonTextSecondary}>Réinitialiser</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonPrimary]}
-                  onPress={() => setEditing(true)}
-                  disabled={saving}
-                >
-                  <Text style={styles.buttonTextPrimary}>Modifier</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
           {/* Informations de version */}
           <View style={styles.infoSection}>
             <Text style={styles.infoText}>
@@ -556,20 +563,41 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   header: {
-    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
     backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    borderBottomColor: '#e0e0e0',
+  },
+  headerIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.primary[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 12,
+  },
+  headerRight: {
+    width: 40,
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 4,
+    color: '#333',
+    marginBottom: 2,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#64748b',
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '400',
   },
   content: {
     padding: 20,
@@ -648,6 +676,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     marginTop: 20,
+    marginBottom: 24,
   },
   buttonRow: {
     flexDirection: 'row',

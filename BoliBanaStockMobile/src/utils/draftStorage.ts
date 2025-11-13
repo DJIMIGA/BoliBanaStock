@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const RECEPTION_KEY = '@bbstock:reception_draft';
 const INVENTORY_KEY = '@bbstock:inventory_draft';
+const LOSS_KEY = '@bbstock:loss_draft';
 const SALES_KEY = '@bbstock:sales_cart_draft';
 
 export async function saveReceptionDraft(items: any[]) {
@@ -97,6 +98,33 @@ export async function clearSalesCartDraft() {
     await AsyncStorage.removeItem(SALES_KEY);
   } catch (e) {
     console.warn('clearSalesCartDraft failed', e);
+  }
+}
+
+export async function saveLossDraft(items: any[]) {
+  try {
+    await AsyncStorage.setItem(LOSS_KEY, JSON.stringify(items || []));
+  } catch (e) {
+    console.warn('saveLossDraft failed', e);
+  }
+}
+
+export async function loadLossDraft(): Promise<any[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(LOSS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn('loadLossDraft failed', e);
+    return null;
+  }
+}
+
+export async function clearLossDraft() {
+  try {
+    await AsyncStorage.removeItem(LOSS_KEY);
+  } catch (e) {
+    console.warn('clearLossDraft failed', e);
   }
 }
 

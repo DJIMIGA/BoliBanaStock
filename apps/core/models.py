@@ -399,4 +399,59 @@ class Parametre(BaseModel):
                 return json.loads(self.valeur)
             except json.JSONDecodeError:
                 return {}
-        return self.valeur 
+        return self.valeur
+
+
+class PasswordResetToken(models.Model):
+    """
+    Token pour la réinitialisation de mot de passe via code OTP
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='password_reset_tokens',
+        verbose_name=_('Utilisateur')
+    )
+    code = models.CharField(
+        max_length=6,
+        verbose_name=_('Code OTP'),
+        help_text=_('Code à 6 chiffres pour la réinitialisation')
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_('Date de création')
+    )
+    expires_at = models.DateTimeField(
+        verbose_name=_('Date d\'expiration')
+    )
+    used = models.BooleanField(
+        default=False,
+        verbose_name=_('Utilisé'),
+        help_text=_('Indique si le code a déjà été utilisé')
+    )
+
+    class Meta:
+        verbose_name = _('Token de réinitialisation')
+        verbose_name_plural = _('Tokens de réinitialisation')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'code', 'used']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    def __str__(self):
+        return f"Code pour {self.user.username} - {self.code}"
+
+    def is_valid(self):
+        """
+        Vérifie si le token est valide (non expiré et non utilisé)
+        """
+        from django.utils import timezone
+        return not self.used and timezone.now() < self.expires_at
+
+    def mark_as_used(self):
+        """
+        Marque le token comme utilisé
+        """
+        self.used = True
+        self.save(update_fields=['used'])

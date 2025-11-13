@@ -738,35 +738,62 @@ class BluetoothPrinterService {
       const lines = tscCommands.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
       const labelSections: string[] = [];
       let currentSection: string[] = [];
+      let inLabel = false;
       
-      // Séparer les étiquettes (entre CLS et PRINT)
+      // Parser les paramètres globaux (SIZE, GAP, etc.) - ils sont au début
+      let globalParams = '';
+      
+      // Séparer les étiquettes (entre CLS et PRINT 1)
       for (const line of lines) {
+        // Paramètres globaux (avant le premier CLS)
+        if (!inLabel && (line.startsWith('SIZE') || line.startsWith('GAP') || line.startsWith('DENSITY') || line.startsWith('SPEED') || line.startsWith('DIRECTION'))) {
+          globalParams += line + '\n';
+          continue;
+        }
+        
+        // Début d'une étiquette
         if (line === 'CLS') {
           if (currentSection.length > 0) {
             labelSections.push(currentSection.join('\n'));
           }
           currentSection = [];
+          inLabel = true;
+          continue;
         }
-        if (line !== 'PRINT' && !line.startsWith('SIZE') && !line.startsWith('GAP') && !line.startsWith('DENSITY') && !line.startsWith('SPEED') && !line.startsWith('DIRECTION')) {
-          currentSection.push(line);
-        }
-        if (line === 'PRINT') {
+        
+        // Fin d'une étiquette (PRINT 1 ou PRINT)
+        if (line.startsWith('PRINT')) {
           if (currentSection.length > 0) {
             labelSections.push(currentSection.join('\n'));
             currentSection = [];
           }
+          inLabel = false;
+          continue;
+        }
+        
+        // Commandes de l'étiquette (TEXT, BARCODE, etc.)
+        if (inLabel) {
+          currentSection.push(line);
         }
       }
       
-      // Parser les paramètres globaux (SIZE, GAP, etc.)
-      let globalParams = '';
-      for (const line of lines) {
-        if (line.startsWith('SIZE') || line.startsWith('GAP') || line.startsWith('DENSITY') || line.startsWith('SPEED') || line.startsWith('DIRECTION')) {
-          globalParams += line + '\n';
-        }
+      // Ajouter la dernière section si elle existe
+      if (currentSection.length > 0) {
+        labelSections.push(currentSection.join('\n'));
       }
       
       console.log(`✅ [TSC] ${labelSections.length} étiquettes trouvées`);
+      console.log(`🔍 [TSC] Paramètres globaux:`, globalParams);
+      if (labelSections.length > 0) {
+        console.log(`🔍 [TSC] Première section (premiers 200 caractères):`, labelSections[0]?.substring(0, 200));
+      }
+      
+      // Vérifier qu'on a des étiquettes
+      if (labelSections.length === 0) {
+        console.error('❌ [TSC] Aucune étiquette trouvée dans les commandes TSC');
+        console.error('❌ [TSC] Commandes TSC complètes:', tscCommands);
+        throw new Error('Aucune étiquette trouvée dans les commandes TSC générées par le backend');
+      }
       
       // 4. Imprimer les étiquettes une par une
       console.log('🖨️ [TSC] Impression des étiquettes...');
@@ -1105,7 +1132,35 @@ class BluetoothPrinterService {
         // 5. Code-barres (comme dans tsc.py - position fixe à gauche)
         const barcodeBlocks: any[] = [];
         if (includeBarcode) {
-          let code = (product.generated_ean || product.cug || `${product.id}`).toString();
+          // Logique de priorité pour le code-barres :
+          // 1. Code-barres principal du tableau barcodes
+          // 2. generated_ean si pas de barcodes dans le tableau
+          // 3. CUG ou ID en dernier recours
+          let code = '';
+          
+          // Vérifier d'abord si le produit a des barcodes dans le tableau
+          if (product.barcodes && Array.isArray(product.barcodes) && product.barcodes.length > 0) {
+            const primaryBarcode = product.barcodes.find((b: any) => b.is_primary && b.ean);
+            if (primaryBarcode && primaryBarcode.ean) {
+              code = primaryBarcode.ean;
+            } else {
+              const validBarcode = product.barcodes.find((b: any) => b.ean);
+              if (validBarcode && validBarcode.ean) {
+                code = validBarcode.ean;
+              }
+            }
+          }
+          
+          // Si pas de barcodes dans le tableau, utiliser generated_ean (priorité sur CUG)
+          if (!code) {
+            if (product.generated_ean) {
+              code = product.generated_ean;
+            } else {
+              // Dernier recours : ID (pas le CUG)
+              code = `${product.id}`;
+            }
+          }
+          
           console.log(`📊 [TSC] Code-barres original pour produit ${product.name}:`, code);
           
           // Déterminer le type de code-barres et nettoyer le code

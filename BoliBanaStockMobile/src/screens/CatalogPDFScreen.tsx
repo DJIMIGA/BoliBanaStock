@@ -57,6 +57,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
   const [includeStock, setIncludeStock] = useState(true);
   const [includeDescriptions, setIncludeDescriptions] = useState(true);
   const [includeImages, setIncludeImages] = useState(true);
+  const [includeBarcode, setIncludeBarcode] = useState(true);
 
   // Vérifier qu'il y a des produits sélectionnés
   if (selectedProducts.length === 0) {
@@ -109,44 +110,40 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
     const rows = products.map((p: any, index: number) => {
       console.log(`🔍 [BUILD_HTML] Produit ${index}:`, p);
       
-      // Logique pour le code-barres selon la structure Product avec barcodes array
+      // Logique pour le code-barres : même priorité que les étiquettes
+      // Priorité 1 : EAN du modèle Barcode (manuel)
+      // Priorité 2 : EAN généré dans Product (automatique)
       let eanCode = '';
       let barcodeSource = '';
       
-      // 1. Chercher le code-barres principal dans le tableau barcodes
-      if (p.barcodes && Array.isArray(p.barcodes) && p.barcodes.length > 0) {
-        // Chercher le code-barres principal (is_primary: true)
-        const primaryBarcode = p.barcodes.find((b: any) => b.is_primary && b.ean && b.ean.length === 13);
-        if (primaryBarcode) {
-          eanCode = primaryBarcode.ean;
-          barcodeSource = 'primary_barcode';
+      // 1. Utiliser barcode_ean (déjà calculé par l'API avec la bonne priorité)
+      if (p.barcode_ean && p.barcode_ean.trim().length === 13) {
+        eanCode = p.barcode_ean.trim();
+        if (p.barcode_ean_from_model && p.barcode_ean_from_model.trim() === eanCode) {
+          barcodeSource = 'barcode_ean_from_model';
+        } else if (p.barcode_ean_generated && p.barcode_ean_generated.trim() === eanCode) {
+          barcodeSource = 'barcode_ean_generated';
         } else {
-          // Si pas de principal, prendre le premier code-barres valide
-          const validBarcode = p.barcodes.find((b: any) => b.ean && b.ean.length === 13);
-          if (validBarcode) {
-            eanCode = validBarcode.ean;
-            barcodeSource = 'barcode_array';
-          }
+          barcodeSource = 'barcode_ean';
         }
       }
-      
-      // 2. Fallback vers generated_ean si pas de barcodes dans le tableau
-      if (!eanCode && p.generated_ean && p.generated_ean.length === 13) {
-        eanCode = p.generated_ean;
+      // 2. Fallback vers barcode_ean_from_model (EAN du modèle Barcode)
+      else if (p.barcode_ean_from_model && p.barcode_ean_from_model.trim().length === 13) {
+        eanCode = p.barcode_ean_from_model.trim();
+        barcodeSource = 'barcode_ean_from_model';
+      }
+      // 3. Fallback vers barcode_ean_generated (EAN généré)
+      else if (p.barcode_ean_generated && p.barcode_ean_generated.trim().length === 13) {
+        eanCode = p.barcode_ean_generated.trim();
+        barcodeSource = 'barcode_ean_generated';
+      }
+      // 4. Fallback vers generated_ean (pour compatibilité)
+      else if (p.generated_ean && p.generated_ean.trim().length === 13) {
+        eanCode = p.generated_ean.trim();
         barcodeSource = 'generated_ean';
       }
-      
-      // 3. Fallback vers les anciens champs pour compatibilité
-      if (!eanCode && p.barcode_ean && p.barcode_ean.length === 13) {
-        eanCode = p.barcode_ean;
-        barcodeSource = 'barcode_ean_legacy';
-      } else if (!eanCode && p.ean && p.ean.length === 13) {
-        eanCode = p.ean;
-        barcodeSource = 'ean_legacy';
-      }
-      
-      // 4. Dernier recours : générer un EAN basé sur l'ID du produit
-      if (!eanCode) {
+      // 5. Dernier recours : générer un EAN basé sur l'ID du produit
+      else {
         eanCode = generateEANFromProductId(p.id);
         barcodeSource = 'generated_from_id';
       }
@@ -164,7 +161,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
       
       console.log(`🏷️ [CATALOG] Produit ${p.name} - Code-barres: ${eanCode} (source: ${barcodeSource}, valid: ${isValidBarcode})`);
       
-      const barcodeHtml = eanCode ? `
+      const barcodeHtml = includeBarcode && eanCode ? `
         <div style="text-align: center; margin: 0; padding: 2px; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
           <div style="display: flex; justify-content: center; align-items: center; width: 100%; margin-bottom: 1px;">
             <svg width="100%" height="30" viewBox="0 0 150 30" style="display: block; margin: 0 auto;">
@@ -174,7 +171,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           </div>
           <div style="font-family: monospace; font-size: 10px; color: #333; text-align: center; width: 100%; display: flex; justify-content: center;">${eanCode}</div>
         </div>
-      ` : '<div style="text-align: center; color: #999; padding: 8px; width: 100%; display: flex; justify-content: center; align-items: center;">N/A</div>';
+      ` : includeBarcode ? '<div style="text-align: center; color: #999; padding: 8px; width: 100%; display: flex; justify-content: center; align-items: center;">N/A</div>' : '';
       
       // Gestion des images - utiliser image_data (base64) si disponible, sinon image_url
       // IMPORTANT: expo-print ne peut pas charger des images depuis des URLs externes
@@ -206,11 +203,11 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           ${includeImages ? imageCell : ''}
           <td class="product-name">${p.name || 'N/A'}</td>
           <td>${p.cug || 'N/A'}</td>
-          <td class="barcode-cell">${barcodeHtml}</td>
+          ${includeBarcode ? `<td class="barcode-cell">${barcodeHtml}</td>` : ''}
           <td>${p.category || 'N/A'}</td>
           <td>${p.brand || 'N/A'}</td>
-          <td class="price">${p.selling_price ? `${p.selling_price} FCFA` : 'N/A'}</td>
-          <td class="stock ${stockClass}">${p.quantity || 'N/A'}</td>
+          ${includePrices ? `<td class="price">${p.selling_price ? `${p.selling_price} FCFA` : 'N/A'}</td>` : ''}
+          ${includeStock ? `<td class="stock ${stockClass}">${p.quantity || 'N/A'}</td>` : ''}
       </tr>
       `;
     }).join('');
@@ -248,11 +245,11 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
               ${includeImages ? '<th>Image</th>' : ''}
               <th>Produit</th>
               <th>CUG</th>
-              <th>EAN (Scannable)</th>
+              ${includeBarcode ? '<th>EAN (Scannable)</th>' : ''}
               <th>Catégorie</th>
               <th>Marque</th>
-              <th>Prix</th>
-              <th>Stock</th>
+              ${includePrices ? '<th>Prix</th>' : ''}
+              ${includeStock ? '<th>Stock</th>' : ''}
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -904,6 +901,8 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           setIncludeDescriptions={setIncludeDescriptions}
           includeImages={includeImages}
           setIncludeImages={setIncludeImages}
+          includeBarcode={includeBarcode}
+          setIncludeBarcode={setIncludeBarcode}
         />
 
         {/* Product Selection */}

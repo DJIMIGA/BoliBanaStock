@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Logo principal pour application mobile - Version haute résolution -->
+    <defs>
+        <linearGradient id="bgGradient" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#2B3A67"/>
+            <stop offset="1" stop-color="#1F274D"/>
+        </linearGradient>
+        <linearGradient id="boxGradient" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#FFD700"/>
+            <stop offset="1" stop-color="#FFCD33"/>
+        </linearGradient>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+            <feOffset dx="0" dy="8" result="offsetblur"/>
+            <feComponentTransfer>
+                <feFuncA type="linear" slope="0.3"/>
+            </feComponentTransfer>
+            <feMerge>
+                <feMergeNode/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <filter id="glow">
+            <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    
+    <!-- Fond arrondi -->
+    <rect width="1024" height="1024" rx="224" fill="url(#bgGradient)"/>
+    
+    <!-- Boîtes empilées représentant le stock -->
+    <g filter="url(#shadow)">
+        <!-- Boîte arrière (plus sombre) -->
+        <rect x="192" y="448" width="320" height="256" rx="32" fill="#2E8B57" opacity="0.8" transform="skewY(-5)"/>
+        
+        <!-- Boîte du milieu -->
+        <rect x="288" y="320" width="320" height="256" rx="32" fill="#2E8B57" opacity="0.9" transform="skewY(-5)"/>
+        
+        <!-- Boîte avant (principale) -->
+        <rect x="384" y="192" width="320" height="256" rx="32" fill="url(#boxGradient)" transform="skewY(-5)"/>
+    </g>
+    
+    <!-- Graphique de tendance (flèche vers le haut) -->
+    <g filter="url(#glow)">
+        <path d="M672 640 L736 576 L800 640 L768 640 L768 768 L704 768 L704 640 Z" fill="#2E8B57"/>
+    </g>
+    
+    <!-- Points de données sur le graphique -->
+    <circle cx="704" cy="736" r="24" fill="#FFD700"/>
+    <circle cx="768" cy="704" r="24" fill="#FFD700"/>
+</svg>
+

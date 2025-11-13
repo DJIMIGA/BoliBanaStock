@@ -90,21 +90,13 @@ const PrintModeSelectionScreen: React.FC<PrintModeSelectionScreenProps> = ({ rou
             <View style={styles.modeContent}>
               <Text style={styles.modeTitle}>Catalogue PDF A4</Text>
               <Text style={styles.modeDescription}>
-                Créer un catalogue professionnel pour vos clients
+                Catalogue professionnel • Format A4 • Plusieurs produits/page
               </Text>
-              <View style={styles.modeFeatures}>
-                <Text style={styles.featureText}>• Format A4 (210x297mm)</Text>
-                <Text style={styles.featureText}>• Plusieurs produits par page</Text>
-                <Text style={styles.featureText}>• Prix, descriptions, images</Text>
-                <Text style={styles.featureText}>• EAN générés automatiquement</Text>
-              </View>
               <View style={styles.modeUsage}>
-                <Text style={styles.usageText}>💼 Idéal pour : Vente, présentation, référence</Text>
+                <Text style={styles.usageText}>💼 Vente, présentation, référence</Text>
               </View>
             </View>
-            <View style={styles.modeArrow}>
-              <Text style={styles.arrowText}>→</Text>
-            </View>
+            <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
 
           {/* Étiquettes Mode */}
@@ -119,21 +111,13 @@ const PrintModeSelectionScreen: React.FC<PrintModeSelectionScreenProps> = ({ rou
             <View style={styles.modeContent}>
               <Text style={styles.modeTitle}>Étiquettes Individuelles</Text>
               <Text style={styles.modeDescription}>
-                Imprimer des étiquettes à coller sur vos produits
+                Étiquettes à coller • Format 40x30mm • CUG, EAN, code-barres
               </Text>
-              <View style={styles.modeFeatures}>
-                <Text style={styles.featureText}>• Format étiquettes (40x30mm)</Text>
-                <Text style={styles.featureText}>• Une étiquette par produit</Text>
-                <Text style={styles.featureText}>• CUG, EAN, code-barres</Text>
-                <Text style={styles.featureText}>• Multiples copies possibles</Text>
-              </View>
               <View style={styles.modeUsage}>
-                <Text style={styles.usageText}>📦 Idéal pour : Inventaire, gestion stock, scan</Text>
+                <Text style={styles.usageText}>📦 Inventaire, gestion stock, scan</Text>
               </View>
             </View>
-            <View style={styles.modeArrow}>
-              <Text style={styles.arrowText}>→</Text>
-            </View>
+            <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
 
         </View>
@@ -226,84 +210,63 @@ const styles = StyleSheet.create({
   },
   modeCard: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 12,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 120,
+    minHeight: 80,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    marginBottom: 12,
   },
   catalogCard: {
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
     borderLeftColor: theme.colors.primary[500],
   },
   labelCard: {
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
     borderLeftColor: theme.colors.success[500],
   },
   modeIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: theme.colors.background.secondary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   modeIconText: {
-    fontSize: 28,
+    fontSize: 24,
   },
   modeContent: {
     flex: 1,
   },
   modeTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '700',
     color: theme.colors.text.primary,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   modeDescription: {
-    fontSize: 14,
-    color: theme.colors.text.secondary,
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  modeFeatures: {
-    marginBottom: 12,
-  },
-  featureText: {
     fontSize: 12,
-    color: theme.colors.text.tertiary,
-    marginBottom: 2,
+    color: theme.colors.text.secondary,
+    marginBottom: 6,
     lineHeight: 16,
   },
   modeUsage: {
-    backgroundColor: theme.colors.background.secondary,
-    padding: 8,
-    borderRadius: 6,
+    marginTop: 2,
   },
   usageText: {
-    fontSize: 12,
+    fontSize: 11,
     color: theme.colors.text.tertiary,
     fontStyle: 'italic',
-  },
-  modeArrow: {
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  arrowText: {
-    fontSize: 20,
-    color: theme.colors.text.secondary,
-    fontWeight: 'bold',
   },
   infoSection: {
     marginTop: 30,
@@ -327,3 +290,4 @@ const styles = StyleSheet.create({
 });
 
 export default PrintModeSelectionScreen;
+
