@@ -26,7 +26,6 @@ def setup_django_railway():
         print(f"🔄 Tentative d'installation de sendgrid...")
         try:
             import subprocess
-            import sys
             result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "--no-cache-dir", "sendgrid>=6.10.0"],
                 capture_output=True,
