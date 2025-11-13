@@ -422,17 +422,22 @@ L'équipe {site_name}
                         # Vérifier d'abord dans settings, puis dans os.getenv
                         sendgrid_api_key = getattr(settings, 'SENDGRID_API_KEY', None) or os.getenv('SENDGRID_API_KEY', None)
                         print(f"[EMAIL_THREAD] SENDGRID_API_KEY détectée: {'Oui' if sendgrid_api_key else 'Non'}", flush=True)
+                        
+                        # Vérifier si sendgrid est disponible
+                        sendgrid_available = False
                         if sendgrid_api_key:
-                            # Utiliser SendGrid Web API (HTTPS - fonctionne sur Railway)
                             try:
                                 from sendgrid import SendGridAPIClient
                                 from sendgrid.helpers.mail import Mail
+                                sendgrid_available = True
                             except ImportError:
                                 # Le package sendgrid n'est pas installé - utiliser SMTP en fallback
                                 print(f"[EMAIL_THREAD] ⚠️ Package 'sendgrid' non installé, utilisation de SMTP en fallback", flush=True)
-                                logger.warning("Package 'sendgrid' non installé. Veuillez redéployer l'application pour installer le package depuis requirements.txt")
-                                raise ImportError("Package 'sendgrid' non installé. Redéployez l'application pour installer depuis requirements.txt")
-                            
+                                logger.warning("Package 'sendgrid' non installé. Utilisation du fallback SMTP. Veuillez redéployer l'application pour installer le package depuis requirements.txt")
+                                sendgrid_available = False
+                        
+                        if sendgrid_api_key and sendgrid_available:
+                            # Utiliser SendGrid Web API (HTTPS - fonctionne sur Railway)
                             message = Mail(
                                 from_email=from_email,
                                 to_emails=user.email,
