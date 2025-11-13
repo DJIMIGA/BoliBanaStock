@@ -438,25 +438,38 @@ L'équipe {site_name}
                         
                         if sendgrid_api_key and sendgrid_available:
                             # Utiliser SendGrid Web API (HTTPS - fonctionne sur Railway)
-                            message = Mail(
-                                from_email=from_email,
-                                to_emails=user.email,
-                                subject=subject,
-                                plain_text_content=message_text,
-                                html_content=message_html if message_html else None
-                            )
-                            
-                            sg = SendGridAPIClient(sendgrid_api_key)
-                            response = sg.send(message)
-                            
-                            print(f"[EMAIL_THREAD] Résultat SendGrid API: {response.status_code}", flush=True)
-                            
-                            if response.status_code in [200, 202]:
-                                print(f"[EMAIL_THREAD] ✅ Code OTP envoyé avec succès à {user.email}", flush=True)
-                                logger.info(f"✅ Code OTP envoyé avec succès à {user.email} pour {user.username} (SendGrid API)")
-                            else:
-                                print(f"[EMAIL_THREAD] ⚠️ SendGrid API a retourné {response.status_code}", flush=True)
-                                logger.warning(f"⚠️ SendGrid API a retourné {response.status_code} pour {user.email}")
+                            # Documentation: https://github.com/sendgrid/sendgrid-python
+                            try:
+                                message = Mail(
+                                    from_email=from_email,
+                                    to_emails=user.email,
+                                    subject=subject,
+                                    plain_text_content=message_text,
+                                    html_content=message_html if message_html else None
+                                )
+                                
+                                sg = SendGridAPIClient(sendgrid_api_key)
+                                response = sg.send(message)
+                                
+                                print(f"[EMAIL_THREAD] Résultat SendGrid API: {response.status_code}", flush=True)
+                                print(f"[EMAIL_THREAD] Response body: {response.body}", flush=True)
+                                print(f"[EMAIL_THREAD] Response headers: {response.headers}", flush=True)
+                                
+                                if response.status_code in [200, 202]:
+                                    print(f"[EMAIL_THREAD] ✅ Code OTP envoyé avec succès à {user.email}", flush=True)
+                                    logger.info(f"✅ Code OTP envoyé avec succès à {user.email} pour {user.username} (SendGrid API)")
+                                else:
+                                    print(f"[EMAIL_THREAD] ⚠️ SendGrid API a retourné {response.status_code}", flush=True)
+                                    logger.warning(f"⚠️ SendGrid API a retourné {response.status_code} pour {user.email}")
+                                    logger.warning(f"   Response body: {response.body}")
+                                    logger.warning(f"   Response headers: {response.headers}")
+                            except Exception as sendgrid_error:
+                                # Gestion d'erreur SendGrid spécifique
+                                error_msg = str(sendgrid_error)
+                                print(f"[EMAIL_THREAD] ❌ Erreur SendGrid: {error_msg}", flush=True)
+                                logger.error(f"❌ Erreur SendGrid lors de l'envoi à {user.email}: {error_msg}", exc_info=True)
+                                # Ne pas lever l'exception, continuer avec le fallback SMTP si possible
+                                raise sendgrid_error
                         else:
                             # Utiliser SMTP Django (fallback)
                             from django.core.mail import get_connection
