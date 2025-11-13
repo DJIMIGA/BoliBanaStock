@@ -52,15 +52,38 @@ def deploy_railway():
         # 2. Vérifier la migration de la base de données
         print("\n🗄️ Vérification des migrations...")
         try:
-            call_command('migrate', '--noinput', verbosity=2)
+            # Vérifier d'abord si les tables existent
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'django_migrations'
+                    );
+                """)
+                migrations_table_exists = cursor.fetchone()[0]
+            
+            if not migrations_table_exists:
+                print("📋 Base de données vide, application des migrations initiales...")
+                # Créer les tables de base d'abord
+                call_command('migrate', '--run-syncdb', '--noinput')
+            
+            # Appliquer toutes les migrations
+            call_command('migrate', '--noinput', verbosity=1)
             print("✅ Migrations appliquées avec succès")
         except Exception as migrate_error:
             print(f"❌ Erreur lors des migrations: {migrate_error}")
             import traceback
             traceback.print_exc()
-            # Ne pas faire échouer le déploiement si les migrations échouent
-            # (peut-être qu'elles sont déjà appliquées)
-            print("⚠️ Continuation du déploiement malgré l'erreur de migration...")
+            # Essayer une approche alternative : migrations forcées
+            try:
+                print("🔄 Tentative de migration alternative...")
+                call_command('migrate', '--fake-initial', '--noinput')
+                print("✅ Migrations appliquées avec --fake-initial")
+            except Exception as e2:
+                print(f"⚠️ Migration alternative échouée: {e2}")
+                print("⚠️ Continuation du déploiement malgré l'erreur de migration...")
         
         # 3. Vérifier que les fichiers sont présents
         print("\n✅ Vérification des fichiers statiques...")
@@ -95,8 +118,13 @@ def main():
     """Fonction principale"""
     print("🚀 Script de déploiement Railway pour BoliBanaStock")
     print("=" * 60)
+    print("📦 Vérification de l'environnement Python...")
+    import sys
+    print(f"   Python: {sys.version}")
+    print(f"   Python path: {sys.executable}")
     
     # Configuration Django Railway
+    print("\n🔧 Configuration Django Railway...")
     setup_django_railway()
     
     # Déploiement
