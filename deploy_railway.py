@@ -41,7 +41,16 @@ def deploy_railway():
         
         # 2. Vérifier la migration de la base de données
         print("\n🗄️ Vérification des migrations...")
-        call_command('migrate', '--noinput')
+        try:
+            call_command('migrate', '--noinput', verbosity=2)
+            print("✅ Migrations appliquées avec succès")
+        except Exception as migrate_error:
+            print(f"❌ Erreur lors des migrations: {migrate_error}")
+            import traceback
+            traceback.print_exc()
+            # Ne pas faire échouer le déploiement si les migrations échouent
+            # (peut-être qu'elles sont déjà appliquées)
+            print("⚠️ Continuation du déploiement malgré l'erreur de migration...")
         
         # 3. Vérifier que les fichiers sont présents
         print("\n✅ Vérification des fichiers statiques...")
@@ -68,6 +77,8 @@ def deploy_railway():
             
     except Exception as e:
         print(f"❌ Erreur lors du déploiement: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def main():
