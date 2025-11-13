@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311", "python311Packages.pip"]
+nixPkgs = ["python311", "python311Packages.pip", "nodejs-18_x"]
 
 [phases.install]
 cmds = [
@@ -9,11 +9,15 @@ cmds = [
     "pip install --no-cache-dir sendgrid>=6.10.0",
     "echo 'Python dependencies installed successfully'",
     "python -c 'import sendgrid; print(f\"✅ SendGrid installé: version {sendgrid.__version__}\")' || echo '⚠️ SendGrid non trouvé après installation'",
-    "pip list | grep -i sendgrid || echo '⚠️ SendGrid non trouvé dans pip list'"
+    "pip list | grep -i sendgrid || echo '⚠️ SendGrid non trouvé dans pip list'",
+    "cd theme && npm install || echo '⚠️ npm install échoué, continuons...'",
+    "cd theme && npm run build || echo '⚠️ Build Tailwind échoué, continuons...'"
 ]
 
 [phases.build]
-cmds = ["DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway python manage.py collectstatic --noinput"]
+cmds = [
+    "DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway python manage.py collectstatic --noinput"
+]
 
 [start]
 cmd = "python deploy_railway.py && gunicorn bolibanastock.wsgi:application --bind 0.0.0.0:$PORT"

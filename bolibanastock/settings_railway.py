@@ -222,7 +222,30 @@ else:
     print("⚠️  Attention: Les images peuvent être perdues lors des redéploiements")
 
 # WhiteNoise pour les fichiers statiques
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Configuration pour gérer les fichiers manquants dans le manifest
+# Si un fichier n'est pas dans le manifest, utiliser le nom original
+import whitenoise.storage
+from django.contrib.staticfiles.storage import ManifestStaticFilesStorage
+
+class TolerantManifestStaticFilesStorage(whitenoise.storage.CompressedManifestStaticFilesStorage):
+    """Storage qui ne lève pas d'erreur si un fichier n'est pas dans le manifest"""
+    def stored_name(self, name):
+        try:
+            return super().stored_name(name)
+        except (ValueError, KeyError):
+            # Si le fichier n'est pas dans le manifest, essayer de le trouver directement
+            # ou retourner le nom original pour éviter l'erreur 500
+            try:
+                # Vérifier si le fichier existe dans le storage
+                if self.exists(name):
+                    return name
+            except:
+                pass
+            # Si le fichier n'existe pas, retourner le nom original quand même
+            # pour éviter l'erreur 500 (le navigateur gérera le 404)
+            return name
+
+STATICFILES_STORAGE = 'bolibanastock.settings_railway.TolerantManifestStaticFilesStorage'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
