@@ -15,6 +15,16 @@ def setup_django_railway():
     project_root = Path(__file__).parent
     sys.path.insert(0, str(project_root))
     
+    # Vérifier que sendgrid est disponible dans cet environnement
+    try:
+        import sendgrid
+        from sendgrid import SendGridAPIClient
+        print(f"✅ SendGrid détecté: version {sendgrid.__version__}")
+        print(f"✅ SendGridAPIClient importable")
+    except ImportError as e:
+        print(f"⚠️ SendGrid non disponible dans cet environnement: {e}")
+        print(f"⚠️ Vérifiez que requirements.txt contient sendgrid et que le build a bien installé les dépendances")
+    
     # Forcer l'utilisation des settings Railway
     os.environ['DJANGO_SETTINGS_MODULE'] = 'bolibanastock.settings_railway'
     
