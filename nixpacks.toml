@@ -3,10 +3,13 @@ nixPkgs = ["python311", "python311Packages.pip"]
 
 [phases.install]
 cmds = [
+    "pip install --no-cache-dir --upgrade pip",
     "pip install --no-cache-dir -r requirements.txt",
     "pip install --no-cache-dir requests>=2.31.0",
+    "pip install --no-cache-dir sendgrid>=6.10.0",
     "echo 'Python dependencies installed successfully'",
-    "python -c 'import sendgrid; print(f\"✅ SendGrid installé: version {sendgrid.__version__}\")' || echo '⚠️ SendGrid non trouvé après installation'"
+    "python -c 'import sendgrid; print(f\"✅ SendGrid installé: version {sendgrid.__version__}\")' || echo '⚠️ SendGrid non trouvé après installation'",
+    "pip list | grep -i sendgrid || echo '⚠️ SendGrid non trouvé dans pip list'"
 ]
 
 [phases.build]
