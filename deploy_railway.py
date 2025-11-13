@@ -52,8 +52,9 @@ def deploy_railway():
         # 2. Vérifier la migration de la base de données
         print("\n🗄️ Vérification des migrations...")
         try:
-            # Vérifier d'abord si les tables existent
             from django.db import connection
+            
+            # Vérifier si la table django_migrations existe
             with connection.cursor() as cursor:
                 cursor.execute("""
                     SELECT EXISTS (
@@ -63,26 +64,62 @@ def deploy_railway():
                     );
                 """)
                 migrations_table_exists = cursor.fetchone()[0]
+                
+                # Vérifier si la table auth_permission existe (pour détecter le problème)
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'auth_permission'
+                    );
+                """)
+                auth_permission_exists = cursor.fetchone()[0]
             
             if not migrations_table_exists:
-                print("📋 Base de données vide, application des migrations initiales...")
-                # Créer les tables de base d'abord
-                call_command('migrate', '--run-syncdb', '--noinput')
+                print("📋 Base de données vide, application des migrations...")
+                # Base vide, appliquer normalement
+                call_command('migrate', '--noinput', verbosity=1)
+            elif not auth_permission_exists:
+                print("⚠️ Tables manquantes détectées, réapplication des migrations...")
+                # Les migrations sont marquées comme appliquées mais les tables n'existent pas
+                # Supprimer les entrées de django_migrations pour forcer la réapplication
+                with connection.cursor() as cursor:
+                    cursor.execute("DELETE FROM django_migrations;")
+                print("📋 Réapplication des migrations...")
+                call_command('migrate', '--noinput', verbosity=1)
+            else:
+                print("📋 Vérification des migrations...")
+                # Appliquer les migrations normalement
+                call_command('migrate', '--noinput', verbosity=1)
             
-            # Appliquer toutes les migrations
-            call_command('migrate', '--noinput', verbosity=1)
             print("✅ Migrations appliquées avec succès")
         except Exception as migrate_error:
-            print(f"❌ Erreur lors des migrations: {migrate_error}")
-            import traceback
-            traceback.print_exc()
-            # Essayer une approche alternative : migrations forcées
-            try:
-                print("🔄 Tentative de migration alternative...")
-                call_command('migrate', '--fake-initial', '--noinput')
-                print("✅ Migrations appliquées avec --fake-initial")
-            except Exception as e2:
-                print(f"⚠️ Migration alternative échouée: {e2}")
+            error_str = str(migrate_error)
+            if "does not exist" in error_str or "relation" in error_str.lower():
+                print(f"⚠️ Erreur de table manquante: {migrate_error}")
+                print("🔄 Tentative de réparation...")
+                try:
+                    from django.db import connection
+                    # Supprimer les entrées de django_migrations pour forcer la réapplication
+                    with connection.cursor() as cursor:
+                        try:
+                            cursor.execute("DELETE FROM django_migrations;")
+                            print("📋 Réapplication des migrations après nettoyage...")
+                            call_command('migrate', '--noinput', verbosity=1)
+                            print("✅ Migrations réappliquées avec succès")
+                        except Exception as e:
+                            # Si django_migrations n'existe pas non plus, créer tout
+                            print("📋 Création complète de la base de données...")
+                            call_command('migrate', '--run-syncdb', '--noinput')
+                            call_command('migrate', '--noinput', verbosity=1)
+                            print("✅ Base de données créée avec succès")
+                except Exception as e2:
+                    print(f"⚠️ Réparation échouée: {e2}")
+                    print("⚠️ Continuation du déploiement malgré l'erreur de migration...")
+            else:
+                print(f"❌ Erreur lors des migrations: {migrate_error}")
+                import traceback
+                traceback.print_exc()
                 print("⚠️ Continuation du déploiement malgré l'erreur de migration...")
         
         # 3. Vérifier que les fichiers sont présents
