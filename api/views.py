@@ -17,7 +17,7 @@ import re
 import requests
 import json
 from apps.core.forms import CustomUserUpdateForm, PublicSignUpForm
-from apps.core.models import User, Configuration, Parametre, Activite
+from apps.core.models import User, Configuration, Parametre, Activite, PasswordResetToken
 from apps.core.views import PublicSignUpView
 from apps.core.services import (
     PermissionService, UserInfoService,
@@ -80,6 +80,12 @@ from django.shortcuts import get_object_or_404
 from django.core.management import call_command
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.conf import settings
+import random
+from datetime import timedelta
+import threading
 
 
 class LoginView(APIView):
@@ -238,6 +244,366 @@ class ForceLogoutAllView(APIView):
             traceback.print_exc()
             return Response(
                 {'error': f'Erreur lors de la déconnexion forcée: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PasswordResetRequestView(APIView):
+    """
+    Vue pour demander une réinitialisation de mot de passe
+    Génère un code OTP et l'envoie par email
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email_or_username = request.data.get('email') or request.data.get('username')
+        
+        if not email_or_username:
+            return Response(
+                {'error': 'Email ou nom d\'utilisateur requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Chercher l'utilisateur par email ou username
+            user = None
+            if '@' in email_or_username:
+                # C'est probablement un email
+                try:
+                    user = User.objects.get(email=email_or_username)
+                except User.DoesNotExist:
+                    pass
+            else:
+                # C'est probablement un username
+                try:
+                    user = User.objects.get(username=email_or_username)
+                except User.DoesNotExist:
+                    pass
+
+            # Ne pas révéler si l'utilisateur existe ou non (sécurité)
+            # On retourne toujours un message de succès
+            if not user:
+                # Attendre un peu pour éviter l'énumération d'utilisateurs
+                import time
+                time.sleep(0.5)
+                return Response({
+                    'message': 'Si un compte existe avec cet email/username, un code de réinitialisation a été envoyé.'
+                }, status=status.HTTP_200_OK)
+
+            # Vérifier que l'utilisateur a un email
+            if not user.email:
+                return Response({
+                    'message': 'Si un compte existe avec cet email/username, un code de réinitialisation a été envoyé.'
+                }, status=status.HTTP_200_OK)
+
+            # Restreindre la réinitialisation aux administrateurs du site uniquement
+            if not user.is_site_admin:
+                logger.warning(f"Tentative de réinitialisation de mot de passe pour un utilisateur non-admin: {user.username}")
+                # Retourner le même message pour ne pas révéler la restriction
+                return Response({
+                    'message': 'Si un compte existe avec cet email/username, un code de réinitialisation a été envoyé.'
+                }, status=status.HTTP_200_OK)
+
+            # Générer un code OTP à 6 chiffres
+            code = str(random.randint(100000, 999999))
+
+            # Marquer les anciens tokens comme utilisés
+            PasswordResetToken.objects.filter(
+                user=user,
+                used=False,
+                expires_at__gt=timezone.now()
+            ).update(used=True)
+
+            # Créer un nouveau token
+            expires_at = timezone.now() + timedelta(minutes=15)
+            reset_token = PasswordResetToken.objects.create(
+                user=user,
+                code=code,
+                expires_at=expires_at,
+                used=False
+            )
+
+            # Envoyer l'email avec le code
+            try:
+                # Récupérer la configuration du site pour personnaliser l'email
+                # Priorité : site_configuration de l'utilisateur > première configuration disponible
+                site_config = None
+                if user.site_configuration:
+                    site_config = user.site_configuration
+                else:
+                    # Fallback vers la première configuration disponible
+                    site_config = Configuration.objects.first()
+                
+                # Déterminer l'email d'envoi (expéditeur)
+                # Priorité : email du site > EMAIL_HOST_USER (si ce n'est pas "apikey" pour SendGrid) > fallback
+                # Important : éviter que l'expéditeur soit identique au destinataire
+                from_email = 'bolibanastock@gmail.com'
+                
+                # Vérifier si on utilise SendGrid (EMAIL_HOST_USER = "apikey")
+                is_sendgrid = settings.EMAIL_HOST_USER == 'apikey'
+                
+                if site_config and site_config.email:
+                    # Utiliser l'email du site en priorité
+                    if site_config.email.lower() == user.email.lower():
+                        # Si l'email du site est identique à l'email utilisateur, utiliser le fallback
+                        from_email = 'bolibanastock@gmail.com'
+                        logger.warning(f"Email du site ({site_config.email}) identique à l'email utilisateur, utilisation du fallback: {from_email}")
+                    else:
+                        from_email = site_config.email
+                        logger.info(f"Utilisation de l'email du site comme expéditeur: {from_email} (site: {site_config.nom_societe})")
+                elif settings.EMAIL_HOST_USER and not is_sendgrid:
+                    # Utiliser EMAIL_HOST_USER seulement si ce n'est pas SendGrid
+                    if settings.EMAIL_HOST_USER.lower() == user.email.lower():
+                        from_email = 'bolibanastock@gmail.com'
+                        logger.warning(f"EMAIL_HOST_USER ({settings.EMAIL_HOST_USER}) identique à l'email utilisateur, utilisation du fallback: {from_email}")
+                    else:
+                        from_email = settings.EMAIL_HOST_USER
+                        logger.info(f"Utilisation de EMAIL_HOST_USER comme expéditeur (SMTP authentifié): {from_email}")
+                elif is_sendgrid:
+                    # Avec SendGrid, utiliser l'email du site ou le fallback
+                    logger.info(f"SendGrid détecté, utilisation de l'email du site ou fallback comme expéditeur")
+                else:
+                    logger.warning(f"Aucun EMAIL_HOST_USER ni email de site trouvé, utilisation du fallback: {from_email}")
+                
+                # Personnaliser le sujet avec le nom du site si disponible
+                site_name = site_config.nom_societe if site_config else 'BoliBana Stock'
+                subject = f'Réinitialisation de votre mot de passe - {site_name}'
+                
+                # Rendre le template email
+                context = {
+                    'user': user,
+                    'code': code,
+                    'expires_in_minutes': 15,
+                    'site_config': site_config,
+                    'site_name': site_name,
+                }
+                
+                # Essayer de charger le template HTML
+                try:
+                    message_html = render_to_string('emails/password_reset_otp.html', context)
+                    message_text = f"""
+Bonjour {user.get_full_name() or user.username},
+
+Vous avez demandé à réinitialiser votre mot de passe pour votre compte {site_name}.
+
+Votre code de réinitialisation est : {code}
+
+Ce code est valide pendant 15 minutes.
+
+Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.
+
+Cordialement,
+L'équipe {site_name}
+"""
+                except Exception:
+                    # Si le template n'existe pas, utiliser un message simple
+                    message_html = None
+                    message_text = f"""
+Bonjour {user.get_full_name() or user.username},
+
+Votre code de réinitialisation de mot de passe est : {code}
+
+Ce code est valide pendant 15 minutes.
+
+Cordialement,
+L'équipe {site_name}
+"""
+
+                # Envoyer l'email de manière asynchrone dans un thread séparé
+                # pour éviter de bloquer la requête HTTP (évite les timeouts Gunicorn)
+                def send_email_async():
+                    import sys
+                    try:
+                        # Forcer l'affichage des logs immédiatement
+                        print(f"[EMAIL_THREAD] Tentative d'envoi d'email OTP à {user.email} depuis {from_email}", flush=True)
+                        logger.info(f"[EMAIL_THREAD] Tentative d'envoi d'email OTP à {user.email} depuis {from_email}")
+                        
+                        # Vérifier si on utilise SendGrid Web API
+                        # Vérifier d'abord dans settings, puis dans os.getenv
+                        sendgrid_api_key = getattr(settings, 'SENDGRID_API_KEY', None) or os.getenv('SENDGRID_API_KEY', None)
+                        print(f"[EMAIL_THREAD] SENDGRID_API_KEY détectée: {'Oui' if sendgrid_api_key else 'Non'}", flush=True)
+                        if sendgrid_api_key:
+                            # Utiliser SendGrid Web API (HTTPS - fonctionne sur Railway)
+                            try:
+                                from sendgrid import SendGridAPIClient
+                                from sendgrid.helpers.mail import Mail
+                            except ImportError:
+                                # Le package sendgrid n'est pas installé - utiliser SMTP en fallback
+                                print(f"[EMAIL_THREAD] ⚠️ Package 'sendgrid' non installé, utilisation de SMTP en fallback", flush=True)
+                                logger.warning("Package 'sendgrid' non installé. Veuillez redéployer l'application pour installer le package depuis requirements.txt")
+                                raise ImportError("Package 'sendgrid' non installé. Redéployez l'application pour installer depuis requirements.txt")
+                            
+                            message = Mail(
+                                from_email=from_email,
+                                to_emails=user.email,
+                                subject=subject,
+                                plain_text_content=message_text,
+                                html_content=message_html if message_html else None
+                            )
+                            
+                            sg = SendGridAPIClient(sendgrid_api_key)
+                            response = sg.send(message)
+                            
+                            print(f"[EMAIL_THREAD] Résultat SendGrid API: {response.status_code}", flush=True)
+                            
+                            if response.status_code in [200, 202]:
+                                print(f"[EMAIL_THREAD] ✅ Code OTP envoyé avec succès à {user.email}", flush=True)
+                                logger.info(f"✅ Code OTP envoyé avec succès à {user.email} pour {user.username} (SendGrid API)")
+                            else:
+                                print(f"[EMAIL_THREAD] ⚠️ SendGrid API a retourné {response.status_code}", flush=True)
+                                logger.warning(f"⚠️ SendGrid API a retourné {response.status_code} pour {user.email}")
+                        else:
+                            # Utiliser SMTP Django (fallback)
+                            from django.core.mail import get_connection
+                            connection = get_connection(fail_silently=False)
+                            
+                            from django.core.mail import EmailMultiAlternatives
+                            email = EmailMultiAlternatives(
+                                subject=subject,
+                                body=message_text,
+                                from_email=from_email,
+                                to=[user.email],
+                                connection=connection
+                            )
+                            if message_html:
+                                email.attach_alternative(message_html, "text/html")
+                            
+                            result = email.send()
+                            print(f"[EMAIL_THREAD] Résultat send(): {result}", flush=True)
+                            
+                            if result == 1:
+                                print(f"[EMAIL_THREAD] ✅ Code OTP envoyé avec succès à {user.email}", flush=True)
+                                logger.info(f"✅ Code OTP envoyé avec succès à {user.email} pour {user.username}")
+                            else:
+                                print(f"[EMAIL_THREAD] ⚠️ send() a retourné {result} (attendu: 1)", flush=True)
+                                logger.warning(f"⚠️ send_mail a retourné {result} (attendu: 1) pour {user.email}")
+                    except Exception as email_error:
+                        # Logger l'erreur détaillée avec print pour forcer l'affichage
+                        error_msg = str(email_error)
+                        print(f"[EMAIL_THREAD] ❌ Erreur: {error_msg}", flush=True)
+                        import traceback
+                        traceback.print_exc()
+                        logger.error(f"❌ Erreur lors de l'envoi de l'email à {user.email}: {email_error}", exc_info=True)
+                        sendgrid_api_key_check = getattr(settings, 'SENDGRID_API_KEY', None)
+                        if sendgrid_api_key_check:
+                            logger.error(f"   SendGrid API Key configurée: Oui")
+                        else:
+                            logger.error(f"   SMTP Config - Host: {settings.EMAIL_HOST}, Port: {settings.EMAIL_PORT}, User: {settings.EMAIL_HOST_USER}, Timeout: {getattr(settings, 'EMAIL_TIMEOUT', 'Non défini')}")
+                    finally:
+                        print(f"[EMAIL_THREAD] Thread terminé pour {user.email}", flush=True)
+                
+                # Démarrer l'envoi d'email dans un thread séparé
+                email_thread = threading.Thread(target=send_email_async, daemon=True)
+                email_thread.start()
+                logger.info(f"Envoi d'email OTP initié pour {user.email} (thread asynchrone)")
+
+            except Exception as e:
+                logger.error(f"Erreur lors de la préparation de l'email: {e}", exc_info=True)
+                # Ne pas révéler l'erreur à l'utilisateur
+                return Response({
+                    'message': 'Si un compte existe avec cet email/username, un code de réinitialisation a été envoyé.'
+                }, status=status.HTTP_200_OK)
+
+            return Response({
+                'message': 'Si un compte existe avec cet email/username, un code de réinitialisation a été envoyé.'
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la demande de réinitialisation: {e}", exc_info=True)
+            # Toujours retourner un succès pour des raisons de sécurité
+            return Response({
+                'message': 'Si un compte existe avec cet email/username, un code de réinitialisation a été envoyé.'
+            }, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    """
+    Vue pour confirmer la réinitialisation de mot de passe avec le code OTP
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email_or_username = request.data.get('email') or request.data.get('username')
+        code = request.data.get('code')
+        new_password = request.data.get('new_password')
+
+        if not all([email_or_username, code, new_password]):
+            return Response(
+                {'error': 'Email/username, code et nouveau mot de passe requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validation du mot de passe
+        if len(new_password) < 8:
+            return Response(
+                {'error': 'Le mot de passe doit contenir au moins 8 caractères'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Chercher l'utilisateur
+            user = None
+            if '@' in email_or_username:
+                try:
+                    user = User.objects.get(email=email_or_username)
+                except User.DoesNotExist:
+                    return Response(
+                        {'error': 'Code invalide ou expiré'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                try:
+                    user = User.objects.get(username=email_or_username)
+                except User.DoesNotExist:
+                    return Response(
+                        {'error': 'Code invalide ou expiré'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            # Vérifier que l'utilisateur est administrateur du site
+            if not user.is_site_admin:
+                logger.warning(f"Tentative de confirmation de réinitialisation pour un utilisateur non-admin: {user.username}")
+                return Response(
+                    {'error': 'Code invalide ou expiré'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Chercher le token valide
+            reset_token = PasswordResetToken.objects.filter(
+                user=user,
+                code=code,
+                used=False
+            ).order_by('-created_at').first()
+
+            if not reset_token or not reset_token.is_valid():
+                return Response(
+                    {'error': 'Code invalide ou expiré'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Mettre à jour le mot de passe
+            user.set_password(new_password)
+            user.save()
+
+            # Marquer le token comme utilisé
+            reset_token.mark_as_used()
+
+            # Marquer tous les autres tokens non utilisés comme utilisés (sécurité)
+            PasswordResetToken.objects.filter(
+                user=user,
+                used=False
+            ).exclude(id=reset_token.id).update(used=True)
+
+            logger.info(f"Mot de passe réinitialisé pour {user.username}")
+
+            return Response({
+                'message': 'Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter.'
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la réinitialisation du mot de passe: {e}")
+            return Response(
+                {'error': 'Une erreur est survenue lors de la réinitialisation'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -778,14 +1144,16 @@ class ProductViewSet(viewsets.ModelViewSet):
             else:
                 context_notes = 'Ajustement inventaire'
         elif context == 'manual':
+            # Les actions manuelles sont considérées comme des écarts d'inventaire
             if notes and notes.strip():
-                # Éviter la duplication si les notes commencent déjà par "Ajout manuel"
-                if notes.strip().lower().startswith('ajout manuel'):
+                notes_lower = notes.strip().lower()
+                # Éviter la duplication si les notes commencent déjà par "Écart inventaire"
+                if notes_lower.startswith('écart inventaire'):
                     context_notes = notes.strip()
                 else:
-                    context_notes = f'Ajout manuel - {notes.strip()}'
+                    context_notes = f'Écart inventaire - Ajout manuel - {notes.strip()}'
             else:
-                context_notes = 'Ajout manuel'
+                context_notes = 'Écart inventaire - Ajout manuel'
         
         if not quantity or quantity <= 0:
             return Response(
@@ -845,6 +1213,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         # ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
         # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
         
+        # Nouveau paramètre pour spécifier le type de transaction
+        # 'out' = retrait normal, 'loss' = casse, None = auto (out ou backorder selon stock)
+        requested_transaction_type = request.data.get('transaction_type')
+        if requested_transaction_type and requested_transaction_type not in ['out', 'loss']:
+            return Response(
+                {'error': "transaction_type doit être 'out' ou 'loss'"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Utiliser une transaction atomique pour éviter les race conditions
         with transaction.atomic():
             # Recharger le produit depuis la base pour avoir la dernière version
@@ -855,16 +1232,21 @@ class ProductViewSet(viewsets.ModelViewSet):
             product.quantity -= quantity
             product.save()
             
-            # Déterminer le type de transaction selon le stock final
-            transaction_type = 'out'
-            if product.quantity < 0:
-                transaction_type = 'backorder'  # Nouveau type pour les backorders
+            # Déterminer le type de transaction
+            if requested_transaction_type:
+                # Si un type est explicitement demandé (out ou loss), l'utiliser
+                transaction_type = requested_transaction_type
+            else:
+                # Sinon, déterminer automatiquement selon le stock final
+                transaction_type = 'out'
+                if product.quantity < 0:
+                    transaction_type = 'backorder'  # Nouveau type pour les backorders
             
             # Récupérer le site de l'utilisateur
             user_site = getattr(request.user, 'site_configuration', None)
             
         # Nouveaux paramètres de contexte métier
-        context = request.data.get('context', 'manual')  # 'sale', 'inventory', 'return', 'manual'
+        context = request.data.get('context', 'manual')  # 'sale', 'inventory', 'return', 'manual', 'loss'
         context_id = request.data.get('context_id')     # ID du contexte
         
         # Gestion du contexte métier
@@ -884,8 +1266,23 @@ class ProductViewSet(viewsets.ModelViewSet):
             context_notes = f'Ajustement inventaire - {notes}'
         elif context == 'return':
             context_notes = f'Retour client - {notes}'
+        elif context == 'loss' or transaction_type == 'loss':
+            # Si c'est une casse, utiliser des notes spécifiques (pas un écart inventaire)
+            if notes and notes.strip() and not notes.strip().lower().startswith('casse'):
+                context_notes = f'Casse - {notes.strip()}'
+            else:
+                context_notes = notes if notes and notes.strip() else 'Casse'
         elif context == 'manual':
-            context_notes = f'Retrait manuel - {notes}'
+            # Les actions manuelles sont considérées comme des écarts d'inventaire
+            if notes and notes.strip():
+                notes_lower = notes.strip().lower()
+                # Éviter la duplication si les notes commencent déjà par "Écart inventaire"
+                if notes_lower.startswith('écart inventaire'):
+                    context_notes = notes.strip()
+                else:
+                    context_notes = f'Écart inventaire - Retrait manuel - {notes.strip()}'
+            else:
+                context_notes = 'Écart inventaire - Retrait manuel'
         
         # Compatibilité avec l'ancien paramètre sale_id
         sale_id = request.data.get('sale_id')
@@ -952,13 +1349,14 @@ class ProductViewSet(viewsets.ModelViewSet):
         
         if context == 'inventory':
             if notes and notes.strip():
-                # Éviter la duplication si les notes commencent déjà par "Ajustement inventaire"
-                if notes.strip().lower().startswith('ajustement inventaire'):
+                # Éviter la duplication si les notes commencent déjà par "Écart inventaire" ou "Ajustement inventaire"
+                notes_lower = notes.strip().lower()
+                if notes_lower.startswith('écart inventaire') or notes_lower.startswith('ajustement inventaire'):
                     context_notes = notes.strip()
                 else:
-                    context_notes = f'Ajustement inventaire - {notes.strip()}'
+                    context_notes = f'Écart inventaire - {notes.strip()}'
             else:
-                context_notes = 'Ajustement inventaire'
+                context_notes = 'Écart inventaire'
         elif context == 'correction':
             if notes and notes.strip():
                 # Éviter la duplication si les notes commencent déjà par "Correction stock"
@@ -969,14 +1367,16 @@ class ProductViewSet(viewsets.ModelViewSet):
             else:
                 context_notes = 'Correction stock'
         elif context == 'manual':
+            # Par défaut, les ajustements manuels sont considérés comme des écarts d'inventaire
             if notes and notes.strip():
-                # Éviter la duplication si les notes commencent déjà par "Ajustement manuel"
-                if notes.strip().lower().startswith('ajustement manuel'):
+                notes_lower = notes.strip().lower()
+                # Éviter la duplication si les notes commencent déjà par "Écart" ou "Ajustement"
+                if notes_lower.startswith('écart') or notes_lower.startswith('ajustement'):
                     context_notes = notes.strip()
                 else:
-                    context_notes = f'Ajustement manuel - {notes.strip()}'
+                    context_notes = f'Écart inventaire - {notes.strip()}'
             else:
-                context_notes = 'Ajustement manuel'
+                context_notes = 'Écart inventaire'
         
         if new_quantity is None or new_quantity < 0:
             return Response(
@@ -2763,6 +3163,8 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
         # Créer un dictionnaire modifiable à partir de request.data
         request_data = dict(request.data)
         logger.info(f"📥 [CREATE_BATCH] Données reçues: {request_data}")
+        logger.info(f"🔍 [CREATE_BATCH] Vérification include_price dans request_data: {request_data.get('include_price')}")
+        logger.info(f"🔍 [CREATE_BATCH] Toutes les clés de request_data: {list(request_data.keys())}")
         
         # Nettoyer la valeur 'channel' pour éviter les problèmes d'encodage
         if 'channel' in request_data:
@@ -2812,6 +3214,17 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
             copies_total=0,
         )
 
+        # Récupérer include_price depuis request_data (peut être passé depuis le mobile)
+        include_price_from_request = request_data.get('include_price')
+        logger.info(f"🔍 [CREATE_BATCH] include_price reçu: {include_price_from_request} (type: {type(include_price_from_request)})")
+        if include_price_from_request is not None:
+            # Convertir en booléen si c'est une chaîne
+            if isinstance(include_price_from_request, str):
+                include_price_from_request = include_price_from_request.lower() in ('true', '1', 'yes', 'on')
+            elif not isinstance(include_price_from_request, bool):
+                include_price_from_request = bool(include_price_from_request)
+            logger.info(f"✅ [CREATE_BATCH] include_price converti: {include_price_from_request}")
+
         # Créer les items
         position = 0
         total_copies = 0
@@ -2821,13 +3234,48 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
         for item in items_data:
             product = Product.objects.get(id=item['product_id'])
             copies = item.get('copies', 1)
-            barcode_value = item.get('barcode_value') or ''
+            
+            # Logique pour déterminer le code-barres à utiliser
+            # 1. Vérifier si le produit a des barcodes dans le tableau
+            primary_barcode = product.barcodes.filter(is_primary=True).first()
+            if not primary_barcode:
+                primary_barcode = product.barcodes.first()
+            
+            # 2. Si pas de barcodes dans le tableau, utiliser generated_ean (au lieu du CUG)
+            barcode_value = item.get('barcode_value', '').strip()
+            if not barcode_value:
+                if primary_barcode and primary_barcode.ean:
+                    barcode_value = primary_barcode.ean
+                    barcode_source = 'primary_barcode'
+                elif product.generated_ean:
+                    barcode_value = product.generated_ean
+                    barcode_source = 'generated_ean'
+                else:
+                    # Dernier recours : générer depuis le CUG (pas utiliser le CUG directement)
+                    from apps.inventory.utils import generate_ean13_from_cug
+                    barcode_value = generate_ean13_from_cug(product.cug) if product.cug else str(product.id)
+                    barcode_source = 'generated_from_cug_fallback'
+            else:
+                barcode_source = 'provided'
+            
+            print(f"🔍 [CREATE_BATCH] Produit {product.name} (ID: {product.id})")
+            print(f"   CUG: {product.cug}")
+            print(f"   generated_ean: {product.generated_ean}")
+            print(f"   primary_barcode: {primary_barcode.ean if primary_barcode else 'None'}")
+            print(f"   barcode_value utilisé: {barcode_value} (source: {barcode_source})")
+            
+            # Stocker include_price dans data_snapshot du premier item pour pouvoir le récupérer plus tard
+            data_snapshot = None
+            if position == 0 and include_price_from_request is not None:
+                data_snapshot = {'include_price': include_price_from_request}
+            
             LabelItem.objects.create(
                 batch=batch,
                 product=product,
                 copies=copies,
                 barcode_value=barcode_value,
                 position=position,
+                data_snapshot=data_snapshot,
             )
             total_copies += copies
             position += 1
@@ -2852,7 +3300,27 @@ class LabelBatchViewSet(viewsets.ModelViewSet):
     def tsc(self, request, pk=None):
         """Générer un fichier TSC pour le lot d'étiquettes"""
         batch = self.get_object()
-        tsc_text, filename = render_label_batch_tsc(batch)
+        
+        # Récupérer include_price depuis les paramètres de requête (GET) en priorité
+        include_price_param = request.query_params.get('include_price')
+        include_price_override = None
+        
+        if include_price_param is not None:
+            # Convertir la chaîne en booléen
+            include_price_override = include_price_param.lower() in ('true', '1', 'yes', 'on')
+            logger.info(f"🔍 [TSC] include_price depuis query_params: {include_price_override}")
+        else:
+            # Si non fourni dans l'URL, récupérer depuis data_snapshot du premier item
+            first_item = batch.items.first()
+            if first_item and first_item.data_snapshot:
+                include_price_from_snapshot = first_item.data_snapshot.get('include_price')
+                if include_price_from_snapshot is not None:
+                    include_price_override = bool(include_price_from_snapshot)
+                    logger.info(f"🔍 [TSC] include_price depuis data_snapshot: {include_price_override}")
+        
+        logger.info(f"🔍 [TSC] include_price_override final pour render_label_batch_tsc: {include_price_override}")
+        
+        tsc_text, filename = render_label_batch_tsc(batch, include_price_override=include_price_override)
         from django.http import HttpResponse
         resp = HttpResponse(tsc_text, content_type='text/plain; charset=utf-8')
         resp['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -2997,20 +3465,45 @@ class LabelGeneratorAPIView(APIView):
             
             # Ajouter tous les produits (avec ou sans codes-barres)
             for product in products:
+                # Récupérer le code-barres principal du modèle Barcode
                 primary_barcode = product.barcodes.filter(is_primary=True).first()
                 if not primary_barcode:
                     primary_barcode = product.barcodes.first()
                 
-                # Utiliser l'EAN généré stocké (toujours disponible maintenant)
-                barcode_ean = product.generated_ean
+                # Priorité 1 : EAN du modèle Barcode (manuel)
+                # Priorité 2 : EAN généré dans Product (automatique)
+                barcode_ean_from_model = primary_barcode.ean if primary_barcode else None
+                barcode_ean_generated = product.generated_ean
+                
+                # Utiliser l'EAN du modèle Barcode s'il existe, sinon l'EAN généré
+                barcode_ean = barcode_ean_from_model or barcode_ean_generated
+                has_barcode_ean = bool(barcode_ean_from_model and barcode_ean_from_model.strip())
+                has_generated_ean = bool(barcode_ean_generated and barcode_ean_generated.strip())
+                has_ean = has_barcode_ean or has_generated_ean
+                
+                # Récupérer l'URL de l'image
+                image_url = get_product_image_url(product)
+                # S'assurer que l'URL est valide (non vide et non None)
+                if image_url:
+                    image_url = str(image_url).strip()
+                    if not image_url or image_url == 'None':
+                        image_url = None
+                else:
+                    image_url = None
                 
                 label_data['products'].append({
                     'id': product.id,
                     'name': product.name,
                     'cug': product.cug,
-                    'barcode_ean': barcode_ean,
+                    'barcode_ean': barcode_ean or '',  # EAN utilisé (priorité au modèle Barcode)
+                    'barcode_ean_from_model': barcode_ean_from_model or '',  # EAN du modèle Barcode
+                    'barcode_ean_generated': barcode_ean_generated or '',  # EAN généré
+                    'has_ean': has_ean,
+                    'has_barcode_ean': has_barcode_ean,  # A un EAN dans le modèle Barcode
+                    'has_generated_ean': has_generated_ean,  # A un EAN généré
                     'selling_price': product.selling_price,
                     'quantity': product.quantity,
+                    'image_url': image_url,
                     'category': {
                         'id': product.category.id,
                         'name': product.category.name
@@ -3098,10 +3591,8 @@ class LabelGeneratorAPIView(APIView):
 
 def get_product_image_url(product):
     """Retourne l'URL complète de l'image du produit.
-    Utilise la même logique que ProductSerializer.get_image_url() pour éviter les duplications de chemin.
+    Utilise le système de stockage Django pour générer l'URL correcte (signée si nécessaire).
     """
-    from api.serializers import clean_image_path
-    
     image_field = getattr(product, 'image', None)
     
     # Tenter d'utiliser l'image de l'original si ProductCopy existe et lie ce produit
@@ -3115,12 +3606,87 @@ def get_product_image_url(product):
 
     if image_field:
         try:
+            # Essayer d'abord d'utiliser l'URL générée par le système de stockage Django
+            # Cela garantit que les URLs signées sont générées correctement si nécessaire
+            try:
+                storage_url = image_field.url
+                if storage_url and storage_url.startswith('http'):
+                    # L'URL générée par le storage est valide, l'utiliser
+                    # Corriger les fautes de frappe dans le nom du bucket si nécessaire
+                    bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+                    if bucket_name:
+                        storage_url = storage_url.replace('bolibana-stocck', 'bolibana-stock')
+                        storage_url = storage_url.replace('bolibana-stockk', 'bolibana-stock')
+                        storage_url = storage_url.replace('bolibanna-stock', 'bolibana-stock')
+                    return storage_url
+            except Exception as e:
+                # Si le storage ne peut pas générer l'URL, continuer avec la construction manuelle
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"⚠️ [get_product_image_url] Impossible de générer l'URL via storage: {e}")
+                pass
+            
             from django.conf import settings
             if getattr(settings, 'AWS_S3_ENABLED', False):
                 region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
-                # Nettoyer le chemin pour éviter les duplications
-                cleaned_path = clean_image_path(image_field.name)
-                return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{cleaned_path}"
+                image_path = image_field.name
+                
+                # ÉTAPE 1: Corriger TOUS les "produccts" → "products" AVANT toute autre opération
+                # Utiliser replace() globalement pour s'assurer que toutes les occurrences sont corrigées
+                image_path = image_path.replace('produccts', 'products')
+                
+                # ÉTAPE 2: Nettoyer le chemin et s'assurer que la duplication existe
+                # Pattern réel sur S3: assets/products/site-XXX/assets/products/site-XXX/filename (AVEC duplication)
+                # Pattern parfois stocké en DB sans duplication: assets/products/site-XXX/filename
+                import re
+                
+                # Vérifier si la duplication existe déjà
+                duplication_pattern = r'^assets/products/(site-\d+)/assets/products/\1/(.+)$'
+                duplication_match = re.match(duplication_pattern, image_path)
+                
+                if not duplication_match:
+                    # La duplication n'existe pas, l'ajouter
+                    single_pattern = r'^assets/products/(site-\d+)/(.+)$'
+                    single_match = re.match(single_pattern, image_path)
+                    
+                    if single_match:
+                        # Le chemin n'a pas la duplication, l'ajouter
+                        site_id = single_match.group(1)
+                        filename = single_match.group(2)
+                        image_path = f'assets/products/{site_id}/assets/products/{site_id}/{filename}'
+                    else:
+                        # Cas spécial : chemin avec duplication partielle ou malformé
+                        # Vérifier d'abord s'il reste encore "produccts" après le remplacement initial
+                        if 'produccts' in image_path:
+                            # Forcer le remplacement une dernière fois
+                            image_path = image_path.replace('produccts', 'products')
+                        
+                        # Essayer d'extraire le site_id et filename de n'importe quel pattern
+                        mixed_pattern = r'assets/products/(site-\d+).*?/(.+)$'
+                        mixed_match = re.search(mixed_pattern, image_path)
+                        if mixed_match:
+                            site_id = mixed_match.group(1)
+                            filename = mixed_match.group(2)
+                            # Reconstruire le chemin avec duplication (format réel sur S3)
+                            image_path = f'assets/products/{site_id}/assets/products/{site_id}/{filename}'
+                        else:
+                            # Dernier recours : essayer de trouver le site_id même avec "produccts"
+                            produccts_pattern = r'assets/(?:produccts|products)/(site-\d+).*?/(.+)$'
+                            produccts_match = re.search(produccts_pattern, image_path)
+                            if produccts_match:
+                                site_id = produccts_match.group(1)
+                                filename = produccts_match.group(2)
+                                # Reconstruire le chemin avec duplication (format réel sur S3)
+                                image_path = f'assets/products/{site_id}/assets/products/{site_id}/{filename}'
+                
+                bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+                # Corriger les fautes de frappe courantes dans le nom du bucket
+                if bucket_name:
+                    bucket_name = bucket_name.replace('bolibana-stocck', 'bolibana-stock')
+                    bucket_name = bucket_name.replace('bolibana-stockk', 'bolibana-stock')
+                    bucket_name = bucket_name.replace('bolibanna-stock', 'bolibana-stock')
+                
+                return f"https://{bucket_name}.s3.{region}.amazonaws.com/{image_path}"
             else:
                 # Fallback pour les environnements sans S3
                 url = image_field.url
@@ -3128,7 +3694,9 @@ def get_product_image_url(product):
                     return url
                 media_url = getattr(settings, 'MEDIA_URL', '/media/')
                 if media_url.startswith('http'):
-                    return f"{media_url.rstrip('/')}/{image_field.name}"
+                    # Utiliser le chemin tel qu'il est stocké dans la base de données
+                    image_path = image_field.name
+                    return f"{media_url.rstrip('/')}/{image_path}"
                 return f"https://web-production-e896b.up.railway.app{url}"
         except (ValueError, AttributeError) as e:
             print(f"⚠️ Erreur dans get_product_image_url: {e}")
@@ -3311,7 +3879,7 @@ class CatalogPDFAPIView(APIView):
                 )
             
             if user.is_superuser:
-                products = Product.objects.filter(id__in=product_ids).select_related('category', 'brand')
+                products = Product.objects.filter(id__in=product_ids).select_related('category', 'brand').prefetch_related('barcodes')
             else:
                 if not user_site:
                     return Response(
@@ -3321,7 +3889,7 @@ class CatalogPDFAPIView(APIView):
                 products = Product.objects.filter(
                     id__in=product_ids,
                     site_configuration=user_site
-                ).select_related('category', 'brand')
+                ).select_related('category', 'brand').prefetch_related('barcodes')
             
             if not products.exists():
                 return Response(
@@ -3368,11 +3936,27 @@ class CatalogPDFAPIView(APIView):
             }
             
             for product in products:
+                # Récupérer le code-barres principal du modèle Barcode
+                primary_barcode = product.barcodes.filter(is_primary=True).first()
+                if not primary_barcode:
+                    primary_barcode = product.barcodes.first()
+                
+                # Priorité 1 : EAN du modèle Barcode (manuel)
+                # Priorité 2 : EAN généré dans Product (automatique)
+                barcode_ean_from_model = primary_barcode.ean if primary_barcode else None
+                barcode_ean_generated = product.generated_ean
+                
+                # Utiliser l'EAN du modèle Barcode s'il existe, sinon l'EAN généré
+                barcode_ean = barcode_ean_from_model or barcode_ean_generated
+                
                 product_data = {
                     'id': product.id,
                     'name': product.name,
                     'cug': product.cug,
-                    'generated_ean': product.generated_ean,
+                    'barcode_ean': barcode_ean or '',  # EAN utilisé (priorité au modèle Barcode)
+                    'barcode_ean_from_model': barcode_ean_from_model or '',  # EAN du modèle Barcode
+                    'barcode_ean_generated': barcode_ean_generated or '',  # EAN généré
+                    'generated_ean': barcode_ean_generated or '',  # Pour compatibilité
                     'category': product.category.name if product.category else None,
                     'brand': product.brand.name if product.brand else None,
                 }
@@ -3489,11 +4073,36 @@ class LabelPrintAPIView(APIView):
             
             # Ajouter les étiquettes au lot
             for i, product in enumerate(products):
+                # Logique pour déterminer le code-barres à utiliser
+                # 1. Vérifier si le produit a des barcodes dans le tableau
+                primary_barcode = product.barcodes.filter(is_primary=True).first()
+                if not primary_barcode:
+                    primary_barcode = product.barcodes.first()
+                
+                # 2. Si pas de barcodes dans le tableau, utiliser generated_ean (au lieu du CUG)
+                if primary_barcode and primary_barcode.ean:
+                    barcode_value = primary_barcode.ean
+                    barcode_source = 'primary_barcode'
+                elif product.generated_ean:
+                    barcode_value = product.generated_ean
+                    barcode_source = 'generated_ean'
+                else:
+                    # Dernier recours : générer depuis l'ID (pas le CUG)
+                    from apps.inventory.utils import generate_ean13_from_cug
+                    barcode_value = generate_ean13_from_cug(product.cug) if product.cug else str(product.id)
+                    barcode_source = 'generated_from_cug_fallback'
+                
+                print(f"🔍 [LABELS API] Produit {product.name} (ID: {product.id})")
+                print(f"   CUG: {product.cug}")
+                print(f"   generated_ean: {product.generated_ean}")
+                print(f"   primary_barcode: {primary_barcode.ean if primary_barcode else 'None'}")
+                print(f"   barcode_value utilisé: {barcode_value} (source: {barcode_source})")
+                
                 LabelItem.objects.create(
                     batch=label_batch,
                     product=product,
                     copies=copies,
-                    barcode_value=product.generated_ean or product.cug,
+                    barcode_value=barcode_value,
                     position=i
                 )
             
@@ -4096,7 +4705,7 @@ class ProductCopyAPIView(APIView):
                         'id': product.brand.id,
                         'name': product.brand.name
                     } if product.brand else None,
-                    'image_url': product.image.url if product.image else None,
+                    'image_url': get_product_image_url(product),
                     'is_active': product.is_active,
                     'created_at': product.created_at.isoformat(),
                     'updated_at': product.updated_at.isoformat(),
@@ -4292,7 +4901,7 @@ class ProductCopyAPIView(APIView):
                                 'selling_price': float(copied_product.selling_price),
                                 'purchase_price': float(copied_product.purchase_price),
                                 'quantity': copied_product.quantity,
-                                'image_url': request.build_absolute_uri(copied_product.image.url) if copied_product.image else None,
+                                'image_url': get_product_image_url(copied_product),
                                 'category': {
                                     'id': copied_product.category.id,
                                     'name': copied_product.category.name
@@ -4384,7 +4993,7 @@ class ProductCopyManagementAPIView(APIView):
                         'cug': copy.original_product.cug,
                         'selling_price': float(copy.original_product.selling_price),
                         'quantity': copy.original_product.quantity,
-                        'image_url': request.build_absolute_uri(copy.original_product.image.url) if copy.original_product.image else None,
+                        'image_url': get_product_image_url(copy.original_product),
                         'category': {
                             'id': copy.original_product.category.id,
                             'name': copy.original_product.category.name
@@ -4401,7 +5010,7 @@ class ProductCopyManagementAPIView(APIView):
                         'selling_price': float(copy.copied_product.selling_price),
                         'quantity': copy.copied_product.quantity,
                         'is_active': copy.copied_product.is_active,
-                        'image_url': request.build_absolute_uri(copy.copied_product.image.url) if copy.copied_product.image else None,
+                        'image_url': get_product_image_url(copy.copied_product),
                     },
                     'source_site': {
                         'id': copy.source_site.id,
