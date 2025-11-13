@@ -57,7 +57,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
   
   // Options de configuration simplifiées
   const [copies, setCopies] = useState(1);
-  const [includePrices, setIncludePrices] = useState(true);
+  const [includePrices, setIncludePrices] = useState(false); // Prix désactivé pour les étiquettes individuelles
   
   // Configuration de l'imprimante
   // ESC/POS retiré : réservé aux tickets de caisse, pas adapté pour les étiquettes
@@ -464,25 +464,45 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
           }
         }
         
-        // 2. Fallback vers generated_ean si pas de barcodes dans le tableau
-        if (!eanCode && product.generated_ean && product.generated_ean.length === 13) {
-          eanCode = product.generated_ean;
-          barcodeSource = 'generated_ean';
-        }
-        
-        // 3. Fallback vers les anciens champs pour compatibilité
-        if (!eanCode && product.barcode_ean && product.barcode_ean.length === 13) {
-          eanCode = product.barcode_ean;
-          barcodeSource = 'barcode_ean_legacy';
-        } else if (!eanCode && product.ean && product.ean.length === 13) {
-          eanCode = product.ean;
-          barcodeSource = 'ean_legacy';
-        }
-        
-        // 4. Dernier recours : générer un EAN basé sur l'ID du produit
+        // 2. Si pas de barcodes dans le tableau, utiliser generated_ean (au lieu du CUG)
         if (!eanCode) {
-          eanCode = generateEANFromProductId(product.id);
-          barcodeSource = 'generated_from_id';
+          console.log(`🔍 [LABELS] Pas de barcodes dans le tableau pour ${product.name}`);
+          console.log(`   generated_ean:`, product.generated_ean);
+          console.log(`   barcode_ean:`, product.barcode_ean);
+          console.log(`   ean:`, product.ean);
+          console.log(`   cug:`, product.cug);
+          
+          // Priorité 1 : generated_ean (toujours disponible pour les produits)
+          // Vérifier si generated_ean existe et n'est pas vide
+          if (product.generated_ean && product.generated_ean.trim().length > 0) {
+            // Si generated_ean a 13 caractères, l'utiliser directement
+            if (product.generated_ean.trim().length === 13) {
+              eanCode = product.generated_ean.trim();
+              barcodeSource = 'generated_ean';
+              console.log(`✅ [LABELS] Utilisation generated_ean: ${eanCode}`);
+            } else {
+              // Si generated_ean n'a pas 13 caractères, générer depuis l'ID
+              eanCode = generateEANFromProductId(product.id);
+              barcodeSource = 'generated_from_id_fallback';
+              console.log(`⚠️ [LABELS] generated_ean invalide (${product.generated_ean.length} caractères), génération depuis ID: ${eanCode}`);
+            }
+          } else {
+            // Fallback vers les anciens champs pour compatibilité
+            if (product.barcode_ean && product.barcode_ean.length === 13) {
+              eanCode = product.barcode_ean;
+              barcodeSource = 'barcode_ean_legacy';
+              console.log(`✅ [LABELS] Utilisation barcode_ean_legacy: ${eanCode}`);
+            } else if (product.ean && product.ean.length === 13) {
+              eanCode = product.ean;
+              barcodeSource = 'ean_legacy';
+              console.log(`✅ [LABELS] Utilisation ean_legacy: ${eanCode}`);
+            } else {
+              // Dernier recours : générer un EAN basé sur l'ID du produit (pas le CUG)
+              eanCode = generateEANFromProductId(product.id);
+              barcodeSource = 'generated_from_id';
+              console.log(`⚠️ [LABELS] Aucun EAN disponible, génération depuis ID (pas CUG): ${eanCode}`);
+            }
+          }
         }
         
         // Valider le code-barres généré
@@ -727,6 +747,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
         include_cug: includeCug,
         include_ean: includeEan,
         include_barcode: includeBarcode,
+        include_price: includePrices, // Ajouter include_price depuis l'état
           printer_type: printerType,
           thermal_settings: thermalSettings
         };

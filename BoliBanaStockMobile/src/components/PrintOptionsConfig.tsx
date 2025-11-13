@@ -18,6 +18,8 @@ interface PrintOptionsConfigProps {
   setIncludeDescriptions?: (value: boolean) => void;
   includeImages?: boolean;
   setIncludeImages?: (value: boolean) => void;
+  includeBarcode?: boolean;
+  setIncludeBarcode?: (value: boolean) => void;
   
   // Options spécifiques aux étiquettes
   copies?: number;
@@ -39,14 +41,14 @@ export const PrintOptionsConfig: React.FC<PrintOptionsConfigProps> = ({
   setIncludeDescriptions,
   includeImages,
   setIncludeImages,
+  includeBarcode,
+  setIncludeBarcode,
   copies,
   setCopies,
   includeCug,
   setIncludeCug,
   includeEan,
   setIncludeEan,
-  includeBarcode,
-  setIncludeBarcode,
   screenType,
 }) => {
   const handleCopiesChange = (text: string) => {
@@ -58,16 +60,18 @@ export const PrintOptionsConfig: React.FC<PrintOptionsConfigProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Options communes */}
-      <View style={styles.optionRow}>
-        <Text style={styles.optionLabel}>💰 Afficher le prix</Text>
-        <Switch
-          value={includePrices}
-          onValueChange={setIncludePrices}
-          trackColor={{ false: '#e9ecef', true: '#28a745' }}
-          thumbColor={includePrices ? '#ffffff' : '#f4f3f4'}
-        />
-      </View>
+      {/* Options communes - Prix retiré pour les étiquettes individuelles */}
+      {screenType !== 'labels' && (
+        <View style={styles.optionRow}>
+          <Text style={styles.optionLabel}>💰 Afficher le prix</Text>
+          <Switch
+            value={includePrices}
+            onValueChange={setIncludePrices}
+            trackColor={{ false: '#e9ecef', true: '#28a745' }}
+            thumbColor={includePrices ? '#ffffff' : '#f4f3f4'}
+          />
+        </View>
+      )}
 
       {includeStock !== undefined && setIncludeStock && (
       <View style={styles.optionRow}>
@@ -105,6 +109,26 @@ export const PrintOptionsConfig: React.FC<PrintOptionsConfigProps> = ({
                 trackColor={{ false: '#e9ecef', true: '#28a745' }}
                 thumbColor={includeImages ? '#ffffff' : '#f4f3f4'}
               />
+            </View>
+          )}
+
+          {includeBarcode !== undefined && setIncludeBarcode && (
+            <View style={styles.optionRow}>
+              <Text style={styles.optionLabel}>📊 Inclure les code-barres</Text>
+              <Switch
+                value={includeBarcode}
+                onValueChange={setIncludeBarcode}
+                trackColor={{ false: '#e9ecef', true: '#28a745' }}
+                thumbColor={includeBarcode ? '#ffffff' : '#f4f3f4'}
+              />
+            </View>
+          )}
+          
+          {includeBarcode !== undefined && !includeBarcode && (
+            <View style={styles.infoBox}>
+              <Text style={styles.infoText}>
+                💡 Mode dossier : Catalogue sans code-barres pour économiser les étiquettes individuelles. Imprimez une fois et gardez à côté.
+              </Text>
             </View>
           )}
         </>
@@ -187,5 +211,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     minWidth: 50,
     backgroundColor: '#f8f9fa',
+  },
+  infoBox: {
+    backgroundColor: '#E3F2FD',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#2196F3',
+  },
+  infoText: {
+    fontSize: 12,
+    color: '#1565C0',
+    lineHeight: 18,
   },
 });

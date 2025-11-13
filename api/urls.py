@@ -13,6 +13,7 @@ from .views import (
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
     CustomerViewSet, CreditTransactionViewSet,
     RefreshTokenView, ForceLogoutAllView,
+    PasswordResetRequestView, PasswordResetConfirmView,
     LabelTemplateViewSet, LabelBatchViewSet, BarcodeViewSet, LabelGeneratorAPIView,
     CatalogPDFAPIView, LabelPrintAPIView, ReceiptPrintAPIView,
     collect_static_files, GetRayonsView, GetSubcategoriesMobileView,
@@ -61,6 +62,8 @@ urlpatterns = [
     path('auth/refresh/', RefreshTokenView.as_view(), name='api_refresh'),
     path('auth/logout/', LogoutView.as_view(), name='api_logout'),
     path('auth/logout-all/', ForceLogoutAllView.as_view(), name='api_logout_all'),
+    path('auth/password-reset/request/', PasswordResetRequestView.as_view(), name='api_password_reset_request'),
+    path('auth/password-reset/confirm/', PasswordResetConfirmView.as_view(), name='api_password_reset_confirm'),
     path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     

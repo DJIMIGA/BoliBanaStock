@@ -154,6 +154,7 @@ export interface ApiError {
 export type RootStackParamList = {
   Login: undefined;
   Signup: undefined;
+  ForgotPassword: undefined;
   MainTabs: undefined;
   Dashboard: undefined;
   Products: undefined;
@@ -168,6 +169,9 @@ export type RootStackParamList = {
   Profile: undefined;
   Reports: undefined;
   SalesReport: undefined;
+  ShrinkageReport: undefined;
+  StockReport: undefined;
+  FinancialReport: undefined;
   Inventory: undefined;
   Delivery: undefined;
   LowStock: undefined;

@@ -58,7 +58,7 @@ interface ProductDetail {
 
 interface StockMovement {
   id: number;
-  type: 'in' | 'out' | 'adjustment' | 'backorder';
+  type: 'in' | 'out' | 'loss' | 'adjustment' | 'backorder';
   quantity: number;
   stock_before?: number;
   stock_after?: number;
@@ -72,7 +72,7 @@ interface StockMovement {
 
 interface StockActionModal {
   visible: boolean;
-  type: 'add' | 'remove' | 'adjust';
+  type: 'add' | 'remove' | 'loss' | 'adjust';
   title: string;
   placeholder: string;
   quantity: string;
@@ -192,6 +192,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     switch (type) {
       case 'in': return 'arrow-down-circle';
       case 'out': return 'arrow-up-circle';
+      case 'loss': return 'trash'; // Icône pour la casse
       case 'adjustment': return 'swap-horizontal';
       case 'backorder': return 'alert-circle';
       default: return 'help-circle';
@@ -202,6 +203,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     switch (type) {
       case 'in': return theme.colors.success[500];
       case 'out': return theme.colors.error[500];
+      case 'loss': return theme.colors.error[600]; // Casse en rouge foncé
       case 'adjustment': return theme.colors.warning[500];
       case 'backorder': return theme.colors.warning[600];
       default: return theme.colors.neutral[500];
@@ -212,16 +214,18 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     switch (type) {
       case 'in': return 'Entrée';
       case 'out': return 'Sortie';
-      case 'adjustment': return 'Ajustement';
+      case 'loss': return 'Casse';
+      case 'adjustment': return 'Écart inventaire';
       case 'backorder': return 'Stock négatif';
       default: return 'Mouvement';
     }
   };
 
-  const openActionModal = (type: 'add' | 'remove' | 'adjust') => {
+  const openActionModal = (type: 'add' | 'remove' | 'loss' | 'adjust') => {
     const config = {
       add: { title: 'Ajouter au stock', placeholder: 'Quantité à ajouter' },
       remove: { title: 'Retirer du stock', placeholder: 'Quantité à retirer' },
+      loss: { title: 'Casse', placeholder: 'Quantité cassée' },
       adjust: { title: 'Ajuster le stock', placeholder: 'Nouvelle quantité totale' }
     };
 
@@ -269,18 +273,27 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           });
           break;
         case 'remove':
-          // Utiliser le contexte 'manual' pour les retraits manuels
+          // Utiliser le contexte 'manual' pour les retraits manuels (retrait normal)
           // ✅ NOUVELLE LOGIQUE: Permettre les stocks négatifs pour les backorders
           result = await productService.removeStock(product.id, quantity, {
             notes: actionModal.notes,
-            context: 'manual'
+            context: 'manual',
+            transactionType: 'out' // Retrait normal
+          });
+          break;
+        case 'loss':
+          // Casse : utiliser le type de transaction 'loss' pour les rapports
+          result = await productService.removeStock(product.id, quantity, {
+            notes: actionModal.notes,
+            context: 'loss',
+            transactionType: 'loss' // Type spécifique pour la casse
           });
           break;
         case 'adjust':
-          // Utiliser le contexte 'manual' pour les ajustements manuels
+          // Écart inventaire : utiliser le contexte 'manual' qui sera identifié comme écart
           result = await productService.adjustStock(product.id, quantity, {
             notes: actionModal.notes,
-            context: 'manual'
+            context: 'manual' // Sera identifié comme "Écart inventaire" dans les notes
           });
           break;
       }
@@ -570,14 +583,17 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Actions</Text>
+        <Text style={styles.sectionTitle}>Corrections manuelles</Text>
+        <Text style={styles.sectionDescription}>
+          Toutes les actions manuelles sont enregistrées comme des écarts d'inventaire. "Ajouter" ajoute une quantité au stock. "Retirer" retire une quantité. "Ajuster à" définit directement la nouvelle quantité totale (ex: si stock=10 et vous entrez 15, le stock devient 15). La casse est enregistrée séparément pour les rapports.
+        </Text>
         
         <TouchableOpacity 
           style={styles.actionButton}
           onPress={() => openActionModal('add')}
         >
           <Ionicons name="add-circle-outline" size={20} color={theme.colors.text.inverse} />
-          <Text style={styles.actionButtonText}>Ajouter au stock</Text>
+          <Text style={styles.actionButtonText}>Ajouter</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -585,7 +601,15 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           onPress={() => openActionModal('remove')}
         >
           <Ionicons name="remove-circle-outline" size={20} color={theme.colors.text.inverse} />
-          <Text style={styles.actionButtonText}>Retirer du stock</Text>
+          <Text style={styles.actionButtonText}>Retirer</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.actionButton, { backgroundColor: theme.colors.error[500] }]}
+          onPress={() => openActionModal('loss')}
+        >
+          <Ionicons name="trash-outline" size={20} color={theme.colors.text.inverse} />
+          <Text style={styles.actionButtonText}>Casse</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -593,7 +617,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           onPress={() => openActionModal('adjust')}
         >
           <Ionicons name="swap-horizontal-outline" size={20} color={theme.colors.text.inverse} />
-          <Text style={styles.actionButtonText}>Ajuster le stock</Text>
+          <Text style={styles.actionButtonText}>Ajuster</Text>
         </TouchableOpacity>
       </View>
 
@@ -982,6 +1006,12 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.lg,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
+    marginBottom: theme.spacing.sm,
+  },
+  sectionDescription: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text.secondary,
+    lineHeight: theme.fontSize.sm * 1.4,
     marginBottom: theme.spacing.md,
   },
   stockInfoRow: {

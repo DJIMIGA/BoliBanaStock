@@ -18,6 +18,7 @@ import { RootState, AppDispatch } from '../store';
 import { login, clearError } from '../store/slices/authSlice';
 import { LoginCredentials } from '../types';
 import theme from '../utils/theme';
+import Logo from '../components/Logo';
 
 const LoginScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -155,21 +156,39 @@ const LoginScreen: React.FC = () => {
           isSmallScreen && styles.logoContainerSmall,
           isVerySmallScreen && styles.logoContainerVerySmall
         ]}>
+          <View style={styles.logoWrapper}>
+            <Logo 
+              size={isVerySmallScreen ? 70 : isSmallScreen ? 80 : 90} 
+              showBackground={true}
+            />
+          </View>
           <Text style={[
-            styles.logo,
-            isSmallScreen && styles.logoSmall,
-            isVerySmallScreen && styles.logoVerySmall
+            styles.brandName,
+            isSmallScreen && styles.brandNameSmall,
+            isVerySmallScreen && styles.brandNameVerySmall
           ]}>BoliBana Stock</Text>
-          <Text style={[
-            styles.subtitle,
-            isSmallScreen && styles.subtitleSmall,
-            isVerySmallScreen && styles.subtitleVerySmall
-          ]}>Gestion d'entreprise • Stock • Caisse</Text>
+          <View style={styles.badgesContainer}>
+            <View style={[styles.badge, styles.badgeGestion]}>
+              <Text style={styles.badgeText}>Gestion</Text>
+            </View>
+            <View style={[styles.badge, styles.badgeStock]}>
+              <Text style={styles.badgeText}>Stock</Text>
+            </View>
+            <View style={[styles.badge, styles.badgeCaisse]}>
+              <Text style={styles.badgeText}>Caisse</Text>
+            </View>
+            <View style={[styles.badge, styles.badgeClient]}>
+              <Text style={styles.badgeText}>Client</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.formContainer}>
-          <Text style={styles.title}>Connexion</Text>
-          
+          <Text style={[
+            styles.formTitle,
+            isSmallScreen && styles.formTitleSmall,
+            isVerySmallScreen && styles.formTitleVerySmall
+          ]}>Connexion</Text>
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Nom d'utilisateur</Text>
             <TextInput
@@ -212,6 +231,14 @@ const LoginScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           </View>
+
+          <TouchableOpacity
+            style={styles.forgotPasswordLink}
+            onPress={() => navigation.navigate('ForgotPassword' as never)}
+            disabled={loading}
+          >
+            <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.loginButton, loading && styles.loginButtonDisabled]}
@@ -291,7 +318,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
     paddingTop: 0,
   },
   logoContainerSmall: {
@@ -302,18 +329,78 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     paddingTop: 0,
   },
-  logo: {
-    fontSize: 28,
-    fontWeight: 'bold',
+  logoWrapper: {
+    marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandName: {
+    fontSize: 24,
+    fontWeight: '700',
     color: theme.colors.primary[500],
     marginBottom: 6,
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
-  subtitle: {
-    fontSize: 14,
-    color: theme.colors.text.tertiary,
+  brandNameSmall: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  brandNameVerySmall: {
+    fontSize: 18,
+    marginBottom: 4,
+  },
+  formTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
+    marginBottom: 20,
     textAlign: 'center',
-    lineHeight: 18,
+    letterSpacing: 0.5,
+  },
+  formTitleSmall: {
+    fontSize: 22,
+    marginBottom: 18,
+  },
+  formTitleVerySmall: {
+    fontSize: 20,
+    marginBottom: 16,
+  },
+  badgesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginHorizontal: 3,
+    marginVertical: 2,
+  },
+  badgeGestion: {
+    backgroundColor: theme.colors.secondary[100],
+    borderColor: theme.colors.secondary[400],
+  },
+  badgeStock: {
+    backgroundColor: theme.colors.primary[100],
+    borderColor: theme.colors.primary[400],
+  },
+  badgeCaisse: {
+    backgroundColor: theme.colors.success[100],
+    borderColor: theme.colors.success[400],
+  },
+  badgeClient: {
+    backgroundColor: theme.colors.secondary[100],
+    borderColor: theme.colors.secondary[500],
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
   },
   formContainer: {
     backgroundColor: theme.colors.background.primary,
@@ -395,6 +482,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  forgotPasswordLink: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    marginBottom: 16,
+    paddingVertical: 4,
+  },
+  forgotPasswordText: {
+    color: theme.colors.primary[500],
+    fontSize: 14,
+    fontWeight: '500',
+  },
   loadingContainer: {
     alignItems: 'center',
     marginTop: 16,
@@ -428,22 +526,6 @@ const styles = StyleSheet.create({
   footerText: {
     color: theme.colors.text.tertiary,
     fontSize: 12,
-  },
-  logoSmall: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  logoVerySmall: {
-    fontSize: 20,
-    marginBottom: 2,
-  },
-  subtitleSmall: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  subtitleVerySmall: {
-    fontSize: 10,
-    lineHeight: 14,
   },
 });
 

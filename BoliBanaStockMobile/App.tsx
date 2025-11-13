@@ -1,5 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Provider } from 'react-redux';
 import { NavigationContainer } from '@react-navigation/native';
@@ -15,6 +16,7 @@ import { AuthWrapper, ErrorBoundary, GlobalSessionNotification, LoadingScreen } 
 import {
   LoginScreen,
   SignupScreen,
+  ForgotPasswordScreen,
   DashboardScreen,
   ProductsScreen,
   ProductDetailScreen,
@@ -31,9 +33,13 @@ import {
   NewSaleScreen,
   InventoryScreen,
   ReceptionScreen,
+  LossScreen,
   DeliveryScreen,
   ReportsScreen,
   SalesReportScreen,
+  ShrinkageReportScreen,
+  StockReportScreen,
+  FinancialReportScreen,
   TransactionsScreen,
   AddProductScreen,
   TestScannerScreen,
@@ -99,9 +105,31 @@ const MainTabs = () => {
         options={{
           title: 'Caisse',
           tabBarLabel: 'Caisse',
-          tabBarBadge: draftStatus.hasSalesCartDraft ? '' : undefined,
+          tabBarBadge: undefined,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calculator-outline" size={size} color={color} />
+            <View style={{ position: 'relative' }}>
+              <Ionicons name="calculator-outline" size={size} color={color} />
+              {draftStatus.hasSalesCartDraft && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    width: 12,
+                    height: 12,
+                    borderRadius: 6,
+                    backgroundColor: theme.colors.warning[500],
+                    borderWidth: 2,
+                    borderColor: 'white',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    ...theme.shadows.sm,
+                  }}
+                >
+                  <Ionicons name="ellipse" size={8} color="white" />
+                </View>
+              )}
+            </View>
           ),
         }}
       />
@@ -147,6 +175,7 @@ const AppContent: React.FC = () => {
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </>
       ) : (
         // Application principale avec menu bas fixe (onglets)
@@ -166,9 +195,13 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="NewSale" component={NewSaleScreen} />
           <Stack.Screen name="Inventory" component={InventoryScreen} />
           <Stack.Screen name="Reception" component={ReceptionScreen} />
+          <Stack.Screen name="Loss" component={LossScreen} />
           <Stack.Screen name="Delivery" component={DeliveryScreen} />
           <Stack.Screen name="Reports" component={ReportsScreen} />
           <Stack.Screen name="SalesReport" component={SalesReportScreen} />
+          <Stack.Screen name="ShrinkageReport" component={ShrinkageReportScreen} />
+          <Stack.Screen name="StockReport" component={StockReportScreen} />
+          <Stack.Screen name="FinancialReport" component={FinancialReportScreen} />
           <Stack.Screen name="AddProduct" component={AddProductScreen} />
           <Stack.Screen name="TestScanner" component={TestScannerScreen} />
           <Stack.Screen name="LabelPreview" component={LabelPreviewScreen} />

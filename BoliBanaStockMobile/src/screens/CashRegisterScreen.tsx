@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +29,7 @@ import {
 import { useContinuousScanner } from '../hooks';
 import { loadSalesCartDraft, saveSalesCartDraft, clearSalesCartDraft } from '../utils/draftStorage';
 import { useUserPermissions } from '../hooks/useUserPermissions';
-import { productService, saleService, customerService, loyaltyService } from '../services/api';
+import { productService, saleService, customerService, loyaltyService, configurationService } from '../services/api';
 import { sanitizeBarcode, validateBarcode, areSimilarBarcodes, validateBarcodeQuality } from '../utils/barcodeUtils';
 
 const { width } = Dimensions.get('window');
@@ -579,6 +581,199 @@ export default function CashRegisterScreen({ navigation }: any) {
     setReceiptPrintModalVisible(true);
   };
 
+  const formatReceiptForWhatsApp = (sale: any, items: any[], customer: any, paymentMethod: string, changeAmount: number, saraliReference: string, loyaltyDiscount: number, pointsEarned: number, siteInfo?: any) => {
+    let receipt = '🧾 *TICKET DE CAISSE*\n\n';
+    
+    // Informations de l'entreprise
+    if (siteInfo) {
+      const companyName = siteInfo.nom_societe || siteInfo.company_name || siteInfo.name || '';
+      if (companyName) {
+        receipt += `*${companyName}*\n`;
+      }
+      if (siteInfo.adresse || siteInfo.address) {
+        receipt += `${siteInfo.adresse || siteInfo.address}\n`;
+      }
+      if (siteInfo.telephone || siteInfo.phone) {
+        receipt += `📞 ${siteInfo.telephone || siteInfo.phone}\n`;
+      }
+      receipt += '\n';
+    }
+    
+    // Informations de la vente
+    receipt += `📋 Référence: ${sale.reference || sale.id}\n`;
+    receipt += `📅 Date: ${new Date(sale.sale_date || sale.date || new Date()).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })}\n\n`;
+    
+    // Client si applicable
+    if (customer) {
+      const customerName = customer.name || '';
+      const customerFirstName = customer.first_name || '';
+      const fullName = `${customerName} ${customerFirstName}`.trim();
+      if (fullName) {
+        receipt += `👤 Client: ${fullName}\n`;
+      }
+      if (customer.phone) {
+        receipt += `📱 Tél: ${customer.phone}\n`;
+      }
+      receipt += '\n';
+    }
+    
+    // Articles
+    receipt += '📦 *ARTICLES*\n';
+    receipt += '────────────────\n';
+    items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.productName || 'Produit'}\n`;
+      if (item.barcode) {
+        receipt += `   CUG: ${item.barcode}\n`;
+      }
+      receipt += `   ${item.quantity} x ${item.unitPrice.toLocaleString()} FCFA = ${item.totalPrice.toLocaleString()} FCFA\n\n`;
+    });
+    
+    receipt += '────────────────\n';
+    
+    // Totaux
+    const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+    receipt += `Sous-total: ${subtotal.toLocaleString()} FCFA\n`;
+    
+    if (loyaltyDiscount > 0) {
+      receipt += `Réduction fidélité: -${loyaltyDiscount.toLocaleString()} FCFA\n`;
+    }
+    
+    receipt += `\n*TOTAL: ${sale.total_amount.toLocaleString()} FCFA*\n\n`;
+    
+    // Paiement
+    receipt += '💳 *PAIEMENT*\n';
+    receipt += '────────────────\n';
+    const paymentMethodText = paymentMethod === 'cash' ? 'Espèces' : 
+                              paymentMethod === 'credit' ? 'Crédit' : 
+                              paymentMethod === 'sarali' ? 'Sarali' : paymentMethod;
+    receipt += `Méthode: ${paymentMethodText}\n`;
+    
+    if (paymentMethod === 'cash' && changeAmount > 0) {
+      receipt += `Monnaie rendue: ${changeAmount.toLocaleString()} FCFA\n`;
+    } else if (paymentMethod === 'sarali' && saraliReference) {
+      receipt += `Réf. Sarali: ${saraliReference}\n`;
+    } else if (paymentMethod === 'credit' && customer) {
+      const creditBalance = sale.customer_data?.credit_balance_formatted || 
+                           sale.customer?.credit_balance_formatted || 
+                           customer.credit_balance_formatted;
+      if (creditBalance && creditBalance !== 'null' && creditBalance !== null && creditBalance !== undefined && String(creditBalance).trim() !== '') {
+        receipt += `Solde client: ${creditBalance}\n`;
+      }
+    }
+    
+    // Points de fidélité
+    if (pointsEarned > 0) {
+      receipt += `\n⭐ Points gagnés: +${Number(pointsEarned).toFixed(2)} pts\n`;
+    }
+    
+    receipt += '\n────────────────\n';
+    receipt += 'Merci de votre visite ! 🙏\n';
+    
+    return receipt;
+  };
+
+  const formatPhoneNumber = (phone: string): string | null => {
+    if (!phone) return null;
+    
+    // Nettoyer le numéro : enlever espaces, tirets, points, parenthèses
+    let cleaned = phone.replace(/[\s\-\.\(\)]/g, '');
+    
+    // Si le numéro commence par +, le garder
+    // Sinon, si c'est un numéro local (commence par 0), le convertir en international
+    if (cleaned.startsWith('+')) {
+      // Format international avec +
+      cleaned = cleaned.substring(1); // Enlever le +
+    } else if (cleaned.startsWith('00')) {
+      // Format international avec 00
+      cleaned = cleaned.substring(2);
+    } else if (cleaned.startsWith('0')) {
+      // Numéro local, convertir en format international (223)
+      cleaned = '223' + cleaned.substring(1);
+    } else if (!cleaned.startsWith('223') && !cleaned.startsWith('221')) {
+      // Si pas de préfixe, supposer que c'est un numéro avec code 223
+      cleaned = '223' + cleaned;
+    }
+    
+    // Vérifier que c'est un numéro valide (au moins 9 chiffres après le code pays)
+    if (cleaned.length < 9) {
+      return null;
+    }
+    
+    return cleaned;
+  };
+
+  const handleSendWhatsApp = async (sale: any, items: any[], customer: any, paymentMethod: string, changeAmount: number, saraliReference: string, loyaltyDiscount: number, pointsEarned: number) => {
+    try {
+      // Récupérer les informations de l'entreprise
+      let siteInfo = null;
+      try {
+        const config = await configurationService.getConfiguration();
+        if (config && config.configuration) {
+          siteInfo = config.configuration;
+        } else if (config) {
+          siteInfo = config;
+        }
+      } catch (error) {
+        console.error('❌ Erreur récupération configuration:', error);
+        // Continuer sans les informations du site
+      }
+      
+      const receiptText = formatReceiptForWhatsApp(sale, items, customer, paymentMethod, changeAmount, saraliReference, loyaltyDiscount, pointsEarned, siteInfo);
+      
+      // Encoder le texte pour l'URL
+      const encodedText = encodeURIComponent(receiptText);
+      
+      // Vérifier si le client a un numéro de téléphone
+      const customerPhone = customer?.phone || customer?.phone_number || null;
+      const formattedPhone = customerPhone ? formatPhoneNumber(customerPhone) : null;
+      
+      let whatsappUrl = '';
+      let webUrl = '';
+      
+      if (formattedPhone) {
+        // Envoyer directement au numéro du client
+        if (Platform.OS === 'android') {
+          whatsappUrl = `whatsapp://send?phone=${formattedPhone}&text=${encodedText}`;
+        } else {
+          // iOS
+          whatsappUrl = `whatsapp://send?phone=${formattedPhone}&text=${encodedText}`;
+        }
+        webUrl = `https://wa.me/${formattedPhone}?text=${encodedText}`;
+      } else {
+        // Pas de numéro, ouvrir WhatsApp sans destinataire
+        if (Platform.OS === 'android') {
+          whatsappUrl = `whatsapp://send?text=${encodedText}`;
+        } else {
+          whatsappUrl = `whatsapp://send?text=${encodedText}`;
+        }
+        webUrl = `https://wa.me/?text=${encodedText}`;
+      }
+      
+      // Vérifier si WhatsApp est installé
+      const canOpen = await Linking.canOpenURL(whatsappUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        // Si WhatsApp n'est pas installé, essayer avec l'URL web
+        await Linking.openURL(webUrl);
+      }
+    } catch (error) {
+      console.error('❌ Erreur envoi WhatsApp:', error);
+      Alert.alert(
+        'Erreur',
+        'Impossible d\'ouvrir WhatsApp. Veuillez vérifier que l\'application est installée.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
   const processSale = async (paymentMethod: 'cash' | 'credit' | 'sarali', customerOverride?: any) => {
     setLoading(true);
     try {
@@ -701,6 +896,15 @@ export default function CashRegisterScreen({ navigation }: any) {
         successMessage += `\n\n⭐ Points gagnés: +${Number(actualPointsEarned).toFixed(2)} pts`;
       }
       
+      // Préparer les items pour WhatsApp (utiliser les données du scanner avant vidage)
+      const itemsForWhatsApp = scanner.scanList.map(item => ({
+        productName: item.productName,
+        barcode: item.barcode,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice
+      }));
+
       Alert.alert(
         'Vente enregistrée',
         successMessage,
@@ -713,6 +917,21 @@ export default function CashRegisterScreen({ navigation }: any) {
             text: '🖨️ Imprimer ticket',
             onPress: () => {
               handlePrintReceipt(sale.id);
+            }
+          },
+          {
+            text: '📱 Envoyer WhatsApp',
+            onPress: () => {
+              handleSendWhatsApp(
+                sale,
+                itemsForWhatsApp,
+                customerForDisplay,
+                paymentMethod,
+                changeAmount,
+                saraliReference,
+                discount,
+                actualPointsEarned
+              );
             }
           },
           {

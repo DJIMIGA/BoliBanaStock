@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Icône adaptative pour Android - Zone de sécurité pour les formes -->
+    <defs>
+        <linearGradient id="bgGradient" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#2B3A67"/>
+            <stop offset="1" stop-color="#1F274D"/>
+        </linearGradient>
+        <linearGradient id="boxGradient" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#FFD700"/>
+            <stop offset="1" stop-color="#FFCD33"/>
+        </linearGradient>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+            <feOffset dx="0" dy="8" result="offsetblur"/>
+            <feComponentTransfer>
+                <feFuncA type="linear" slope="0.3"/>
+            </feComponentTransfer>
+            <feMerge>
+                <feMergeNode/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <filter id="glow">
+            <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    
+    <!-- Zone de sécurité pour adaptive icon (512x512 au centre) -->
+    <rect x="256" y="256" width="512" height="512" rx="112" fill="url(#bgGradient)"/>
+    
+    <!-- Boîtes empilées (dans la zone de sécurité) -->
+    <g filter="url(#shadow)" transform="translate(256, 256)">
+        <!-- Boîte arrière -->
+        <rect x="96" y="256" width="192" height="128" rx="20" fill="#2E8B57" opacity="0.8" transform="skewY(-5)"/>
+        
+        <!-- Boîte du milieu -->
+        <rect x="144" y="160" width="192" height="128" rx="20" fill="#2E8B57" opacity="0.9" transform="skewY(-5)"/>
+        
+        <!-- Boîte avant (principale) -->
+        <rect x="192" y="64" width="192" height="128" rx="20" fill="url(#boxGradient)" transform="skewY(-5)"/>
+    </g>
+    
+    <!-- Graphique de tendance -->
+    <g filter="url(#glow)" transform="translate(256, 256)">
+        <path d="M384 320 L416 288 L448 320 L432 320 L432 384 L400 384 L400 320 Z" fill="#2E8B57"/>
+    </g>
+    
+    <!-- Points de données -->
+    <circle cx="400" cy="368" r="16" fill="#FFD700" transform="translate(256, 256)"/>
+    <circle cx="432" cy="352" r="16" fill="#FFD700" transform="translate(256, 256)"/>
+</svg>
+

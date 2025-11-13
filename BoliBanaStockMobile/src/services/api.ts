@@ -310,6 +310,48 @@ export const authService = {
       access: response.data.access_token,
     };
   },
+
+  requestPasswordReset: async (emailOrUsername: string): Promise<void> => {
+    try {
+      const response = await api.post('/auth/password-reset/request/', {
+        email: emailOrUsername,
+        username: emailOrUsername,
+      });
+      // Le message de succès est toujours retourné pour des raisons de sécurité
+      // même si l'utilisateur n'existe pas
+      return;
+    } catch (error: any) {
+      // Gérer spécifiquement les erreurs réseau
+      if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error') || !error.response) {
+        console.error('❌ Erreur réseau lors de la demande de réinitialisation:', error.message);
+        // Créer une erreur plus descriptive
+        const networkError = new Error('Erreur de connexion réseau. Vérifiez votre connexion et réessayez.');
+        (networkError as any).isNetworkError = true;
+        throw networkError;
+      }
+      console.error('❌ Erreur lors de la demande de réinitialisation:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  confirmPasswordReset: async (
+    emailOrUsername: string,
+    code: string,
+    newPassword: string
+  ): Promise<void> => {
+    try {
+      const response = await api.post('/auth/password-reset/confirm/', {
+        email: emailOrUsername,
+        username: emailOrUsername,
+        code,
+        new_password: newPassword,
+      });
+      return;
+    } catch (error: any) {
+      console.error('❌ Erreur lors de la confirmation de réinitialisation:', error.response?.data || error.message);
+      throw error;
+    }
+  },
 };
 
 // Service pour les sites
@@ -724,14 +766,16 @@ export const productService = {
 
   removeStock: async (productId: number, quantity: number, options?: {
     notes?: string;
-    context?: 'sale' | 'inventory' | 'return' | 'manual';
+    context?: 'sale' | 'inventory' | 'return' | 'manual' | 'loss';
     contextId?: number;
+    transactionType?: 'out' | 'loss'; // 'out' = retrait normal, 'loss' = casse
   }) => {
     const response = await api.post(`/products/${productId}/remove_stock/`, {
       quantity,
       notes: options?.notes || 'Retrait de stock via mobile',
       context: options?.context || 'manual',
-      context_id: options?.contextId
+      context_id: options?.contextId,
+      transaction_type: options?.transactionType // Nouveau paramètre pour spécifier le type de transaction
     });
     return response.data;
   },
@@ -1910,6 +1954,7 @@ export const labelPrintService = {
     include_cug: boolean;
     include_ean: boolean;
     include_barcode: boolean;
+    include_price?: boolean; // Nouveau paramètre pour contrôler l'affichage du prix
     printer_type: 'escpos' | 'tsc';
     thermal_settings?: {
       density: number;
@@ -1975,6 +2020,14 @@ export const labelPrintService = {
         channel: channelValue, // channel: 'escpos' ou 'tsc' (nettoyé)
         items: items, // Utilisé directement par la vue depuis request.data
       };
+      
+      // Ajouter include_price si fourni
+      if (batchData.include_price !== undefined) {
+        payload.include_price = batchData.include_price;
+        console.log('💰 [BATCH] include_price ajouté au payload:', batchData.include_price);
+      } else {
+        console.log('⚠️ [BATCH] include_price non fourni dans batchData');
+      }
 
       console.log('📤 [BATCH] Payload envoyé:', JSON.stringify(payload, null, 2));
 

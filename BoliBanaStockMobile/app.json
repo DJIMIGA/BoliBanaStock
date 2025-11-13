@@ -4,6 +4,34 @@
     "slug": "BoliBanaStockMobile",
     "version": "1.0.0",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/adaptive-icon.png",
+      "backgroundColor": "#2B3A67"
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2B3A67"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bolibana.stock"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2B3A67"
+      },
+      "package": "com.bolibana.stock",
+      "icon": "./assets/icon.png"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
     "extra": {
       "eas": {
         "projectId": "766c638b-333f-4f5a-9d0e-19d79965d050"

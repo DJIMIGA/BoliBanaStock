@@ -15,6 +15,9 @@
     "preview:android": "npx eas build --profile preview --platform android && npx eas submit --profile preview --platform android",
     "clean": "expo start --clear",
     "reset": "expo start --clear --reset-cache",
+    "generate-icons": "node generate-icons.js",
+    "generate-splash-logos": "node generate-splash-logos.js",
+    "verify-logos": "node verify-logos.js",
     "postinstall": "patch-package"
   },
   "dependencies": {
@@ -56,6 +59,7 @@
     "babel-preset-expo": "~54.0.0",
     "expo-dev-client": "~6.0.12",
     "metro-react-native-babel-transformer": "^0.77.0",
+    "sharp": "^0.34.5",
     "typescript": "~5.9.2"
   },
   "private": true,

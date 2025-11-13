@@ -264,8 +264,8 @@ REST_FRAMEWORK = {
 # JWT Settings
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=30),  # 30 jours - dure tant que l'app est ouverte (refresh automatique)
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 30 jours - permet de récupérer un nouvel access token
 }
 
 # Logging
@@ -295,3 +295,35 @@ SECURE_HSTS_PRELOAD = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_DOMAIN = None  # Laissez Railway gérer le domaine
+
+# Email configuration pour Railway
+# Support pour SendGrid Web API (recommandé) ou Gmail SMTP
+# Pour SendGrid: définir SENDGRID_API_KEY dans les variables d'environnement Railway
+#   → Utilise la Web API (HTTPS) qui fonctionne sur Railway
+# Pour Gmail: définir EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD
+#   → Utilise SMTP (peut ne pas fonctionner sur Railway à cause des restrictions réseau)
+
+SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY', '')
+
+if SENDGRID_API_KEY:
+    # Configuration SendGrid Web API (recommandé pour Railway)
+    # Note: Le code utilise directement la Web API dans api/views.py
+    # Ces paramètres SMTP sont conservés pour compatibilité mais ne sont pas utilisés
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.sendgrid.net'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = 'apikey'  # SendGrid utilise toujours 'apikey' comme username
+    EMAIL_HOST_PASSWORD = SENDGRID_API_KEY
+    EMAIL_TIMEOUT = 10
+    print("📧 Configuration SendGrid activée pour l'envoi d'emails (Web API)")
+else:
+    # Configuration Gmail (fallback)
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    EMAIL_TIMEOUT = 10
+    print("📧 Configuration Gmail activée pour l'envoi d'emails (⚠️ peut ne pas fonctionner sur Railway)")

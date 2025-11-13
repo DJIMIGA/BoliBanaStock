@@ -38,8 +38,12 @@ def _draw_item(c: canvas.Canvas, x_pt: float, y_pt: float, width_pt: float, item
     barcode_value = item.barcode_value or (item.product.get_primary_barcode().ean if item.product.get_primary_barcode() else item.product.cug)
     barcode = None
     try:
-        if settings and settings.barcode_type == 'EAN13' and barcode_value and barcode_value.isdigit():
-            # EAN13 exige 12 chiffres (le 13e est calculé), sinon fallback CODE128
+        # Utiliser EAN-13 par défaut pour les codes numériques de 12+ chiffres (comme dans TSC)
+        if barcode_value and barcode_value.isdigit() and len(barcode_value) >= 12:
+            # EAN13 exige 12 chiffres (le 13e est calculé automatiquement)
+            barcode = eanbc.Ean13BarcodeWidget(barcode_value[:12])
+        elif settings and settings.barcode_type == 'EAN13' and barcode_value and barcode_value.isdigit():
+            # Fallback si settings.barcode_type est EAN13 mais code < 12 chiffres
             if len(barcode_value) >= 12:
                 barcode = eanbc.Ean13BarcodeWidget(barcode_value[:12])
         if barcode is None:
@@ -59,9 +63,14 @@ def _draw_item(c: canvas.Canvas, x_pt: float, y_pt: float, width_pt: float, item
         # Certains widgets ont .drawOn avec size default
         barcode.drawOn(c, x_pt + mm_to_pt(2), barcode_y)
 
-    # Légende (CUG / EAN)
+    # Légende (CUG / EAN) - formatée comme EAN-13 si applicable
     c.setFont("Helvetica", 8)
-    c.drawCentredString(x_pt + width_pt / 2, barcode_y - mm_to_pt(4), str(barcode_value))
+    if barcode_value and barcode_value.isdigit() and len(barcode_value) >= 12:
+        # Formater comme EAN-13: X XXXXXX XXXXXX
+        legend_text = f"{barcode_value[0]} {barcode_value[1:7]} {barcode_value[7:13]}"
+    else:
+        legend_text = str(barcode_value)
+    c.drawCentredString(x_pt + width_pt / 2, barcode_y - mm_to_pt(4), legend_text)
 
 
 def render_label_batch_pdf(batch: LabelBatch) -> Tuple[bytes, str]:

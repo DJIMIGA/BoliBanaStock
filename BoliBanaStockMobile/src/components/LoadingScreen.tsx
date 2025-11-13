@@ -6,8 +6,8 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
+import Logo from './Logo';
 
 const { width, height } = Dimensions.get('window');
 
@@ -21,13 +21,9 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {/* Logo ou icône de l'app */}
+        {/* Logo de l'application */}
         <View style={styles.logoContainer}>
-          <Ionicons 
-            name="storefront" 
-            size={80} 
-            color={theme.colors.primary} 
-          />
+          <Logo size={120} showBackground={true} />
         </View>
         
         {/* Nom de l'application */}
@@ -37,7 +33,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
         <View style={styles.loadingContainer}>
           <ActivityIndicator 
             size="large" 
-            color={theme.colors.primary} 
+            color={theme.colors.primary[500]} 
             style={styles.spinner}
           />
           <Text style={styles.loadingText}>{message}</Text>
@@ -50,7 +46,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -60,36 +56,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   logoContainer: {
-    marginBottom: 20,
-    padding: 20,
-    borderRadius: 50,
-    backgroundColor: '#f8f9fa',
+    marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
   },
   appName: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: theme.colors.primary,
+    color: theme.colors.primary[500],
     marginBottom: 40,
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   loadingContainer: {
     alignItems: 'center',
+    marginTop: 8,
   },
   spinner: {
     marginBottom: 16,
   },
   loadingText: {
     fontSize: 16,
-    color: '#666',
+    color: theme.colors.text.secondary,
     textAlign: 'center',
+    fontWeight: '500',
   },
 });
 

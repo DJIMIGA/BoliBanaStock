@@ -3,28 +3,37 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
+  TextInput,
   Alert,
   ActivityIndicator,
-  Switch,
+  RefreshControl,
   Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import api from '../services/api';
-import { KeyDebugger, CategorySelector } from '../components';
+import { CategorySelector } from '../components';
+import ProductImage from '../components/ProductImage';
 import theme from '../utils/theme';
 
 interface Product {
   id: number;
   name: string;
   cug: string;
-  barcode_ean: string;
+  barcode_ean: string;  // EAN utilisé (priorité au modèle Barcode)
+  barcode_ean_from_model?: string;  // EAN du modèle Barcode (manuel)
+  barcode_ean_generated?: string;  // EAN généré (automatique)
+  has_ean?: boolean;
+  has_barcode_ean?: boolean;  // A un EAN dans le modèle Barcode
+  has_generated_ean?: boolean;  // A un EAN généré
   selling_price: number;
   quantity: number;
+  image_url?: string;
   category: { id: number; name: string } | null;
   brand: { id: number; name: string } | null;
 }
@@ -54,8 +63,11 @@ interface LabelGeneratorScreenProps {
 const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation }) => {
   const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [eanFilter, setEanFilter] = useState<'all' | 'with_ean' | 'artisanale'>('all');
   const [generatingLabels, setGeneratingLabels] = useState(false);
   const [showCategorySelector, setShowCategorySelector] = useState(false);
 
@@ -80,6 +92,12 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchLabelData();
+    setRefreshing(false);
+  };
+
   const toggleProductSelection = (productId: number) => {
     const newSelection = new Set(selectedProducts);
     if (newSelection.has(productId)) {
@@ -91,9 +109,9 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
   };
 
   const selectAllProducts = () => {
-    if (labelData) {
-      setSelectedProducts(new Set(labelData.products.map(p => p.id)));
-    }
+    // Sélectionner uniquement les produits filtrés (visibles)
+    const filteredIds = filteredProducts.map(p => p.id);
+    setSelectedProducts(new Set(filteredIds));
   };
 
   const deselectAllProducts = () => {
@@ -121,17 +139,38 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
     setShowCategorySelector(false);
   };
 
-  const showLabelsDetails = (labels: any[]) => {
-    // Afficher les détails des étiquettes générées
-    const details = labels.map(label => 
-      `• ${label.name} (CUG: ${label.cug})\n  Code-barres: ${label.barcode_ean}`
-    ).join('\n\n');
-    
-    Alert.alert('Détails des étiquettes', details);
+  const clearCategoryFilter = () => {
+    setSelectedCategory(null);
   };
 
   const filteredProducts = labelData?.products.filter(product => {
+    // Filtre par catégorie
     if (selectedCategory && product.category?.id !== selectedCategory) return false;
+    
+    // Filtre par EAN
+    if (eanFilter === 'with_ean') {
+      // Afficher uniquement les produits avec EAN du modèle Barcode (manuel)
+      if (!product.has_barcode_ean) return false;
+    } else if (eanFilter === 'artisanale') {
+      // Afficher uniquement les produits SANS code-barres dans le modèle Barcode (artisanaux)
+      if (product.has_barcode_ean) return false;
+    }
+    
+    // Filtre de recherche textuelle (recherche dans les deux types d'EAN)
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = 
+        product.name.toLowerCase().includes(query) ||
+        product.cug.toLowerCase().includes(query) ||
+        (product.barcode_ean && product.barcode_ean.toLowerCase().includes(query)) ||
+        (product.barcode_ean_from_model && product.barcode_ean_from_model.toLowerCase().includes(query)) ||
+        (product.barcode_ean_generated && product.barcode_ean_generated.toLowerCase().includes(query)) ||
+        product.category?.name.toLowerCase().includes(query) ||
+        product.brand?.name.toLowerCase().includes(query);
+      
+      if (!matchesSearch) return false;
+    }
+    
     return true;
   }) || [];
 
@@ -170,50 +209,104 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Composants de débogage - Temporairement désactivés */}
-        {/* <KeyDebugger data={labelData?.products || []} name="Products" />
-        <KeyDebugger data={labelData?.categories || []} name="Categories" />
-        <KeyDebugger data={labelData?.brands || []} name="Brands" />
-        <KeyDebugger data={filteredProducts} name="FilteredProducts" /> */}
-        
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <Ionicons name="search" size={20} color="#666" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher un produit..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
 
-      {/* Contrôles */}
-      <View style={styles.controls}>
-        <View style={styles.filterSection}>
-          <Text style={styles.filterLabel}>Filtrer par catégorie:</Text>
-          <TouchableOpacity
-            style={styles.categoryButton}
-            onPress={() => setShowCategorySelector(true)}
+      {/* Category Filter */}
+      <View style={styles.categoryFilterContainer}>
+        <TouchableOpacity 
+          style={styles.categoryFilterButton}
+          onPress={() => setShowCategorySelector(true)}
+        >
+          <Ionicons name="folder-outline" size={14} color="#4CAF50" />
+          <Text style={styles.categoryFilterText}>
+            {selectedCategory 
+              ? labelData?.categories.find(c => c.id === selectedCategory)?.name || 'Catégorie sélectionnée'
+              : 'Toutes les catégories'
+            }
+          </Text>
+          <Ionicons name="chevron-down" size={14} color="#666" />
+        </TouchableOpacity>
+        {selectedCategory && (
+          <TouchableOpacity 
+            style={styles.clearCategoryButton}
+            onPress={clearCategoryFilter}
           >
-            <View style={styles.categoryButtonContent}>
-              <Ionicons name="folder-outline" size={16} color="#4CAF50" />
-              <Text style={styles.categoryButtonText}>
-                {selectedCategory 
-                  ? labelData.categories.find(c => c.id === selectedCategory)?.name || 'Catégorie sélectionnée'
-                  : 'Toutes les catégories'
-                }
-              </Text>
-              <Ionicons name="chevron-down" size={16} color="#666" />
-            </View>
+            <Ionicons name="close-circle" size={18} color="#F44336" />
           </TouchableOpacity>
-        </View>
+        )}
+      </View>
 
+      {/* EAN Filter */}
+      <View style={styles.filtersWrapper}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.filtersScrollContainer}
+          contentContainerStyle={styles.filtersContainer}
+        >
+          <TouchableOpacity
+            style={[styles.filterButton, eanFilter === 'all' && styles.filterButtonActive]}
+            onPress={() => setEanFilter('all')}
+          >
+            <Text style={[styles.filterText, eanFilter === 'all' && styles.filterTextActive]}>
+              Tous
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterButton, eanFilter === 'with_ean' && styles.filterButtonActive]}
+            onPress={() => setEanFilter('with_ean')}
+          >
+            <Text style={[styles.filterText, eanFilter === 'with_ean' && styles.filterTextActive]}>
+              Avec EAN
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterButton, eanFilter === 'artisanale' && styles.filterButtonActive]}
+            onPress={() => setEanFilter('artisanale')}
+          >
+            <Text style={[styles.filterText, eanFilter === 'artisanale' && styles.filterTextActive]}>
+              Artisanale
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Selection Controls */}
+      <View style={styles.selectionControlsContainer}>
         <View style={styles.selectionControls}>
-          <TouchableOpacity style={styles.selectionButton} onPress={selectAllProducts}>
-            <View style={styles.selectionButtonContent}>
-              <Ionicons name="checkmark-circle-outline" size={18} color="#4CAF50" />
-              <Text style={styles.selectionButtonText}>Tout sélectionner</Text>
-            </View>
+          <TouchableOpacity 
+            style={[styles.selectionButton, styles.selectionButtonSelect]} 
+            onPress={selectAllProducts}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+            <Text style={styles.selectionButtonText}>Tout</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.selectionButton} onPress={deselectAllProducts}>
-            <View style={styles.selectionButtonContent}>
-              <Ionicons name="close-circle-outline" size={18} color="#F44336" />
-              <Text style={styles.selectionButtonText}>Tout désélectionner</Text>
-            </View>
+          <TouchableOpacity 
+            style={[styles.selectionButton, styles.selectionButtonDeselect]} 
+            onPress={deselectAllProducts}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close-circle" size={14} color="#F44336" />
+            <Text style={styles.selectionButtonText}>Aucun</Text>
           </TouchableOpacity>
         </View>
-
         <TouchableOpacity
           style={[styles.generateButton, selectedProducts.size === 0 && styles.generateButtonDisabled]}
           onPress={generateLabels}
@@ -229,45 +322,108 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
         </TouchableOpacity>
       </View>
 
-      {/* Liste des produits */}
-      <View style={styles.productsSection}>
-        <View style={styles.productsHeader}>
-          <View style={styles.productsTitleContainer}>
-            <Ionicons name="cube-outline" size={24} color="#4CAF50" />
-            <Text style={styles.productsTitle}>Produits</Text>
-          </View>
-          <View style={styles.productsCounter}>
-            <Text style={styles.productsCounterText}>{filteredProducts.length}</Text>
-          </View>
-        </View>
-        
-        {filteredProducts.map(product => (
+      {/* Products List */}
+      <FlatList
+        data={filteredProducts}
+        keyExtractor={(item) => item.id.toString()}
+        initialNumToRender={10}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        removeClippedSubviews={false}
+        renderItem={({ item }) => (
           <TouchableOpacity
-            key={product.id}
-            style={[styles.productCard, selectedProducts.has(product.id) && styles.productCardSelected]}
-            onPress={() => toggleProductSelection(product.id)}
+            style={[styles.productCard, selectedProducts.has(item.id) && styles.productCardSelected]}
+            onPress={() => toggleProductSelection(item.id)}
           >
-            <View style={styles.productInfo}>
-              <Text style={styles.productName}>{product.name}</Text>
-              <Text style={styles.productDetails}>
-                CUG: {product.cug} | EAN: {product.barcode_ean}
-              </Text>
-              <Text style={styles.productDetails}>
-                {product.category?.name || 'N/A'} • {product.brand?.name || 'N/A'}
-              </Text>
-              <Text style={styles.productDetails}>
-                Prix: {product.selling_price.toLocaleString()} FCFA • Stock: {product.quantity}
-              </Text>
+            <View style={styles.productHeader}>
+              {/* Image du produit */}
+              <View style={styles.productImageContainer}>
+                <ProductImage 
+                  imageUrl={item.image_url}
+                  size={48}
+                  borderRadius={6}
+                />
+              </View>
+              
+              <View style={styles.productInfo}>
+                <Text style={styles.productName} numberOfLines={2}>
+                  {item.name}
+                </Text>
+                <Text style={styles.productCug}>CUG: {item.cug}</Text>
+                {item.has_ean && item.barcode_ean ? (
+                  <View>
+                    <Text style={styles.productEan}>
+                      EAN: {item.barcode_ean}
+                      {item.has_barcode_ean && item.barcode_ean_from_model && (
+                        <Text style={styles.eanSource}> (Manuel)</Text>
+                      )}
+                      {!item.has_barcode_ean && item.has_generated_ean && (
+                        <Text style={styles.eanSource}> (Auto)</Text>
+                      )}
+                    </Text>
+                    {item.has_barcode_ean && item.has_generated_ean && item.barcode_ean_generated && (
+                      <Text style={styles.productEanSecondary}>
+                        EAN généré: {item.barcode_ean_generated}
+                      </Text>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={styles.productEanMissing}>EAN: Non disponible</Text>
+                )}
+                <View style={styles.productMeta}>
+                  {item.category?.name && (
+                    <Text style={styles.productCategory}>
+                      {item.category.name}
+                    </Text>
+                  )}
+                  {item.category?.name && item.brand?.name && (
+                    <Text style={styles.metaSeparator}> • </Text>
+                  )}
+                  {item.brand?.name && (
+                    <Text style={styles.productBrand}>
+                      {item.brand.name}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <View style={styles.selectionIndicator}>
+                {selectedProducts.has(item.id) ? (
+                  <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                ) : (
+                  <Ionicons name="ellipse-outline" size={24} color="#ccc" />
+                )}
+              </View>
             </View>
-            <View style={styles.selectionIndicator}>
-              {selectedProducts.has(product.id) && (
-                <Text style={styles.checkmark}>✓</Text>
-              )}
+            
+            <View style={styles.productFooter}>
+              <View style={styles.quantityContainer}>
+                <Ionicons name="cube-outline" size={14} color="#666" />
+                <Text style={styles.quantityText}>
+                  {item.quantity} unités
+                </Text>
+              </View>
+              <Text style={styles.priceText}>
+                {item.selling_price.toLocaleString()} FCFA
+              </Text>
             </View>
           </TouchableOpacity>
-        ))}
-      </View>
-      </ScrollView>
+        )}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="cube-outline" size={64} color="#ccc" />
+            <Text style={styles.emptyText}>
+              {searchQuery.length > 0
+                ? 'Aucun produit trouvé'
+                : 'Aucun produit disponible'}
+            </Text>
+          </View>
+        }
+      />
 
       {/* Modal de sélection de catégorie */}
       <Modal
@@ -291,7 +447,7 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: '#f5f5f5',
   },
   loadingContainer: {
     flex: 1,
@@ -301,7 +457,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: theme.colors.neutral[600],
+    color: '#666',
   },
   errorContainer: {
     flex: 1,
@@ -311,7 +467,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: theme.colors.neutral[600],
+    color: '#666',
     marginBottom: 16,
   },
   retryButton: {
@@ -321,7 +477,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: theme.colors.text.inverse,
+    color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -341,173 +497,256 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
   },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 16,
-  },
-  controls: {
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: 'white',
-    padding: 20,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#333',
+  },
+  categoryFilterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  switchLabel: {
-    fontSize: 16,
-    color: '#333',
-  },
-  filterSection: {
-    marginBottom: 16,
-  },
-  filterLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  categoryButton: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-  },
-  categoryButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  categoryButtonText: {
+  categoryFilterButton: {
     flex: 1,
-    fontSize: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  categoryFilterText: {
+    flex: 1,
+    marginLeft: 6,
+    fontSize: 13,
     color: '#333',
+  },
+  clearCategoryButton: {
     marginLeft: 8,
+    padding: 4,
+  },
+  filtersWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  filtersScrollContainer: {
+    flex: 1,
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  filterButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 6,
+    borderRadius: 16,
+    backgroundColor: '#f5f5f5',
+    flexShrink: 0,
+  },
+  filterButtonActive: {
+    backgroundColor: '#4CAF50',
+  },
+  filterText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  filterTextActive: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  selectionControlsContainer: {
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
   selectionControls: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 16,
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: 8,
+    gap: 6,
   },
   selectionButton: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectionButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 4,
+  },
+  selectionButtonSelect: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1.5,
+    borderColor: '#4CAF50',
+  },
+  selectionButtonDeselect: {
+    backgroundColor: '#FFEBEE',
+    borderWidth: 1.5,
+    borderColor: '#F44336',
   },
   selectionButtonText: {
     color: '#333',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   generateButton: {
     backgroundColor: theme.colors.primary[500],
-    paddingVertical: 16,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
+    marginTop: 6,
   },
   generateButtonDisabled: {
-    backgroundColor: theme.colors.neutral[300],
+    backgroundColor: '#ccc',
   },
   generateButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
-  productsSection: {
-    margin: 16,
-  },
-  productsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  productsTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  productsTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#333',
-  },
-  productsCounter: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    minWidth: 40,
-    alignItems: 'center',
-  },
-  productsCounterText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
+  listContainer: {
+    padding: 12,
+    paddingBottom: 20,
   },
   productCard: {
     backgroundColor: 'white',
     borderRadius: 8,
-    padding: 16,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    minHeight: 60,
+    padding: 10,
+    marginBottom: 6,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
   productCardSelected: {
-    borderColor: '#28a745',
+    borderWidth: 2,
+    borderColor: '#4CAF50',
     backgroundColor: '#f8fff9',
   },
   productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 8,
+    alignItems: 'flex-start',
   },
-  productName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#212529',
-    marginBottom: 4,
-    flex: 1,
-  },
-  selectionIndicator: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkmark: {
-    fontSize: 18,
-    color: '#28a745',
-    fontWeight: 'bold',
-  },
-  productDetails: {
-    fontSize: 12,
-    color: '#6c757d',
-    marginBottom: 2,
+  productImageContainer: {
+    marginRight: 10,
   },
   productInfo: {
     flex: 1,
+    marginRight: 8,
+  },
+  productName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  productCug: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 2,
+  },
+  productEan: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 2,
+  },
+  productEanMissing: {
+    fontSize: 11,
+    color: '#F44336',
+    marginBottom: 2,
+    fontStyle: 'italic',
+  },
+  eanSource: {
+    fontSize: 9,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  productEanSecondary: {
+    fontSize: 10,
+    color: '#999',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  productMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  productCategory: {
+    fontSize: 10,
+    color: '#666',
+  },
+  metaSeparator: {
+    fontSize: 10,
+    color: '#999',
+  },
+  productBrand: {
+    fontSize: 10,
+    color: '#666',
+  },
+  selectionIndicator: {
+    alignItems: 'flex-end',
+  },
+  productFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  quantityContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quantityText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+  },
+  priceText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4CAF50',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#999',
+    marginTop: 10,
   },
 });
 

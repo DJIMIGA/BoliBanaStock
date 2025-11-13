@@ -14,6 +14,8 @@ export { default as BarcodeModal } from './BarcodeModal';
 export { default as ProductImage } from './ProductImage';
 export { default as ImageSelector } from './ImageSelector';
 export { default as NativeBarcode } from './NativeBarcode';
+export { default as Logo } from './Logo';
+export { default as LoadingIndicator } from './LoadingIndicator';
 export { default as KeyDebugger } from './KeyDebugger';
 export { default as BrandFilterField } from './BrandFilterField';
 export { default as CategorySelector } from './CategorySelector';
