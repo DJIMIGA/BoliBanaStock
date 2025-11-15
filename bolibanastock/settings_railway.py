@@ -232,17 +232,30 @@ class TolerantManifestStaticFilesStorage(whitenoise.storage.CompressedManifestSt
     def stored_name(self, name):
         try:
             return super().stored_name(name)
-        except (ValueError, KeyError):
+        except (ValueError, KeyError) as e:
             # Si le fichier n'est pas dans le manifest, essayer de le trouver directement
-            # ou retourner le nom original pour éviter l'erreur 500
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # Log uniquement pour les fichiers CSS importants
+            if 'output.css' in name or 'css' in name:
+                logger.warning(f"⚠️ Fichier CSS non trouvé dans le manifest: {name}")
+                logger.warning(f"   Erreur: {e}")
+            
             try:
                 # Vérifier si le fichier existe dans le storage
                 if self.exists(name):
+                    if 'output.css' in name:
+                        logger.info(f"✅ Fichier {name} trouvé directement dans le storage (hors manifest)")
                     return name
-            except:
-                pass
+            except Exception as exist_error:
+                if 'output.css' in name:
+                    logger.error(f"❌ Erreur lors de la vérification de l'existence de {name}: {exist_error}")
+            
             # Si le fichier n'existe pas, retourner le nom original quand même
             # pour éviter l'erreur 500 (le navigateur gérera le 404)
+            if 'output.css' in name:
+                logger.error(f"❌ Fichier {name} non trouvé dans le storage, retour du nom original (404 attendu)")
             return name
 
 STATICFILES_STORAGE = 'bolibanastock.settings_railway.TolerantManifestStaticFilesStorage'

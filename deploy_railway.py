@@ -222,26 +222,72 @@ def deploy_railway():
             print(f"✅ output.css confirmé avant collectstatic: {output_css_path} ({size} octets)")
         else:
             print(f"⚠️ output.css non trouvé avant collectstatic: {output_css_path}")
+            print(f"🔄 Le fichier devrait avoir été généré pendant le build dans nixpacks.toml")
+            print(f"   Si ce n'est pas le cas, ensure_tailwind_css() devrait l'avoir généré")
+            print(f"   Vérification du répertoire parent:")
+            if output_css_path.parent.exists():
+                files = list(output_css_path.parent.iterdir())
+                print(f"   Fichiers dans {output_css_path.parent}: {[f.name for f in files]}")
+            else:
+                print(f"   ❌ Répertoire parent n'existe pas: {output_css_path.parent}")
         
         # 1. Collecter les fichiers statiques
         print("\n📦 Collecte des fichiers statiques...")
-        call_command('collectstatic', '--noinput', '--clear')
+        try:
+            call_command('collectstatic', '--noinput', '--clear', verbosity=2)
+        except Exception as collect_error:
+            print(f"❌ Erreur lors de collectstatic: {collect_error}")
+            import traceback
+            traceback.print_exc()
+            print(f"⚠️ Continuation malgré l'erreur...")
         
         # Vérifier que le fichier a été collecté
         collected_css_path = Path(settings.STATIC_ROOT) / 'css' / 'dist' / 'output.css'
+        source_css_path = Path(settings.BASE_DIR) / 'static' / 'css' / 'dist' / 'output.css'
+        
+        print(f"\n🔍 Vérification détaillée de output.css:")
+        print(f"   Source attendu: {source_css_path}")
+        print(f"   Source existe: {'✅ OUI' if source_css_path.exists() else '❌ NON'}")
+        if source_css_path.exists():
+            size = source_css_path.stat().st_size
+            print(f"   Taille source: {size} octets ({size / 1024:.2f} KB)")
+        
+        print(f"   Collecté attendu: {collected_css_path}")
+        print(f"   Collecté existe: {'✅ OUI' if collected_css_path.exists() else '❌ NON'}")
         if collected_css_path.exists():
             size = collected_css_path.stat().st_size
-            print(f"✅ output.css collecté avec succès: {collected_css_path} ({size} octets)")
-        else:
-            print(f"⚠️ output.css non trouvé après collectstatic: {collected_css_path}")
-            print(f"   STATIC_ROOT: {settings.STATIC_ROOT}")
-            if Path(settings.STATIC_ROOT).exists():
-                print(f"   Contenu de STATIC_ROOT:")
+            print(f"   Taille collecté: {size} octets ({size / 1024:.2f} KB)")
+        
+        # Lister tous les fichiers CSS dans staticfiles
+        print(f"\n📁 Recherche de tous les fichiers CSS dans staticfiles:")
+        static_root = Path(settings.STATIC_ROOT)
+        if static_root.exists():
+            css_files = list(static_root.rglob('*.css'))
+            if css_files:
+                print(f"   {len(css_files)} fichier(s) CSS trouvé(s):")
+                for css_file in css_files[:20]:  # Limiter à 20 fichiers
+                    rel_path = css_file.relative_to(static_root)
+                    size = css_file.stat().st_size
+                    print(f"      - {rel_path} ({size} octets)")
+                if len(css_files) > 20:
+                    print(f"      ... et {len(css_files) - 20} autre(s) fichier(s)")
+            else:
+                print(f"   ❌ Aucun fichier CSS trouvé dans staticfiles/")
+            
+            # Vérifier spécifiquement le répertoire css/dist
+            css_dist_dir = static_root / 'css' / 'dist'
+            if css_dist_dir.exists():
+                print(f"\n📁 Contenu de staticfiles/css/dist/:")
                 try:
-                    for item in Path(settings.STATIC_ROOT).iterdir():
-                        print(f"      - {item.name} ({'d' if item.is_dir() else 'f'})")
+                    for item in css_dist_dir.iterdir():
+                        size = item.stat().st_size if item.is_file() else 0
+                        print(f"      - {item.name} ({'d' if item.is_dir() else 'f'}, {size} octets)")
                 except Exception as e:
                     print(f"      ⚠️ Erreur lors de la liste: {e}")
+            else:
+                print(f"\n❌ Répertoire staticfiles/css/dist/ n'existe pas")
+        else:
+            print(f"   ❌ STATIC_ROOT n'existe pas: {settings.STATIC_ROOT}")
         
         # 2. Vérifier la migration de la base de données
         print("\n🗄️ Vérification des migrations...")
