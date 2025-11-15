@@ -74,6 +74,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'bolibanastock.middleware.TailwindCSSMiddleware',  # Servir output.css directement si nécessaire
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Gestion des fichiers statiques
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
