@@ -295,7 +295,66 @@ class TolerantManifestStaticFilesStorage(whitenoise.storage.CompressedManifestSt
                         
                         return name
                 
-                # 5. Logs d'erreur détaillés
+                # 5. Si le fichier n'existe pas dans STATICFILES_DIRS, essayer de le générer
+                if 'output.css' in name:
+                    logger.warning(f"⚠️ Fichier {name} n'existe pas, tentative de génération...")
+                    try:
+                        # Importer la fonction de génération
+                        import sys
+                        from pathlib import Path
+                        project_root = Path(settings.BASE_DIR)
+                        deploy_script = project_root / 'deploy_railway.py'
+                        
+                        if deploy_script.exists():
+                            # Importer et exécuter ensure_tailwind_css
+                            import importlib.util
+                            spec = importlib.util.spec_from_file_location("deploy_railway", deploy_script)
+                            deploy_module = importlib.util.module_from_spec(spec)
+                            spec.loader.exec_module(deploy_module)
+                            
+                            if hasattr(deploy_module, 'ensure_tailwind_css'):
+                                logger.info(f"🔄 Génération de output.css...")
+                                if deploy_module.ensure_tailwind_css():
+                                    # Vérifier à nouveau dans STATICFILES_DIRS
+                                    for static_dir in getattr(settings, 'STATICFILES_DIRS', []):
+                                        static_path = os.path.join(static_dir, name)
+                                        if os.path.exists(static_path):
+                                            logger.info(f"✅ Fichier {name} généré et trouvé: {static_path}")
+                                            # Copier dans STATIC_ROOT
+                                            target_dir = os.path.join(self.location, os.path.dirname(name))
+                                            os.makedirs(target_dir, exist_ok=True)
+                                            target_path = os.path.join(self.location, name)
+                                            shutil.copy2(static_path, target_path)
+                                            logger.info(f"✅ Fichier {name} copié vers {target_path}")
+                                            return name
+                    except Exception as gen_error:
+                        logger.error(f"❌ Erreur lors de la génération de {name}: {gen_error}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+                
+                # 6. Si le fichier n'existe toujours pas, créer un fichier CSS minimal
+                if 'output.css' in name:
+                    logger.warning(f"⚠️ Création d'un fichier CSS minimal pour éviter les erreurs 404...")
+                    try:
+                        # Créer le répertoire si nécessaire
+                        target_dir = os.path.join(self.location, os.path.dirname(name))
+                        os.makedirs(target_dir, exist_ok=True)
+                        target_path = os.path.join(self.location, name)
+                        
+                        # Créer un fichier CSS minimal
+                        minimal_css = """/* Fichier CSS minimal - Tailwind CSS non généré */
+/* Ce fichier est créé automatiquement car output.css n'a pas été généré */
+/* Veuillez vérifier les logs du build pour voir pourquoi Tailwind CSS n'a pas été généré */
+body { margin: 0; padding: 0; }
+"""
+                        with open(target_path, 'w', encoding='utf-8') as f:
+                            f.write(minimal_css)
+                        logger.warning(f"⚠️ Fichier CSS minimal créé: {target_path}")
+                        return name
+                    except Exception as create_error:
+                        logger.error(f"❌ Erreur lors de la création du fichier CSS minimal: {create_error}")
+                
+                # 7. Logs d'erreur détaillés
                 logger.error(f"❌ Fichier {name} non trouvé dans le storage")
                 logger.error(f"   Emplacement STATIC_ROOT: {self.location}")
                 logger.error(f"   STATICFILES_DIRS: {getattr(settings, 'STATICFILES_DIRS', [])}")
