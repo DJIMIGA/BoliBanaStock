@@ -268,15 +268,30 @@ def deploy_railway():
             print(f"   Taille collecté: {size} octets ({size / 1024:.2f} KB)")
         
         # Si le fichier source existe mais n'a pas été collecté, le copier manuellement
-        if source_css_path.exists() and not collected_css_path.exists():
-            print(f"\n⚠️ Le fichier source existe mais n'a pas été collecté!")
-            print(f"   Copie manuelle du fichier...")
-            try:
-                import shutil
-                collected_css_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source_css_path, collected_css_path)
-                size = collected_css_path.stat().st_size
-                print(f"   ✅ Fichier copié avec succès: {collected_css_path} ({size} octets)")
+        # OU si le fichier n'existe pas du tout, forcer la génération puis la copie
+        if not collected_css_path.exists():
+            if not source_css_path.exists():
+                print(f"\n⚠️ Le fichier source n'existe pas! Tentative de génération...")
+                ensure_tailwind_css()
+                # Vérifier à nouveau après génération
+                if not source_css_path.exists():
+                    print(f"❌ Impossible de générer output.css")
+                else:
+                    print(f"✅ output.css généré avec succès")
+            
+            if source_css_path.exists():
+                print(f"\n⚠️ Le fichier source existe mais n'a pas été collecté!")
+                print(f"   Copie manuelle du fichier...")
+                try:
+                    import shutil
+                    # Créer le répertoire de destination s'il n'existe pas
+                    collected_css_path.parent.mkdir(parents=True, exist_ok=True)
+                    print(f"   Répertoire créé: {collected_css_path.parent}")
+                    
+                    # Copier le fichier
+                    shutil.copy2(source_css_path, collected_css_path)
+                    size = collected_css_path.stat().st_size
+                    print(f"   ✅ Fichier copié avec succès: {collected_css_path} ({size} octets)")
                 
                 # Mettre à jour le manifest si possible
                 try:
