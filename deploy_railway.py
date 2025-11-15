@@ -291,17 +291,25 @@ def deploy_railway():
                         
                         # Calculer le hash du fichier (comme WhiteNoise le fait)
                         with open(collected_css_path, 'rb') as f:
-                            file_hash = hashlib.md5(f.read()).hexdigest()[:12]
+                            file_content = f.read()
+                            file_hash = hashlib.md5(file_content).hexdigest()[:12]
+                        
+                        # Créer le fichier avec le hash dans le nom (comme WhiteNoise le fait)
+                        hashed_name = f'css/dist/output.{file_hash}.css'
+                        hashed_path = Path(settings.STATIC_ROOT) / hashed_name
+                        hashed_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(hashed_path, 'wb') as f:
+                            f.write(file_content)
                         
                         # Ajouter le fichier au manifest avec le hash
                         manifest_name = f'css/dist/output.css'
-                        hashed_name = f'css/dist/output.{file_hash}.css'
                         manifest['paths'][manifest_name] = hashed_name
                         
                         # Sauvegarder le manifest
                         with open(manifest_path, 'w', encoding='utf-8') as f:
                             json.dump(manifest, f, indent=2)
                         print(f"   ✅ Manifest mis à jour avec output.css (hash: {file_hash})")
+                        print(f"   ✅ Fichier avec hash créé: {hashed_path}")
                     else:
                         print(f"   ⚠️ Manifest non trouvé: {manifest_path}")
                 except Exception as manifest_error:
