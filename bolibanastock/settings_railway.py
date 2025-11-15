@@ -235,27 +235,93 @@ class TolerantManifestStaticFilesStorage(whitenoise.storage.CompressedManifestSt
         except (ValueError, KeyError) as e:
             # Si le fichier n'est pas dans le manifest, essayer de le trouver directement
             import logging
+            import shutil
+            from django.conf import settings
+            
             logger = logging.getLogger(__name__)
             
-            # Log uniquement pour les fichiers CSS importants
-            if 'output.css' in name or 'css' in name:
+            # Pour output.css, essayer plusieurs chemins possibles
+            if 'output.css' in name:
+                logger.warning(f"⚠️ Fichier {name} non trouvé dans le manifest, recherche alternative...")
+                
+                # 1. Essayer le chemin direct dans STATIC_ROOT
+                direct_path = os.path.join(self.location, name)
+                if os.path.exists(direct_path):
+                    logger.info(f"✅ Fichier {name} trouvé directement (hors manifest): {direct_path}")
+                    return name
+                
+                # 2. Essayer dans staticfiles/css/dist
+                alt_path = os.path.join(self.location, 'css', 'dist', 'output.css')
+                if os.path.exists(alt_path):
+                    logger.info(f"✅ Fichier output.css trouvé avec chemin alternatif: {alt_path}")
+                    return 'css/dist/output.css'
+                
+                # 3. Essayer dans STATICFILES_DIRS (répertoire source)
+                from django.contrib.staticfiles.finders import get_finders
+                for finder in get_finders():
+                    try:
+                        found_paths = finder.find(name, all=True)
+                        if found_paths:
+                            source_path = found_paths[0]
+                            logger.info(f"✅ Fichier {name} trouvé dans STATICFILES_DIRS: {source_path}")
+                            
+                            # Copier le fichier dans STATIC_ROOT si nécessaire
+                            target_dir = os.path.join(self.location, os.path.dirname(name))
+                            os.makedirs(target_dir, exist_ok=True)
+                            target_path = os.path.join(self.location, name)
+                            
+                            if not os.path.exists(target_path):
+                                shutil.copy2(source_path, target_path)
+                                logger.info(f"✅ Fichier {name} copié de {source_path} vers {target_path}")
+                            
+                            return name
+                    except Exception as find_error:
+                        logger.debug(f"   Erreur lors de la recherche avec finder {finder}: {find_error}")
+                
+                # 4. Essayer de chercher manuellement dans STATICFILES_DIRS
+                for static_dir in getattr(settings, 'STATICFILES_DIRS', []):
+                    static_path = os.path.join(static_dir, name)
+                    if os.path.exists(static_path):
+                        logger.info(f"✅ Fichier {name} trouvé dans STATICFILES_DIRS: {static_path}")
+                        
+                        # Copier le fichier dans STATIC_ROOT
+                        target_dir = os.path.join(self.location, os.path.dirname(name))
+                        os.makedirs(target_dir, exist_ok=True)
+                        target_path = os.path.join(self.location, name)
+                        
+                        if not os.path.exists(target_path):
+                            shutil.copy2(static_path, target_path)
+                            logger.info(f"✅ Fichier {name} copié de {static_path} vers {target_path}")
+                        
+                        return name
+                
+                # 5. Logs d'erreur détaillés
+                logger.error(f"❌ Fichier {name} non trouvé dans le storage")
+                logger.error(f"   Emplacement STATIC_ROOT: {self.location}")
+                logger.error(f"   STATICFILES_DIRS: {getattr(settings, 'STATICFILES_DIRS', [])}")
+                logger.error(f"   Erreur manifest: {e}")
+                
+                # Lister les fichiers CSS disponibles dans STATIC_ROOT
+                css_dir = os.path.join(self.location, 'css', 'dist')
+                if os.path.exists(css_dir):
+                    css_files = [f for f in os.listdir(css_dir) if f.endswith('.css')]
+                    logger.error(f"   Fichiers CSS dans {css_dir}: {css_files}")
+                else:
+                    logger.error(f"   Répertoire {css_dir} n'existe pas")
+            
+            # Pour les autres fichiers CSS (sauf rest_framework), logger mais continuer
+            elif 'css' in name and 'rest_framework' not in name:
                 logger.warning(f"⚠️ Fichier CSS non trouvé dans le manifest: {name}")
                 logger.warning(f"   Erreur: {e}")
             
+            # Vérifier si le fichier existe dans le storage
             try:
-                # Vérifier si le fichier existe dans le storage
                 if self.exists(name):
-                    if 'output.css' in name:
-                        logger.info(f"✅ Fichier {name} trouvé directement dans le storage (hors manifest)")
                     return name
-            except Exception as exist_error:
-                if 'output.css' in name:
-                    logger.error(f"❌ Erreur lors de la vérification de l'existence de {name}: {exist_error}")
+            except Exception:
+                pass
             
-            # Si le fichier n'existe pas, retourner le nom original quand même
-            # pour éviter l'erreur 500 (le navigateur gérera le 404)
-            if 'output.css' in name:
-                logger.error(f"❌ Fichier {name} non trouvé dans le storage, retour du nom original (404 attendu)")
+            # Retourner le nom original pour éviter l'erreur 500
             return name
 
 STATICFILES_STORAGE = 'bolibanastock.settings_railway.TolerantManifestStaticFilesStorage'
