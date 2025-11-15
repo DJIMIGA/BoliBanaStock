@@ -10,15 +10,30 @@ cmds = [
     "echo 'Python dependencies installed successfully'",
     "python -c 'import sendgrid; print(f\"✅ SendGrid installé: version {sendgrid.__version__}\")' || echo '⚠️ SendGrid non trouvé après installation'",
     "pip list | grep -i sendgrid || echo '⚠️ SendGrid non trouvé dans pip list'",
-    "cd theme && npm install",
-    "mkdir -p ../static/css/dist"
+    "echo '🎨 Vérification de Node.js et npm pour Tailwind CSS...'",
+    "node --version && echo '✅ Node.js disponible' || echo '❌ Node.js non trouvé'",
+    "npm --version && echo '✅ npm disponible' || echo '❌ npm non trouvé'",
+    "echo '📁 Vérification des répertoires et fichiers Tailwind...'",
+    "test -d theme && echo '✅ Répertoire theme existe' || echo '❌ Répertoire theme manquant'",
+    "test -f static/css/src/input.css && echo '✅ input.css existe' || echo '❌ input.css manquant'",
+    "test -f theme/package.json && echo '✅ package.json existe' || echo '❌ package.json manquant'",
+    "mkdir -p static/css/dist && echo '✅ Répertoire dist créé'",
+    "cd theme && echo '📦 Installation des dépendances npm...' && npm install",
+    "cd theme && echo '📋 Liste des packages npm installés:' && npm list --depth=0 || echo '⚠️ Impossible de lister les packages npm'"
 ]
 
 [phases.build]
 cmds = [
-    "cd theme && npm run build && cd ..",
-    "test -f static/css/dist/output.css && echo '✅ Tailwind CSS généré avec succès' || (echo '❌ Erreur: output.css non généré' && exit 1)",
-    "DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway python manage.py collectstatic --noinput"
+    "echo '🎨 Phase BUILD - Génération de Tailwind CSS...'",
+    "echo '📁 Répertoire de travail:' && pwd",
+    "echo '📁 Contenu du répertoire theme:' && ls -la theme/ || echo '⚠️ Impossible de lister theme/'",
+    "echo '📁 Contenu de static/css/dist avant build:' && ls -la static/css/dist/ 2>/dev/null || echo '⚠️ Répertoire dist vide ou inexistant'",
+    "cd theme && echo '🔨 Exécution de npm run build...' && npm run build && cd ..",
+    "echo '📁 Contenu de static/css/dist après build:' && ls -la static/css/dist/ || echo '⚠️ Impossible de lister dist/'",
+    "test -f static/css/dist/output.css && echo '✅ Tailwind CSS généré avec succès: static/css/dist/output.css' && ls -lh static/css/dist/output.css || (echo '❌ Erreur: output.css non généré' && exit 1)",
+    "echo '📦 Collecte des fichiers statiques avec collectstatic...'",
+    "DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway python manage.py collectstatic --noinput",
+    "echo '📁 Vérification de la collecte de output.css:' && test -f staticfiles/css/dist/output.css && echo '✅ output.css collecté dans staticfiles/' && ls -lh staticfiles/css/dist/output.css || echo '⚠️ output.css non trouvé dans staticfiles/'"
 ]
 
 [start]

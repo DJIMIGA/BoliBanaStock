@@ -53,21 +53,63 @@ def setup_django_railway():
 
 def ensure_tailwind_css():
     """Vérifie et génère le fichier Tailwind CSS si nécessaire"""
+    import subprocess
+    import shutil
+    
     project_root = Path(__file__).parent
     output_css = project_root / 'static' / 'css' / 'dist' / 'output.css'
     input_css = project_root / 'static' / 'css' / 'src' / 'input.css'
     theme_dir = project_root / 'theme'
+    package_json = theme_dir / 'package.json'
     
-    # Vérifier si le fichier output.css existe
+    print("\n" + "=" * 60)
+    print("🎨 VÉRIFICATION TAILWIND CSS - Démarrage")
+    print("=" * 60)
+    print(f"📁 Répertoire du projet: {project_root}")
+    print(f"📁 Chemin output.css attendu: {output_css}")
+    print(f"📁 Chemin input.css: {input_css}")
+    print(f"📁 Répertoire theme: {theme_dir}")
+    
+    # Vérifier Node.js et npm
+    print("\n🔍 Vérification de Node.js et npm...")
+    node_path = shutil.which('node')
+    npm_path = shutil.which('npm')
+    print(f"   Node.js: {node_path if node_path else '❌ NON TROUVÉ'}")
+    print(f"   npm: {npm_path if npm_path else '❌ NON TROUVÉ'}")
+    
+    if node_path:
+        try:
+            node_version = subprocess.run(['node', '--version'], capture_output=True, text=True, timeout=5)
+            print(f"   Version Node.js: {node_version.stdout.strip() if node_version.returncode == 0 else '❌ Impossible de déterminer'}")
+        except Exception as e:
+            print(f"   ⚠️ Erreur lors de la vérification de Node.js: {e}")
+    
+    if npm_path:
+        try:
+            npm_version = subprocess.run(['npm', '--version'], capture_output=True, text=True, timeout=5)
+            print(f"   Version npm: {npm_version.stdout.strip() if npm_version.returncode == 0 else '❌ Impossible de déterminer'}")
+        except Exception as e:
+            print(f"   ⚠️ Erreur lors de la vérification de npm: {e}")
+    
+    # Vérifier les fichiers et répertoires
+    print("\n🔍 Vérification des fichiers et répertoires...")
+    print(f"   Répertoire theme existe: {'✅ OUI' if theme_dir.exists() else '❌ NON'}")
+    print(f"   package.json existe: {'✅ OUI' if package_json.exists() else '❌ NON'}")
+    print(f"   input.css existe: {'✅ OUI' if input_css.exists() else '❌ NON'}")
+    print(f"   output.css existe: {'✅ OUI' if output_css.exists() else '❌ NON'}")
+    
     if output_css.exists():
-        print(f"✅ Tailwind CSS trouvé: {output_css}")
+        size = output_css.stat().st_size
+        print(f"\n✅ Tailwind CSS trouvé: {output_css}")
+        print(f"   Taille: {size} octets ({size / 1024:.2f} KB)")
         return True
     
-    print(f"⚠️ Tailwind CSS non trouvé: {output_css}")
+    print(f"\n⚠️ Tailwind CSS non trouvé: {output_css}")
     print(f"🔄 Tentative de génération...")
     
     # Vérifier que le répertoire dist existe
     output_css.parent.mkdir(parents=True, exist_ok=True)
+    print(f"   Répertoire dist créé/vérifié: {output_css.parent}")
     
     # Vérifier que input.css existe
     if not input_css.exists():
@@ -79,10 +121,36 @@ def ensure_tailwind_css():
         print(f"❌ Répertoire theme non trouvé: {theme_dir}")
         return False
     
+    # Vérifier que package.json existe
+    if not package_json.exists():
+        print(f"❌ package.json non trouvé: {package_json}")
+        return False
+    
     # Essayer de générer avec npm
     try:
-        import subprocess
-        print(f"📦 Exécution de npm run build dans {theme_dir}...")
+        print(f"\n📦 Exécution de npm run build dans {theme_dir}...")
+        print(f"   Répertoire de travail: {theme_dir.absolute()}")
+        
+        # Vérifier que node_modules existe
+        node_modules = theme_dir / 'node_modules'
+        if node_modules.exists():
+            print(f"   ✅ node_modules existe")
+        else:
+            print(f"   ⚠️ node_modules n'existe pas, tentative d'installation...")
+            install_result = subprocess.run(
+                ['npm', 'install'],
+                cwd=str(theme_dir),
+                capture_output=True,
+                text=True,
+                timeout=180
+            )
+            if install_result.returncode == 0:
+                print(f"   ✅ npm install réussi")
+            else:
+                print(f"   ❌ npm install échoué")
+                print(f"      stdout: {install_result.stdout}")
+                print(f"      stderr: {install_result.stderr}")
+        
         result = subprocess.run(
             ['npm', 'run', 'build'],
             cwd=str(theme_dir),
@@ -91,25 +159,42 @@ def ensure_tailwind_css():
             timeout=120
         )
         
+        print(f"\n📋 Résultat de npm run build:")
+        print(f"   Code de retour: {result.returncode}")
+        if result.stdout:
+            print(f"   stdout:\n{result.stdout}")
+        if result.stderr:
+            print(f"   stderr:\n{result.stderr}")
+        
         if result.returncode == 0:
             if output_css.exists():
-                print(f"✅ Tailwind CSS généré avec succès: {output_css}")
+                size = output_css.stat().st_size
+                print(f"\n✅ Tailwind CSS généré avec succès: {output_css}")
+                print(f"   Taille: {size} octets ({size / 1024:.2f} KB)")
                 return True
             else:
-                print(f"⚠️ npm run build a réussi mais output.css n'existe toujours pas")
-                print(f"   stdout: {result.stdout}")
-                print(f"   stderr: {result.stderr}")
+                print(f"\n⚠️ npm run build a réussi mais output.css n'existe toujours pas")
+                print(f"   Vérification du répertoire dist:")
+                if output_css.parent.exists():
+                    files = list(output_css.parent.iterdir())
+                    print(f"   Fichiers dans dist: {[f.name for f in files]}")
+                else:
+                    print(f"   ❌ Répertoire dist n'existe pas")
         else:
-            print(f"❌ Échec de npm run build")
-            print(f"   stdout: {result.stdout}")
-            print(f"   stderr: {result.stderr}")
+            print(f"\n❌ Échec de npm run build")
     except FileNotFoundError:
-        print(f"⚠️ npm non trouvé dans le PATH")
+        print(f"\n❌ npm non trouvé dans le PATH")
+        print(f"   PATH actuel: {os.environ.get('PATH', 'NON DÉFINI')}")
     except subprocess.TimeoutExpired:
-        print(f"❌ Timeout lors de la génération Tailwind CSS")
+        print(f"\n❌ Timeout lors de la génération Tailwind CSS (120s)")
     except Exception as e:
-        print(f"❌ Erreur lors de la génération Tailwind CSS: {e}")
+        print(f"\n❌ Erreur lors de la génération Tailwind CSS: {e}")
+        import traceback
+        traceback.print_exc()
     
+    print("=" * 60)
+    print("🎨 VÉRIFICATION TAILWIND CSS - Fin")
+    print("=" * 60 + "\n")
     return False
 
 def deploy_railway():
@@ -128,11 +213,35 @@ def deploy_railway():
         
         # 0. Vérifier et générer Tailwind CSS si nécessaire
         print("\n🎨 Vérification de Tailwind CSS...")
-        ensure_tailwind_css()
+        tailwind_ok = ensure_tailwind_css()
+        
+        # Vérifier que le fichier existe avant collectstatic
+        output_css_path = Path(settings.BASE_DIR) / 'static' / 'css' / 'dist' / 'output.css'
+        if output_css_path.exists():
+            size = output_css_path.stat().st_size
+            print(f"✅ output.css confirmé avant collectstatic: {output_css_path} ({size} octets)")
+        else:
+            print(f"⚠️ output.css non trouvé avant collectstatic: {output_css_path}")
         
         # 1. Collecter les fichiers statiques
         print("\n📦 Collecte des fichiers statiques...")
         call_command('collectstatic', '--noinput', '--clear')
+        
+        # Vérifier que le fichier a été collecté
+        collected_css_path = Path(settings.STATIC_ROOT) / 'css' / 'dist' / 'output.css'
+        if collected_css_path.exists():
+            size = collected_css_path.stat().st_size
+            print(f"✅ output.css collecté avec succès: {collected_css_path} ({size} octets)")
+        else:
+            print(f"⚠️ output.css non trouvé après collectstatic: {collected_css_path}")
+            print(f"   STATIC_ROOT: {settings.STATIC_ROOT}")
+            if Path(settings.STATIC_ROOT).exists():
+                print(f"   Contenu de STATIC_ROOT:")
+                try:
+                    for item in Path(settings.STATIC_ROOT).iterdir():
+                        print(f"      - {item.name} ({'d' if item.is_dir() else 'f'})")
+                except Exception as e:
+                    print(f"      ⚠️ Erreur lors de la liste: {e}")
         
         # 2. Vérifier la migration de la base de données
         print("\n🗄️ Vérification des migrations...")
