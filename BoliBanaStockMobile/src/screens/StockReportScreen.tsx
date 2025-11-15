@@ -69,6 +69,21 @@ interface StockStats {
   };
 }
 
+interface ShrinkageStats {
+  loss: {
+    total_transactions: number;
+    total_quantity: number;
+    total_value: number;
+    shrinkage_rate: number;
+  };
+  unknown: {
+    total_transactions: number;
+    total_quantity: number;
+    total_value: number;
+    shrinkage_rate: number;
+  };
+}
+
 type DateFilter = 'today' | 'week' | 'month' | 'custom';
 
 export default function StockReportScreen({ navigation }: any) {
@@ -77,11 +92,18 @@ export default function StockReportScreen({ navigation }: any) {
   const [adjustments, setAdjustments] = useState<AdjustmentTransaction[]>([]);
   const [filteredAdjustments, setFilteredAdjustments] = useState<AdjustmentTransaction[]>([]);
   const [stats, setStats] = useState<StockStats | null>(null);
+  const [shrinkageStats, setShrinkageStats] = useState<ShrinkageStats | null>(null);
   const [productAdjustments, setProductAdjustments] = useState<ProductAdjustment[]>([]);
   const [sortBy, setSortBy] = useState<'quantity' | 'value'>('value');
   const [dateFilter, setDateFilter] = useState<DateFilter>('today');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  
+  // Pagination pour les ajustements (économie de données mobile)
+  const [adjustmentsPage, setAdjustmentsPage] = useState(1);
+  const [hasMoreAdjustments, setHasMoreAdjustments] = useState(false);
+  const [loadingMoreAdjustments, setLoadingMoreAdjustments] = useState(false);
+  const ADJUSTMENTS_PAGE_SIZE = 20; // Limiter à 20 ajustements par page
   
   // Filtre par site pour les superusers
   const { isSuperuser } = useUserPermissions();
@@ -150,6 +172,90 @@ export default function StockReportScreen({ navigation }: any) {
     }
   };
 
+  // Fonction pour charger les ajustements avec pagination
+  const loadAdjustments = async (page: number = 1, append: boolean = false) => {
+    try {
+      if (append) {
+        setLoadingMoreAdjustments(true);
+      }
+      
+      const range = getDateRange(dateFilter);
+      
+      // Charger les transactions avec pagination
+      const params: any = {
+        page: page,
+        page_size: ADJUSTMENTS_PAGE_SIZE,
+      };
+      
+      if (isSuperuser && selectedSite) {
+        params.site_configuration = selectedSite;
+      }
+      
+      const response = await transactionService.getTransactions(params);
+      const allTransactions = Array.isArray(response) 
+        ? response 
+        : (response.results || response.transactions || []);
+      
+      // Filtrer les transactions d'ajustement d'inventaire
+      const inventoryTransactions = allTransactions
+        .filter((tx: any) => {
+          const notes = (tx.notes || '').toLowerCase();
+          const isAdjustmentType = tx.type === 'adjustment';
+          const isManualAdjustment = (tx.type === 'in' || tx.type === 'out') && 
+                                     (notes.includes('écart inventaire') || 
+                                      notes.includes('ajustement inventaire') ||
+                                      notes.includes('correction stock'));
+          const isInventoryContext = tx.context === 'inventory';
+          const hasInventoryKeywords = notes.includes('inventaire') || 
+                                       notes.includes('ajustement inventaire') ||
+                                       notes.includes('correction stock');
+          
+          return isAdjustmentType || isManualAdjustment || isInventoryContext || hasInventoryKeywords;
+        })
+        .map((tx: any) => {
+          // Normaliser les quantités
+          let normalizedQuantity = parseInt(tx.quantity || 0);
+          if (tx.type === 'out' && normalizedQuantity > 0) {
+            normalizedQuantity = -normalizedQuantity;
+          }
+          
+          let normalizedTotalAmount = parseFloat(tx.total_amount || 0);
+          if (tx.type === 'out' && normalizedTotalAmount > 0) {
+            normalizedTotalAmount = -normalizedTotalAmount;
+          }
+          
+          return {
+            ...tx,
+            quantity: normalizedQuantity,
+            total_amount: normalizedTotalAmount,
+          };
+        });
+
+      // Filtrer par date
+      const filteredTransactions = inventoryTransactions.filter((tx: AdjustmentTransaction) => {
+        const txDate = tx.transaction_date || tx.date;
+        return isDateInRange(txDate, range.start, range.end);
+      });
+
+      if (append) {
+        setAdjustments(prev => [...prev, ...filteredTransactions]);
+        setFilteredAdjustments(prev => [...prev, ...filteredTransactions]);
+      } else {
+        setAdjustments(filteredTransactions);
+        setFilteredAdjustments(filteredTransactions);
+        setAdjustmentsPage(1);
+      }
+      
+      // Vérifier s'il y a plus de pages
+      setHasMoreAdjustments(!!response?.next);
+      setAdjustmentsPage(page);
+    } catch (error) {
+      console.error('❌ Erreur chargement ajustements:', error);
+    } finally {
+      setLoadingMoreAdjustments(false);
+    }
+  };
+
   const getPreviousYearDateRange = (filter: DateFilter) => {
     const today = new Date();
     const previousYear = new Date(today);
@@ -207,10 +313,11 @@ export default function StockReportScreen({ navigation }: any) {
 
       const dashboardStats = dashboardData?.stats || dashboardData || {};
 
-      // Charger les transactions d'ajustement d'inventaire
+      // Charger les transactions avec pagination pour économiser les données mobiles
+      // Pour les stats, on charge seulement la première page (20 transactions suffisent pour les stats)
       const params: any = {
-        type: 'adjustment',
-        page_size: 1000,
+        page: 1,
+        page_size: 100, // Limiter pour les stats (suffisant pour calculer les totaux)
       };
       
       if (isSuperuser && selectedSite) {
@@ -221,15 +328,52 @@ export default function StockReportScreen({ navigation }: any) {
       const allTransactions = Array.isArray(response) 
         ? response 
         : (response.results || response.transactions || []);
+      
+      // Vérifier s'il y a plus de pages
+      const hasMore = response?.next ? true : false;
 
-      // Filtrer les transactions d'inventaire
-      const inventoryTransactions = allTransactions.filter((tx: any) => {
-        const notes = (tx.notes || '').toLowerCase();
-        return tx.context === 'inventory' || 
-               notes.includes('inventaire') || 
-               notes.includes('écart inventaire') ||
-               notes.includes('ajustement inventaire');
-      });
+      // Filtrer les transactions d'ajustement d'inventaire
+      // Inclure :
+      // 1. Toutes les transactions de type 'adjustment' (créées via adjustStock)
+      // 2. Les transactions de type 'in' ou 'out' avec notes contenant "Écart inventaire" (ajouts/retraits manuels)
+      // 3. Les transactions avec context 'inventory'
+      const inventoryTransactions = allTransactions
+        .filter((tx: any) => {
+          const notes = (tx.notes || '').toLowerCase();
+          const isAdjustmentType = tx.type === 'adjustment';
+          const isManualAdjustment = (tx.type === 'in' || tx.type === 'out') && 
+                                     (notes.includes('écart inventaire') || 
+                                      notes.includes('ajustement inventaire') ||
+                                      notes.includes('correction stock'));
+          const isInventoryContext = tx.context === 'inventory';
+          const hasInventoryKeywords = notes.includes('inventaire') || 
+                                       notes.includes('ajustement inventaire') ||
+                                       notes.includes('correction stock');
+          
+          return isAdjustmentType || isManualAdjustment || isInventoryContext || hasInventoryKeywords;
+        })
+        .map((tx: any) => {
+          // Normaliser les quantités : pour les retraits (type 'out'), convertir en négatif
+          // Les transactions de type 'adjustment' ont déjà la bonne quantité (positive ou négative)
+          // Les transactions de type 'in' restent positives (ajouts)
+          // Les transactions de type 'out' doivent être négatives (retraits)
+          let normalizedQuantity = parseInt(tx.quantity || 0);
+          if (tx.type === 'out' && normalizedQuantity > 0) {
+            normalizedQuantity = -normalizedQuantity;
+          }
+          
+          // Normaliser le total_amount de la même manière
+          let normalizedTotalAmount = parseFloat(tx.total_amount || 0);
+          if (tx.type === 'out' && normalizedTotalAmount > 0) {
+            normalizedTotalAmount = -normalizedTotalAmount;
+          }
+          
+          return {
+            ...tx,
+            quantity: normalizedQuantity,
+            total_amount: normalizedTotalAmount,
+          };
+        });
 
       // Filtrer par date
       const filteredTransactions = inventoryTransactions.filter((tx: AdjustmentTransaction) => {
@@ -249,14 +393,17 @@ export default function StockReportScreen({ navigation }: any) {
         // Erreur silencieuse
       }
 
-      setAdjustments(filteredTransactions);
-      setFilteredAdjustments(filteredTransactions);
-
       // Calculer les statistiques
       calculateStats(filteredTransactions, previousYearTransactions, dashboardStats);
       
       // Calculer le classement des produits
       calculateProductAdjustments(filteredTransactions);
+      
+      // Charger les ajustements avec pagination
+      await loadAdjustments(1, false);
+      
+      // Charger les stats de démarque inconnue
+      await loadShrinkageStats(dashboardStats.total_stock_value || 0);
     } catch (error) {
       console.error('❌ Erreur chargement rapport stock:', error);
     } finally {
@@ -346,6 +493,159 @@ export default function StockReportScreen({ navigation }: any) {
     return ((current - previous) / previous) * 100;
   };
 
+  // Fonction pour charger les stats de démarque (casse et inconnue)
+  const loadShrinkageStats = async (totalStockValue: number) => {
+    try {
+      const range = getDateRange(dateFilter);
+      
+      // Charger toutes les transactions
+      const params: any = {
+        page_size: 100,
+      };
+      
+      if (isSuperuser && selectedSite) {
+        params.site_configuration = selectedSite;
+      }
+      
+      const response = await transactionService.getTransactions(params);
+      const allTransactions = Array.isArray(response) 
+        ? response 
+        : (response.results || response.transactions || []);
+      
+      // Filtrer la CASSE (type 'loss')
+      const lossTransactions = allTransactions
+        .filter((tx: any) => tx.type === 'loss')
+        .map((tx: any) => {
+          let normalizedQuantity = parseInt(tx.quantity || 0);
+          if (normalizedQuantity < 0) {
+            normalizedQuantity = Math.abs(normalizedQuantity);
+          }
+          
+          let normalizedTotalAmount = parseFloat(tx.total_amount || 0);
+          if (normalizedTotalAmount < 0) {
+            normalizedTotalAmount = Math.abs(normalizedTotalAmount);
+          }
+          
+          return {
+            ...tx,
+            quantity: normalizedQuantity,
+            total_amount: normalizedTotalAmount,
+          };
+        });
+
+      // Filtrer les transactions de démarque INCONNUE (PERTES uniquement)
+      const unknownShrinkageTransactions = allTransactions
+        .filter((tx: any) => {
+          // Exclure la casse (connue)
+          if (tx.type === 'loss') {
+            return false;
+          }
+
+          // Exclure les ventes
+          if (tx.sale || (tx.context === 'sale') || (tx.notes && tx.notes.toLowerCase().includes('vente'))) {
+            return false;
+          }
+
+          // Exclure les réceptions
+          if (tx.context === 'reception' || (tx.notes && tx.notes.toLowerCase().includes('réception'))) {
+            return false;
+          }
+
+          // Exclure les ajouts manuels (gains positifs)
+          if (tx.type === 'in' && (tx.context === 'manual' || (tx.notes && tx.notes.toLowerCase().includes('manuel')))) {
+            return false;
+          }
+
+          const quantity = parseInt(tx.quantity || 0);
+
+          // Inclure les écarts d'inventaire NÉGATIFS uniquement
+          if (tx.type === 'adjustment' && quantity < 0 && (tx.context === 'inventory' || (tx.notes && tx.notes.toLowerCase().includes('écart inventaire')))) {
+            return true;
+          }
+
+          // Inclure les retraits manuels (pertes)
+          if (tx.type === 'out' && (tx.context === 'manual' || (tx.notes && tx.notes.toLowerCase().includes('manuel')))) {
+            return true;
+          }
+
+          // Inclure les ajustements manuels NÉGATIFS uniquement (pertes)
+          if (tx.type === 'adjustment' && quantity < 0 && (tx.context === 'manual' || (tx.notes && (tx.notes.toLowerCase().includes('manuel') || tx.notes.toLowerCase().includes('écart inventaire'))))) {
+            return true;
+          }
+
+          return false;
+        })
+        .map((tx: any) => {
+          // Normaliser les quantités
+          let normalizedQuantity = parseInt(tx.quantity || 0);
+          if (tx.type === 'out' && normalizedQuantity > 0) {
+            normalizedQuantity = -normalizedQuantity;
+          }
+          
+          let normalizedTotalAmount = parseFloat(tx.total_amount || 0);
+          if (tx.type === 'out' && normalizedTotalAmount > 0) {
+            normalizedTotalAmount = -normalizedTotalAmount;
+          }
+          
+          return {
+            ...tx,
+            quantity: normalizedQuantity,
+            total_amount: normalizedTotalAmount,
+          };
+        });
+
+      // Filtrer par date
+      const filteredLoss = lossTransactions.filter((tx: any) => {
+        const txDate = tx.transaction_date || tx.date;
+        return isDateInRange(txDate, range.start, range.end);
+      });
+
+      const filteredUnknown = unknownShrinkageTransactions.filter((tx: any) => {
+        const txDate = tx.transaction_date || tx.date;
+        return isDateInRange(txDate, range.start, range.end);
+      });
+
+      // Calculer les stats de casse
+      const lossQuantity = filteredLoss.reduce((sum: number, tx: any) => {
+        return sum + Math.abs(parseInt(String(tx.quantity || 0)));
+      }, 0);
+      
+      const lossValue = filteredLoss.reduce((sum: number, tx: any) => {
+        return sum + Math.abs(parseFloat(String(tx.total_amount || 0)));
+      }, 0);
+      
+      const lossRate = totalStockValue > 0 ? (lossValue / totalStockValue) * 100 : 0;
+
+      // Calculer les stats de démarque inconnue
+      const unknownQuantity = filteredUnknown.reduce((sum: number, tx: any) => {
+        return sum + Math.abs(parseInt(String(tx.quantity || 0)));
+      }, 0);
+      
+      const unknownValue = filteredUnknown.reduce((sum: number, tx: any) => {
+        return sum + Math.abs(parseFloat(String(tx.total_amount || 0)));
+      }, 0);
+      
+      const unknownRate = totalStockValue > 0 ? (unknownValue / totalStockValue) * 100 : 0;
+
+      setShrinkageStats({
+        loss: {
+          total_transactions: filteredLoss.length,
+          total_quantity: lossQuantity,
+          total_value: lossValue,
+          shrinkage_rate: lossRate,
+        },
+        unknown: {
+          total_transactions: filteredUnknown.length,
+          total_quantity: unknownQuantity,
+          total_value: unknownValue,
+          shrinkage_rate: unknownRate,
+        },
+      });
+    } catch (error) {
+      console.error('❌ Erreur chargement démarque:', error);
+    }
+  };
+
   const calculateProductAdjustments = (transactionsList: AdjustmentTransaction[]) => {
     const productMap: { [key: string]: ProductAdjustment } = {};
 
@@ -418,6 +718,8 @@ export default function StockReportScreen({ navigation }: any) {
 
   useEffect(() => {
     loadStockData();
+    // Réinitialiser la pagination quand le filtre de date ou le site change
+    setAdjustmentsPage(1);
   }, [dateFilter, selectedSite]);
 
   useEffect(() => {
@@ -444,6 +746,12 @@ export default function StockReportScreen({ navigation }: any) {
       setFilteredAdjustments(filtered);
     }
   }, [searchQuery, adjustments]);
+
+  const loadMoreAdjustments = () => {
+    if (!loadingMoreAdjustments && hasMoreAdjustments) {
+      loadAdjustments(adjustmentsPage + 1, true);
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -622,37 +930,163 @@ export default function StockReportScreen({ navigation }: any) {
             {stats && (
               <>
                 {/* Résumé du stock */}
-                <View style={[styles.statsSection, { backgroundColor: theme.colors.primary[50], borderLeftColor: theme.colors.primary[300] }]}>
-                  <Text style={styles.sectionTitle}>Résumé du stock</Text>
+                <View style={[styles.statsSectionCompact, { backgroundColor: theme.colors.primary[50], borderLeftColor: theme.colors.primary[300] }]}>
+                  <Text style={styles.sectionTitleCompact}>Résumé du stock</Text>
                   
                   <View style={styles.compactStatsGrid}>
-                    <View style={styles.compactStatCard}>
-                      <Ionicons name="cube-outline" size={20} color={theme.colors.primary[500]} />
-                      <Text style={styles.compactStatLabel}>Produits</Text>
-                      <Text style={styles.compactStatValue}>{stats.total_products}</Text>
+                    <View style={styles.compactStatCardSmall}>
+                      <View style={styles.compactStatHeaderSmall}>
+                        <Ionicons name="cube-outline" size={16} color={theme.colors.primary[500]} />
+                        <Text style={styles.compactStatLabelSmall}>Produits</Text>
+                      </View>
+                      <Text style={styles.compactStatValueSmall}>{stats.total_products}</Text>
                     </View>
 
-                    <View style={styles.compactStatCard}>
-                      <Ionicons name="folder-outline" size={20} color={theme.colors.info[500]} />
-                      <Text style={styles.compactStatLabel}>Catégories</Text>
-                      <Text style={styles.compactStatValue}>{stats.total_categories}</Text>
+                    <View style={styles.compactStatCardSmall}>
+                      <View style={styles.compactStatHeaderSmall}>
+                        <Ionicons name="folder-outline" size={16} color={theme.colors.info[500]} />
+                        <Text style={styles.compactStatLabelSmall}>Catégories</Text>
+                      </View>
+                      <Text style={styles.compactStatValueSmall}>{stats.total_categories}</Text>
                     </View>
 
-                    <View style={styles.compactStatCard}>
-                      <Ionicons name="pricetag-outline" size={20} color={theme.colors.warning[500]} />
-                      <Text style={styles.compactStatLabel}>Marques</Text>
-                      <Text style={styles.compactStatValue}>{stats.total_brands}</Text>
+                    <View style={styles.compactStatCardSmall}>
+                      <View style={styles.compactStatHeaderSmall}>
+                        <Ionicons name="pricetag-outline" size={16} color={theme.colors.warning[500]} />
+                        <Text style={styles.compactStatLabelSmall}>Marques</Text>
+                      </View>
+                      <Text style={styles.compactStatValueSmall}>{stats.total_brands}</Text>
                     </View>
 
-                    <View style={styles.compactStatCard}>
-                      <Ionicons name="cash-outline" size={20} color={theme.colors.success[500]} />
-                      <Text style={styles.compactStatLabel}>Valeur stock</Text>
-                      <Text style={styles.compactStatValue}>
+                    <View style={styles.compactStatCardSmall}>
+                      <View style={styles.compactStatHeaderSmall}>
+                        <Ionicons name="cash-outline" size={16} color={theme.colors.success[500]} />
+                        <Text style={styles.compactStatLabelSmall}>Valeur stock</Text>
+                      </View>
+                      <Text style={styles.compactStatValueSmall} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.7}>
                         {Math.round(stats.total_stock_value).toLocaleString()} FCFA
                       </Text>
                     </View>
                   </View>
                 </View>
+
+                {/* Alertes */}
+                <View style={[styles.statsSectionCompact, { backgroundColor: theme.colors.warning[50], borderLeftColor: theme.colors.warning[300] }]}>
+                  <Text style={styles.sectionTitleCompact}>Alertes</Text>
+                  <View style={styles.alertRowCompact}>
+                    <View style={styles.alertCardCompact}>
+                      <Ionicons name="warning-outline" size={18} color={theme.colors.warning[500]} />
+                      <View style={styles.alertInfoCompact}>
+                        <Text style={styles.alertLabelCompact}>Stock faible</Text>
+                        <Text style={styles.alertValueCompact}>
+                          {stats.low_stock_count} produits
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.alertCardCompact}>
+                      <Ionicons name="close-circle-outline" size={18} color={theme.colors.error[500]} />
+                      <View style={styles.alertInfoCompact}>
+                        <Text style={styles.alertLabelCompact}>Rupture</Text>
+                        <Text style={styles.alertValueCompact}>
+                          {stats.out_of_stock_count} produits
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Démarque (Casse et Inconnue) */}
+                {shrinkageStats && (
+                  <View style={[styles.statsSectionCompact, { backgroundColor: theme.colors.error[50], borderLeftColor: theme.colors.error[300] }]}>
+                    <Text style={styles.sectionTitleCompact}>Démarque</Text>
+                    
+                    {/* Casse */}
+                    <View style={styles.shrinkageSubSection}>
+                      <View style={styles.shrinkageSubHeader}>
+                        <Ionicons name="warning-outline" size={18} color={theme.colors.error[600]} />
+                        <Text style={styles.shrinkageSubTitle}>Casse</Text>
+                      </View>
+                      <View style={styles.compactStatsGrid}>
+                        <View style={styles.compactStatCardSmall}>
+                          <View style={styles.compactStatHeaderSmall}>
+                            <Ionicons name="alert-circle-outline" size={16} color={theme.colors.error[500]} />
+                            <Text style={styles.compactStatLabelSmall}>Transactions</Text>
+                          </View>
+                          <Text style={styles.compactStatValueSmall}>{shrinkageStats.loss.total_transactions}</Text>
+                        </View>
+
+                        <View style={styles.compactStatCardSmall}>
+                          <View style={styles.compactStatHeaderSmall}>
+                            <Ionicons name="cube-outline" size={16} color={theme.colors.error[500]} />
+                            <Text style={styles.compactStatLabelSmall}>Quantité</Text>
+                          </View>
+                          <Text style={styles.compactStatValueSmall}>{shrinkageStats.loss.total_quantity}</Text>
+                        </View>
+
+                        <View style={styles.compactStatCardSmall}>
+                          <View style={styles.compactStatHeaderSmall}>
+                            <Ionicons name="cash-outline" size={16} color={theme.colors.error[500]} />
+                            <Text style={styles.compactStatLabelSmall}>Valeur</Text>
+                          </View>
+                          <Text style={styles.compactStatValueSmall} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.7}>
+                            {Math.round(shrinkageStats.loss.total_value).toLocaleString()} FCFA
+                          </Text>
+                        </View>
+
+                        <View style={styles.compactStatCardSmall}>
+                          <View style={styles.compactStatHeaderSmall}>
+                            <Ionicons name="trending-down-outline" size={16} color={theme.colors.error[500]} />
+                            <Text style={styles.compactStatLabelSmall}>Taux</Text>
+                          </View>
+                          <Text style={styles.compactStatValueSmall}>{shrinkageStats.loss.shrinkage_rate.toFixed(2)}%</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Démarque inconnue */}
+                    <View style={styles.shrinkageSubSection}>
+                      <View style={styles.shrinkageSubHeader}>
+                        <Ionicons name="help-circle-outline" size={18} color={theme.colors.warning[600]} />
+                        <Text style={styles.shrinkageSubTitle}>Inconnue</Text>
+                      </View>
+                      <View style={styles.compactStatsGrid}>
+                        <View style={styles.compactStatCardSmall}>
+                          <View style={styles.compactStatHeaderSmall}>
+                            <Ionicons name="alert-circle-outline" size={16} color={theme.colors.warning[500]} />
+                            <Text style={styles.compactStatLabelSmall}>Transactions</Text>
+                          </View>
+                          <Text style={styles.compactStatValueSmall}>{shrinkageStats.unknown.total_transactions}</Text>
+                        </View>
+
+                        <View style={styles.compactStatCardSmall}>
+                          <View style={styles.compactStatHeaderSmall}>
+                            <Ionicons name="cube-outline" size={16} color={theme.colors.warning[500]} />
+                            <Text style={styles.compactStatLabelSmall}>Quantité</Text>
+                          </View>
+                          <Text style={styles.compactStatValueSmall}>{shrinkageStats.unknown.total_quantity}</Text>
+                        </View>
+
+                        <View style={styles.compactStatCardSmall}>
+                          <View style={styles.compactStatHeaderSmall}>
+                            <Ionicons name="cash-outline" size={16} color={theme.colors.warning[500]} />
+                            <Text style={styles.compactStatLabelSmall}>Valeur</Text>
+                          </View>
+                          <Text style={styles.compactStatValueSmall} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.7}>
+                            {Math.round(shrinkageStats.unknown.total_value).toLocaleString()} FCFA
+                          </Text>
+                        </View>
+
+                        <View style={styles.compactStatCardSmall}>
+                          <View style={styles.compactStatHeaderSmall}>
+                            <Ionicons name="trending-down-outline" size={16} color={theme.colors.warning[500]} />
+                            <Text style={styles.compactStatLabelSmall}>Taux</Text>
+                          </View>
+                          <Text style={styles.compactStatValueSmall}>{shrinkageStats.unknown.shrinkage_rate.toFixed(2)}%</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 {/* Statistiques d'ajustements */}
                 <View style={[styles.statsSection, { backgroundColor: theme.colors.info[50], borderLeftColor: theme.colors.info[300] }]}>
@@ -690,67 +1124,61 @@ export default function StockReportScreen({ navigation }: any) {
                     </View>
 
                     <View style={styles.compactStatCard}>
-                      <Ionicons name="today-outline" size={20} color={theme.colors.primary[500]} />
-                      <Text style={styles.compactStatLabel}>Aujourd'hui</Text>
+                      <View style={styles.compactStatHeader}>
+                        <Ionicons name="today-outline" size={20} color={theme.colors.primary[500]} />
+                        <Text style={styles.compactStatLabel}>Aujourd'hui</Text>
+                      </View>
                       <Text style={styles.compactStatValue}>{stats.today_adjustments}</Text>
                     </View>
                   </View>
 
                   <View style={styles.adjustmentSummary}>
                     <View style={styles.adjustmentRow}>
-                      <View style={styles.adjustmentItem}>
-                        <Ionicons name="arrow-up-circle-outline" size={18} color={theme.colors.success[500]} />
-                        <Text style={styles.adjustmentLabel}>Écarts positifs:</Text>
-                        <Text style={[styles.adjustmentValue, { color: theme.colors.success[600] }]}>
-                          {stats.positive_adjustments} ({stats.total_positive_quantity} unités)
-                        </Text>
+                      <View style={[styles.adjustmentCard, styles.adjustmentCardPositive]}>
+                        <View style={styles.adjustmentCardHeader}>
+                          <View style={[styles.adjustmentIconContainer, { backgroundColor: theme.colors.success[100] }]}>
+                            <Ionicons name="arrow-up-circle" size={24} color={theme.colors.success[600]} />
+                          </View>
+                          <Text style={styles.adjustmentCardTitle}>Écarts positifs</Text>
+                        </View>
+                        <View style={styles.adjustmentCardContent}>
+                          <Text style={[styles.adjustmentCardValue, { color: theme.colors.success[600] }]}>
+                            {stats.total_positive_quantity}
+                          </Text>
+                          <Text style={styles.adjustmentCardUnit}>unités</Text>
+                        </View>
+                        <View style={styles.adjustmentCardFooter}>
+                          <Text style={styles.adjustmentCardCount}>
+                            {stats.positive_adjustments} ajustement{stats.positive_adjustments > 1 ? 's' : ''}
+                          </Text>
+                          <Text style={[styles.adjustmentCardAmount, { color: theme.colors.success[600] }]}>
+                            {Math.round(stats.total_positive_value).toLocaleString()} FCFA
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.adjustmentItem}>
-                        <Ionicons name="arrow-down-circle-outline" size={18} color={theme.colors.error[500]} />
-                        <Text style={styles.adjustmentLabel}>Écarts négatifs:</Text>
-                        <Text style={[styles.adjustmentValue, { color: theme.colors.error[600] }]}>
-                          {stats.negative_adjustments} ({stats.total_negative_quantity} unités)
-                        </Text>
+                      
+                      <View style={[styles.adjustmentCard, styles.adjustmentCardNegative]}>
+                        <View style={styles.adjustmentCardHeader}>
+                          <View style={[styles.adjustmentIconContainer, { backgroundColor: theme.colors.error[100] }]}>
+                            <Ionicons name="arrow-down-circle" size={24} color={theme.colors.error[600]} />
+                          </View>
+                          <Text style={styles.adjustmentCardTitle}>Écarts négatifs</Text>
+                        </View>
+                        <View style={styles.adjustmentCardContent}>
+                          <Text style={[styles.adjustmentCardValue, { color: theme.colors.error[600] }]}>
+                            {stats.total_negative_quantity}
+                          </Text>
+                          <Text style={styles.adjustmentCardUnit}>unités</Text>
+                        </View>
+                        <View style={styles.adjustmentCardFooter}>
+                          <Text style={styles.adjustmentCardCount}>
+                            {stats.negative_adjustments} ajustement{stats.negative_adjustments > 1 ? 's' : ''}
+                          </Text>
+                          <Text style={[styles.adjustmentCardAmount, { color: theme.colors.error[600] }]}>
+                            {Math.round(stats.total_negative_value).toLocaleString()} FCFA
+                          </Text>
+                        </View>
                       </View>
-                    </View>
-                    
-                    <View style={styles.netRow}>
-                      <Text style={styles.netLabel}>Solde net:</Text>
-                      <Text style={[
-                        styles.netValue,
-                        { color: stats.net_quantity >= 0 ? theme.colors.success[600] : theme.colors.error[600] }
-                      ]}>
-                        {stats.net_quantity >= 0 ? '+' : ''}{stats.net_quantity} unités
-                      </Text>
-                      <Text style={[
-                        styles.netValue,
-                        { color: stats.net_value >= 0 ? theme.colors.success[600] : theme.colors.error[600], marginLeft: 8 }
-                      ]}>
-                        ({stats.net_value >= 0 ? '+' : ''}{Math.round(stats.net_value).toLocaleString()} FCFA)
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Alertes */}
-                <View style={[styles.statsSection, { backgroundColor: theme.colors.warning[50], borderLeftColor: theme.colors.warning[300] }]}>
-                  <Text style={styles.sectionTitle}>Alertes</Text>
-                  <View style={styles.alertCard}>
-                    <Ionicons name="warning-outline" size={24} color={theme.colors.warning[500]} />
-                    <View style={styles.alertInfo}>
-                      <Text style={styles.alertLabel}>Stock faible</Text>
-                      <Text style={styles.alertValue}>
-                        {stats.low_stock_count} produits
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.alertCard}>
-                    <Ionicons name="close-circle-outline" size={24} color={theme.colors.error[500]} />
-                    <View style={styles.alertInfo}>
-                      <Text style={styles.alertLabel}>Rupture de stock</Text>
-                      <Text style={styles.alertValue}>
-                        {stats.out_of_stock_count} produits
-                      </Text>
                     </View>
                   </View>
                 </View>
@@ -761,7 +1189,7 @@ export default function StockReportScreen({ navigation }: any) {
             {productAdjustments.length > 0 && (
               <View style={[styles.productAdjustmentsSection, { backgroundColor: theme.colors.info[50], borderLeftColor: theme.colors.info[300] }]}>
                 <View style={styles.topProductsHeader}>
-                  <Text style={styles.sectionTitle}>🏆 Top produits avec ajustements</Text>
+                  <Text style={styles.sectionTitleCompact}>Top écarts</Text>
                   <View style={styles.sortButtons}>
                     <TouchableOpacity
                       style={[
@@ -854,13 +1282,36 @@ export default function StockReportScreen({ navigation }: any) {
                   </Text>
                 </View>
               ) : (
-                <FlatList
-                  data={filteredAdjustments}
-                  renderItem={renderAdjustmentItem}
-                  keyExtractor={(item) => String(item.id)}
-                  scrollEnabled={false}
-                  ListFooterComponent={<View style={{ height: 20 }} />}
-                />
+                <>
+                  <FlatList
+                    data={filteredAdjustments}
+                    renderItem={renderAdjustmentItem}
+                    keyExtractor={(item) => String(item.id)}
+                    scrollEnabled={false}
+                    ListFooterComponent={
+                      hasMoreAdjustments ? (
+                        <View style={styles.loadMoreContainer}>
+                          <TouchableOpacity
+                            style={styles.loadMoreButton}
+                            onPress={loadMoreAdjustments}
+                            disabled={loadingMoreAdjustments}
+                          >
+                            {loadingMoreAdjustments ? (
+                              <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                            ) : (
+                              <>
+                                <Ionicons name="chevron-down" size={20} color={theme.colors.primary[500]} />
+                                <Text style={styles.loadMoreText}>Charger plus</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View style={{ height: 20 }} />
+                      )
+                    }
+                  />
+                </>
               )}
             </View>
           </>
@@ -1003,8 +1454,21 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     borderRadius: 8,
   },
+  statsSectionCompact: {
+    padding: 12,
+    borderLeftWidth: 3,
+    marginHorizontal: 12,
+    marginVertical: 6,
+    borderRadius: 8,
+  },
   sectionTitle: {
     fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+    marginBottom: 10,
+  },
+  sectionTitleCompact: {
+    fontSize: 14,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
     marginBottom: 10,
@@ -1012,14 +1476,22 @@ const styles = StyleSheet.create({
   compactStatsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
+    gap: 6,
+    marginBottom: 0,
+    justifyContent: 'space-between',
   },
   compactStatCard: {
     width: '48%',
     backgroundColor: theme.colors.background.primary,
     borderRadius: 10,
     padding: 12,
+    ...theme.shadows.sm,
+  },
+  compactStatCardSmall: {
+    width: '47%',
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 8,
+    padding: 8,
     ...theme.shadows.sm,
   },
   compactStatHeader: {
@@ -1031,6 +1503,18 @@ const styles = StyleSheet.create({
   },
   compactStatLabel: {
     fontSize: 11,
+    color: theme.colors.text.secondary,
+    fontWeight: '500',
+    flex: 1,
+  },
+  compactStatHeaderSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  compactStatLabelSmall: {
+    fontSize: 10,
     color: theme.colors.text.secondary,
     fontWeight: '500',
     flex: 1,
@@ -1054,6 +1538,12 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     marginBottom: 4,
   },
+  compactStatValueSmall: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+    marginTop: 2,
+  },
   previousYearValue: {
     fontSize: 9,
     color: theme.colors.text.secondary,
@@ -1071,43 +1561,71 @@ const styles = StyleSheet.create({
   adjustmentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
     gap: 12,
   },
-  adjustmentItem: {
+  adjustmentCard: {
     flex: 1,
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 12,
+    padding: 16,
+    ...theme.shadows.sm,
+  },
+  adjustmentCardPositive: {
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.success[500],
+  },
+  adjustmentCardNegative: {
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.error[500],
+  },
+  adjustmentCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: 8,
+    marginBottom: 12,
+    gap: 10,
   },
-  adjustmentLabel: {
-    fontSize: 12,
-    color: theme.colors.text.secondary,
-    flex: 1,
+  adjustmentIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  adjustmentValue: {
+  adjustmentCardTitle: {
     fontSize: 13,
     fontWeight: '600',
+    color: theme.colors.text.primary,
+    flex: 1,
   },
-  netRow: {
-    flexDirection: 'row',
+  adjustmentCardContent: {
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: 8,
+    marginBottom: 12,
   },
-  netLabel: {
+  adjustmentCardValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  adjustmentCardUnit: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    fontWeight: '500',
+  },
+  adjustmentCardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.neutral[200],
+    paddingTop: 12,
+    gap: 6,
+  },
+  adjustmentCardCount: {
+    fontSize: 11,
+    color: theme.colors.text.secondary,
+    textAlign: 'center',
+  },
+  adjustmentCardAmount: {
     fontSize: 14,
     fontWeight: '600',
-    color: theme.colors.text.primary,
-    marginRight: 8,
-  },
-  netValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    textAlign: 'center',
   },
   alertCard: {
     flexDirection: 'row',
@@ -1129,6 +1647,47 @@ const styles = StyleSheet.create({
   alertValue: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  alertRowCompact: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  alertCardCompact: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 8,
+    gap: 8,
+  },
+  alertInfoCompact: {
+    flex: 1,
+  },
+  alertLabelCompact: {
+    fontSize: 11,
+    color: theme.colors.text.secondary,
+    marginBottom: 2,
+  },
+  alertValueCompact: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  shrinkageSubSection: {
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  shrinkageSubHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  shrinkageSubTitle: {
+    fontSize: 13,
+    fontWeight: '600',
     color: theme.colors.text.primary,
   },
   productAdjustmentsSection: {
@@ -1305,6 +1864,26 @@ const styles = StyleSheet.create({
     color: theme.colors.text.secondary,
     marginTop: 12,
     textAlign: 'center',
+  },
+  loadMoreContainer: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: theme.colors.primary[50],
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.primary[300],
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.primary[600],
   },
   siteFilterContainer: {
     flexDirection: 'row',

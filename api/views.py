@@ -2374,6 +2374,53 @@ class DashboardView(APIView):
                 brands = Brand.objects.filter(site_configuration=user_site)
                 sales = Sale.objects.filter(site_configuration=user_site)
             
+            # Calculer total_stock_value à partir des transactions (prix figés)
+            # Inclure : transactions de type 'in' (achats) + ajustements positifs
+            if request.user.is_superuser:
+                transactions_query = Transaction.objects.all()
+            else:
+                if not user_site:
+                    transactions_query = Transaction.objects.none()
+                else:
+                    transactions_query = Transaction.objects.filter(site_configuration=user_site)
+            
+            # Transactions d'entrée (achats)
+            in_transactions = transactions_query.filter(type='in').select_related('product')
+            
+            # Ajustements positifs (ajouts de stock)
+            positive_adjustments = transactions_query.filter(
+                type='adjustment',
+                quantity__gt=0
+            ).select_related('product')
+            
+            # Calculer la valeur totale à partir des transactions
+            total_stock_value = Decimal('0')
+            
+            # Somme des transactions d'entrée
+            for tx in in_transactions:
+                if tx.total_amount and tx.total_amount > 0:
+                    total_stock_value += Decimal(str(tx.total_amount))
+                elif tx.unit_price and tx.unit_price > 0:
+                    # Si total_amount est 0 mais unit_price existe, calculer
+                    total_stock_value += Decimal(str(tx.unit_price)) * Decimal(str(tx.quantity))
+                elif tx.product:
+                    # Fallback : utiliser le prix d'achat actuel du produit
+                    total_stock_value += Decimal(str(tx.product.purchase_price)) * Decimal(str(tx.quantity))
+            
+            # Somme des ajustements positifs
+            for tx in positive_adjustments:
+                if tx.total_amount and tx.total_amount > 0:
+                    total_stock_value += Decimal(str(tx.total_amount))
+                elif tx.unit_price and tx.unit_price > 0:
+                    # Si total_amount est 0 mais unit_price existe, calculer
+                    total_stock_value += Decimal(str(tx.unit_price)) * Decimal(str(tx.quantity))
+                elif tx.product:
+                    # Fallback : utiliser le prix d'achat actuel du produit
+                    total_stock_value += Decimal(str(tx.product.purchase_price)) * Decimal(str(tx.quantity))
+            
+            # Convertir en float pour la réponse JSON
+            total_stock_value_float = float(total_stock_value)
+            
             # Statistiques de base
             stats = {
                 'total_products': products.count(),
@@ -2382,9 +2429,7 @@ class DashboardView(APIView):
                     quantity__lte=F('alert_threshold')
                 ).count(),
                 'out_of_stock_count': products.filter(quantity=0).count(),
-                'total_stock_value': products.aggregate(
-                    total=Sum(F('quantity') * F('purchase_price'))
-                )['total'] or 0,
+                'total_stock_value': total_stock_value_float,
                 'total_categories': categories.count(),
                 'total_brands': brands.count(),
                 'total_sales_today': sales.filter(
