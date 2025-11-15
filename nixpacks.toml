@@ -10,12 +10,14 @@ cmds = [
     "echo 'Python dependencies installed successfully'",
     "python -c 'import sendgrid; print(f\"✅ SendGrid installé: version {sendgrid.__version__}\")' || echo '⚠️ SendGrid non trouvé après installation'",
     "pip list | grep -i sendgrid || echo '⚠️ SendGrid non trouvé dans pip list'",
-    "cd theme && npm install || echo '⚠️ npm install échoué, continuons...'",
-    "cd theme && npm run build || echo '⚠️ Build Tailwind échoué, continuons...'"
+    "cd theme && npm install",
+    "mkdir -p ../static/css/dist"
 ]
 
 [phases.build]
 cmds = [
+    "cd theme && npm run build && cd ..",
+    "test -f static/css/dist/output.css && echo '✅ Tailwind CSS généré avec succès' || (echo '❌ Erreur: output.css non généré' && exit 1)",
     "DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway python manage.py collectstatic --noinput"
 ]
 

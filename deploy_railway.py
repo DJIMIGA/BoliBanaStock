@@ -51,6 +51,67 @@ def setup_django_railway():
     # Initialiser Django
     django.setup()
 
+def ensure_tailwind_css():
+    """Vérifie et génère le fichier Tailwind CSS si nécessaire"""
+    project_root = Path(__file__).parent
+    output_css = project_root / 'static' / 'css' / 'dist' / 'output.css'
+    input_css = project_root / 'static' / 'css' / 'src' / 'input.css'
+    theme_dir = project_root / 'theme'
+    
+    # Vérifier si le fichier output.css existe
+    if output_css.exists():
+        print(f"✅ Tailwind CSS trouvé: {output_css}")
+        return True
+    
+    print(f"⚠️ Tailwind CSS non trouvé: {output_css}")
+    print(f"🔄 Tentative de génération...")
+    
+    # Vérifier que le répertoire dist existe
+    output_css.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Vérifier que input.css existe
+    if not input_css.exists():
+        print(f"❌ Fichier input.css non trouvé: {input_css}")
+        return False
+    
+    # Vérifier que le répertoire theme existe
+    if not theme_dir.exists():
+        print(f"❌ Répertoire theme non trouvé: {theme_dir}")
+        return False
+    
+    # Essayer de générer avec npm
+    try:
+        import subprocess
+        print(f"📦 Exécution de npm run build dans {theme_dir}...")
+        result = subprocess.run(
+            ['npm', 'run', 'build'],
+            cwd=str(theme_dir),
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if result.returncode == 0:
+            if output_css.exists():
+                print(f"✅ Tailwind CSS généré avec succès: {output_css}")
+                return True
+            else:
+                print(f"⚠️ npm run build a réussi mais output.css n'existe toujours pas")
+                print(f"   stdout: {result.stdout}")
+                print(f"   stderr: {result.stderr}")
+        else:
+            print(f"❌ Échec de npm run build")
+            print(f"   stdout: {result.stdout}")
+            print(f"   stderr: {result.stderr}")
+    except FileNotFoundError:
+        print(f"⚠️ npm non trouvé dans le PATH")
+    except subprocess.TimeoutExpired:
+        print(f"❌ Timeout lors de la génération Tailwind CSS")
+    except Exception as e:
+        print(f"❌ Erreur lors de la génération Tailwind CSS: {e}")
+    
+    return False
+
 def deploy_railway():
     """Déploiement complet sur Railway"""
     from django.core.management import call_command
@@ -64,6 +125,10 @@ def deploy_railway():
         print(f"📁 STATIC_URL: {settings.STATIC_URL}")
         print(f"📁 STATICFILES_STORAGE: {settings.STATICFILES_STORAGE}")
         print(f"🌐 Environnement: {'Production' if not settings.DEBUG else 'Développement'}")
+        
+        # 0. Vérifier et générer Tailwind CSS si nécessaire
+        print("\n🎨 Vérification de Tailwind CSS...")
+        ensure_tailwind_css()
         
         # 1. Collecter les fichiers statiques
         print("\n📦 Collecte des fichiers statiques...")
