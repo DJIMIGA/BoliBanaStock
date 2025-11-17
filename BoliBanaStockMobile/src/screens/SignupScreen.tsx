@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -18,6 +19,7 @@ import { AppDispatch, RootState } from '../store';
 import { signup, clearError } from '../store/slices/authSlice';
 import theme, { actionColors } from '../utils/theme';
 import Logo from '../components/Logo';
+import { getPrivacyPolicyUrl } from '../config/networkConfig';
 
 interface SignupFormData {
   username: string;
@@ -41,6 +43,27 @@ const SignupScreen: React.FC = () => {
     last_name: '',
     email: '',
   });
+
+  const handleOpenPrivacyPolicy = async () => {
+    const url = getPrivacyPolicyUrl();
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert(
+          'Information',
+          'Impossible d\'ouvrir la politique de confidentialité pour le moment.'
+        );
+      }
+    } catch (error) {
+      console.error('Erreur ouverture politique de confidentialité:', error);
+      Alert.alert(
+        'Erreur',
+        'Une erreur est survenue lors de l\'ouverture de la politique de confidentialité.'
+      );
+    }
+  };
 
   const handleSignup = async () => {
     // Validation côté client
@@ -241,6 +264,16 @@ const SignupScreen: React.FC = () => {
               <Text style={styles.loginLinkText}>Se connecter</Text>
             </TouchableOpacity>
           </View>
+
+          <View style={styles.legalContainer}>
+            <Text style={styles.legalText}>
+              En créant un compte, vous acceptez notre{' '}
+              <Text style={styles.legalLink} onPress={handleOpenPrivacyPolicy}>
+                politique de confidentialité
+              </Text>
+              .
+            </Text>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -391,6 +424,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: actionColors.primary,
     fontWeight: '600',
+  },
+  legalContainer: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  legalText: {
+    textAlign: 'center',
+    color: theme.colors.text.secondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  legalLink: {
+    color: actionColors.primary,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
 

@@ -247,32 +247,83 @@ export default function FinancialReportScreen({ navigation }: any) {
       }, 0);
 
       // Charger la démarque inconnue (pertes négatives d'ajustement, excluant la casse)
-      const adjustmentParams: any = {
-        type: 'adjustment',
+      // Charger toutes les transactions pour filtrer correctement la démarque inconnue
+      const allTransactionsParams: any = {
         page_size: 1000,
       };
       
       if (isSuperuser && selectedSite) {
-        adjustmentParams.site_configuration = selectedSite;
+        allTransactionsParams.site_configuration = selectedSite;
       }
       
-      const adjustmentResponse = await transactionService.getTransactions(adjustmentParams);
-      const allAdjustments = Array.isArray(adjustmentResponse) 
-        ? adjustmentResponse 
-        : (adjustmentResponse.results || adjustmentResponse.transactions || []);
+      const allTransactionsResponse = await transactionService.getTransactions(allTransactionsParams);
+      const allTransactions = Array.isArray(allTransactionsResponse) 
+        ? allTransactionsResponse 
+        : (allTransactionsResponse.results || allTransactionsResponse.transactions || []);
       
-      // Filtrer démarque inconnue : ajustements négatifs, pas de type 'loss', pas de contexte 'inventory'
-      const unknownShrinkage = allAdjustments.filter((tx: any) => {
-        if (tx.type === 'loss') return false;
-        const notes = (tx.notes || '').toLowerCase();
-        if (tx.context === 'inventory' || 
-            notes.includes('inventaire') || 
-            notes.includes('écart inventaire')) {
+      // Filtrer les transactions de démarque inconnue (PERTES uniquement)
+      // Même logique que dans ShrinkageReportScreen
+      const unknownShrinkageTransactions = allTransactions.filter((tx: any) => {
+        // Exclure la casse (connue)
+        if (tx.type === 'loss') {
           return false;
         }
-        const quantity = parseInt(String(tx.quantity || 0));
-        return quantity < 0; // Seulement les pertes
-      }).filter((tx: any) => {
+
+        // Exclure les ventes
+        if (tx.sale || (tx.context === 'sale') || (tx.notes && tx.notes.toLowerCase().includes('vente'))) {
+          return false;
+        }
+
+        // Exclure les réceptions
+        if (tx.context === 'reception' || (tx.notes && tx.notes.toLowerCase().includes('réception'))) {
+          return false;
+        }
+
+        // Exclure les ajouts manuels (gains positifs)
+        if (tx.type === 'in' && (tx.context === 'manual' || (tx.notes && tx.notes.toLowerCase().includes('manuel')))) {
+          return false;
+        }
+
+        const quantity = parseInt(tx.quantity || 0);
+
+        // Inclure les écarts d'inventaire NÉGATIFS uniquement
+        if (tx.type === 'adjustment' && quantity < 0 && (tx.context === 'inventory' || (tx.notes && tx.notes.toLowerCase().includes('écart inventaire')))) {
+          return true;
+        }
+
+        // Inclure les retraits manuels (pertes)
+        if (tx.type === 'out' && (tx.context === 'manual' || (tx.notes && tx.notes.toLowerCase().includes('manuel')))) {
+          return true;
+        }
+
+        // Inclure les ajustements manuels NÉGATIFS uniquement (pertes)
+        if (tx.type === 'adjustment' && quantity < 0 && (tx.context === 'manual' || (tx.notes && (tx.notes.toLowerCase().includes('manuel') || tx.notes.toLowerCase().includes('écart inventaire'))))) {
+          return true;
+        }
+
+        return false;
+      });
+
+      // Normaliser les quantités : pour les retraits (type 'out'), convertir en négatif
+      const normalizedShrinkageTransactions = unknownShrinkageTransactions.map((tx: any) => {
+        let normalizedQuantity = parseInt(tx.quantity || 0);
+        let normalizedTotalAmount = parseFloat(tx.total_amount || 0);
+        
+        // Pour les retraits manuels (type 'out'), convertir en négatif
+        if (tx.type === 'out' && normalizedQuantity > 0) {
+          normalizedQuantity = -normalizedQuantity;
+          normalizedTotalAmount = -Math.abs(normalizedTotalAmount);
+        }
+        
+        return {
+          ...tx,
+          quantity: normalizedQuantity,
+          total_amount: normalizedTotalAmount,
+        };
+      });
+
+      // Filtrer par date
+      const unknownShrinkage = normalizedShrinkageTransactions.filter((tx: any) => {
         const txDate = tx.transaction_date || tx.date;
         return isDateInRange(txDate, range.start, range.end);
       });

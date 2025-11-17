@@ -135,7 +135,7 @@ export default function StockValueScreen({ navigation }: any) {
           
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: theme.colors.warning[500] }]}
-            onPress={() => navigation.navigate('LowStock')}
+            onPress={() => navigation.navigate('Products', { filter: 'low_stock' })}
           >
             <Ionicons name="warning-outline" size={24} color={theme.colors.text.inverse} />
             <Text style={styles.actionText}>Produits en stock faible</Text>

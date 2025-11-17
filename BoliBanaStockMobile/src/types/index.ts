@@ -157,7 +157,7 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   MainTabs: undefined;
   Dashboard: undefined;
-  Products: undefined;
+  Products: { filter?: 'all' | 'low_stock' | 'out_of_stock' | 'negative_stock'; brandFilter?: number; brandName?: string; categoryFilter?: number; categoryName?: string } | undefined;
   ScanProduct: undefined;
   Sales: undefined;
   Configuration: undefined;
@@ -174,9 +174,6 @@ export type RootStackParamList = {
   FinancialReport: undefined;
   Inventory: undefined;
   Delivery: undefined;
-  LowStock: undefined;
-  OutOfStock: undefined;
-  StockValue: undefined;
   Transactions: undefined;
   AddProduct: { editId?: number; barcode?: string } | undefined;
   TestScanner: undefined;

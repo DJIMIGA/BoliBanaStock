@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -19,6 +20,7 @@ import { login, clearError } from '../store/slices/authSlice';
 import { LoginCredentials } from '../types';
 import theme from '../utils/theme';
 import Logo from '../components/Logo';
+import { getPrivacyPolicyUrl } from '../config/networkConfig';
 
 const LoginScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -132,6 +134,27 @@ const LoginScreen: React.FC = () => {
       ...prev,
       [field]: value,
     }));
+  };
+
+  const handleOpenPrivacyPolicy = async () => {
+    const url = getPrivacyPolicyUrl();
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert(
+          'Information',
+          'Impossible d\'ouvrir la politique de confidentialité pour le moment.'
+        );
+      }
+    } catch (error) {
+      console.error('Erreur ouverture politique de confidentialité:', error);
+      Alert.alert(
+        'Erreur',
+        'Une erreur est survenue lors de l\'ouverture de la politique de confidentialité.'
+      );
+    }
   };
 
   return (
@@ -285,6 +308,16 @@ const LoginScreen: React.FC = () => {
               </Text>
             </View>
           )}
+        </View>
+
+        <View style={styles.legalContainer}>
+          <Text style={styles.legalText}>
+            En continuant, vous acceptez notre{' '}
+            <Text style={styles.legalLink} onPress={handleOpenPrivacyPolicy}>
+              politique de confidentialité
+            </Text>
+            .
+          </Text>
         </View>
 
         <View style={styles.footer}>
@@ -526,6 +559,21 @@ const styles = StyleSheet.create({
   footerText: {
     color: theme.colors.text.tertiary,
     fontSize: 12,
+  },
+  legalContainer: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+  },
+  legalText: {
+    textAlign: 'center',
+    color: theme.colors.text.secondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  legalLink: {
+    color: theme.colors.primary[600],
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
 

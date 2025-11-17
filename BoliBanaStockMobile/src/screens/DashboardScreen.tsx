@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,8 @@ import { logout } from '../store/slices/authSlice';
 import { AppDispatch } from '../store';
 import { useAuthError } from '../hooks/useAuthError';
 import { useDraftStatus } from '../hooks/useDraftStatus';
+import errorService from '../services/errorService';
+import { AppError } from '../types/errors';
 import theme, { stockColors, actionColors } from '../utils/theme';
 
 interface DashboardStats {
@@ -119,18 +122,166 @@ export default function DashboardScreen({ navigation }: any) {
     );
   };
 
+  // Fonction pour formater les montants en FCFA avec séparateurs de milliers
+  const formatFCFA = (value: number | string | null | undefined): string => {
+    const num = typeof value === 'number' ? value : parseFloat((value ?? 0).toString());
+    if (!isFinite(num)) return '0 FCFA';
+    // Formater avec des espaces comme séparateurs de milliers (format français)
+    const rounded = Math.round(num);
+    const formatted = rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `${formatted} FCFA`;
+  };
+
+  const formatPhoneNumber = (phone: string): string => {
+    // Supprimer tous les caractères non numériques sauf le +
+    let cleaned = phone.replace(/[^\d+]/g, '');
+    
+    // Si le numéro commence par +, le garder tel quel
+    if (cleaned.startsWith('+')) {
+      // Supprimer le + pour le format WhatsApp
+      return cleaned.substring(1);
+    }
+    
+    // Si le numéro commence par 0, le remplacer par l'indicatif du pays (223 pour le Mali)
+    if (cleaned.startsWith('0')) {
+      cleaned = '223' + cleaned.substring(1);
+    }
+    
+    // Si le numéro commence par 223, le garder tel quel
+    if (cleaned.startsWith('223')) {
+      return cleaned;
+    }
+    
+    // Sinon, ajouter 223 par défaut
+    return '223' + cleaned;
+  };
+
+  const formatErrorsForWhatsApp = (errors: AppError[]): string => {
+    if (errors.length === 0) {
+      return '';
+    }
+
+    let errorText = '\n\n📋 *Erreurs récentes :*\n';
+    errorText += `_${errors.length} erreur(s) détectée(s)_\n\n`;
+
+    // Limiter à 5 erreurs les plus récentes pour ne pas surcharger le message
+    const recentErrors = errors.slice(0, 5);
+    
+    recentErrors.forEach((error, index) => {
+      const date = new Date(error.timestamp);
+      const dateStr = date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      errorText += `${index + 1}. *${error.title}*\n`;
+      errorText += `   📅 ${dateStr}\n`;
+      errorText += `   📍 ${error.source || 'Non spécifié'}\n`;
+      errorText += `   ⚠️ ${error.userMessage || error.message}\n`;
+      
+      if (error.details && error.details.length > 0) {
+        errorText += `   📝 Détails: ${error.details.map(d => d.message).join(', ')}\n`;
+      }
+      
+      errorText += '\n';
+    });
+
+    if (errors.length > 5) {
+      errorText += `_... et ${errors.length - 5} autre(s) erreur(s)_\n`;
+    }
+
+    return errorText;
+  };
+
+  const handleWhatsAppSupport = async () => {
+    try {
+      // Récupérer le numéro de téléphone depuis la configuration
+      let supportPhone = null;
+      try {
+        const config = await configurationService.getConfiguration();
+        if (config && config.configuration && config.configuration.telephone) {
+          supportPhone = config.configuration.telephone;
+        } else if (config && config.telephone) {
+          supportPhone = config.telephone;
+        }
+      } catch (error) {
+        console.error('Erreur récupération configuration:', error);
+      }
+
+      // Récupérer les erreurs récentes (dernières 24h)
+      // Récupérer toutes les erreurs (de la queue et du stockage)
+      const allErrors = errorService.getErrors();
+      
+      // Trier par date (plus récentes en premier)
+      const sortedErrors = [...allErrors].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      
+      // Filtrer les erreurs des dernières 24h
+      const now = new Date();
+      const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const recentErrors = sortedErrors.filter(
+        (error) => new Date(error.timestamp) >= last24Hours
+      );
+
+      // Message par défaut
+      let defaultMessage = 'Bonjour, j\'ai besoin d\'assistance concernant l\'application BoliBana Stock.';
+      
+      // Ajouter les erreurs si disponibles
+      if (recentErrors.length > 0) {
+        defaultMessage += formatErrorsForWhatsApp(recentErrors);
+      }
+
+      const encodedMessage = encodeURIComponent(defaultMessage);
+
+      let whatsappUrl = '';
+      let webUrl = '';
+
+      if (supportPhone) {
+        const formattedPhone = formatPhoneNumber(supportPhone);
+        // URL pour ouvrir WhatsApp avec le numéro de support
+        whatsappUrl = `whatsapp://send?phone=${formattedPhone}&text=${encodedMessage}`;
+        webUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
+      } else {
+        // Si pas de numéro, ouvrir WhatsApp sans destinataire
+        whatsappUrl = `whatsapp://send?text=${encodedMessage}`;
+        webUrl = `https://wa.me/?text=${encodedMessage}`;
+      }
+
+      // Vérifier si WhatsApp est installé
+      const canOpen = await Linking.canOpenURL(whatsappUrl);
+
+      if (canOpen) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        // Si WhatsApp n'est pas installé, essayer avec l'URL web
+        await Linking.openURL(webUrl);
+      }
+    } catch (error) {
+      console.error('Erreur ouverture WhatsApp:', error);
+      Alert.alert(
+        'Erreur',
+        'Impossible d\'ouvrir WhatsApp. Veuillez vérifier que l\'application est installée.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
   useEffect(() => {
     loadDashboard();
     loadConfiguration();
   }, []);
 
-  const StatCard = ({ title, value, icon, color, onPress }: any) => (
-    <TouchableOpacity style={[styles.statCard, { borderLeftColor: color }]} onPress={onPress}>
-      <View style={styles.statContent}>
-        <Ionicons name={icon} size={24} color={color} />
+  const StatCard = ({ title, value, icon, color, onPress, compact }: any) => (
+    <TouchableOpacity style={[styles.statCard, { borderLeftColor: color }, compact && styles.statCardCompact]} onPress={onPress}>
+      <View style={[styles.statContent, compact && styles.statContentCompact]}>
+        <Ionicons name={icon} size={compact ? 20 : 24} color={color} />
         <View style={styles.statText}>
-          <Text style={styles.statValue}>{value}</Text>
-          <Text style={styles.statTitle}>{title}</Text>
+          <Text style={[styles.statValue, compact && styles.statValueCompact]} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.7}>{value}</Text>
+          <Text style={[styles.statTitle, compact && styles.statTitleCompact]} numberOfLines={1}>{title}</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -218,21 +369,21 @@ export default function DashboardScreen({ navigation }: any) {
               value={stats?.low_stock_count || 0}
               icon="warning-outline"
               color={stockColors.lowStock}
-              onPress={() => navigation.navigate('LowStock')}
+              onPress={() => navigation.navigate('Products', { filter: 'low_stock' })}
             />
             <StatCard
               title="Rupture Stock"
               value={stats?.out_of_stock_count || 0}
               icon="close-circle-outline"
               color={stockColors.outOfStock}
-              onPress={() => navigation.navigate('OutOfStock')}
+              onPress={() => navigation.navigate('Products', { filter: 'out_of_stock' })}
             />
             <StatCard
               title="Valeur Stock"
-              value={`${(stats?.total_stock_value || 0).toLocaleString()} FCFA`}
+              value={formatFCFA(stats?.total_stock_value || 0)}
               icon="cash-outline"
               color={actionColors.info}
-              onPress={() => navigation.navigate('StockValue')}
+              onPress={() => navigation.navigate('StockReport')}
             />
           </View>
         </View>
@@ -287,10 +438,10 @@ export default function DashboardScreen({ navigation }: any) {
               onPress={() => navigation.navigate('Labels')}
             />
             <ActionButton
-              title="Paramètres"
-              icon="settings-outline"
-              color={theme.colors.neutral[500]}
-              onPress={() => navigation.navigate('Settings')}
+              title="Assistance"
+              icon="logo-whatsapp"
+              color="#25D366"
+              onPress={handleWhatsAppSupport}
             />
           </View>
         </View>
@@ -425,8 +576,15 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     ...theme.shadows.md,
   },
+  statCardCompact: {
+    padding: 10,
+    marginBottom: 8,
+  },
   statContent: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statContentCompact: {
     alignItems: 'center',
   },
   statText: {
@@ -437,11 +595,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
+    flexShrink: 1,
+  },
+  statValueCompact: {
+    fontSize: 14,
+    lineHeight: 18,
   },
   statTitle: {
     fontSize: 12,
     color: theme.colors.text.tertiary,
     marginTop: 2,
+    flexShrink: 1,
+  },
+  statTitleCompact: {
+    fontSize: 11,
+    marginTop: 1,
   },
   actionsContainer: {
     padding: 16,

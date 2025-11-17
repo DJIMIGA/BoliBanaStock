@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
 from apps.core.views import PublicSignUpView
@@ -33,6 +34,11 @@ urlpatterns = [
     path('core/', include('apps.core.urls')),
     path('accounts/', include('django.contrib.auth.urls')),
     path('signup/', PublicSignUpView.as_view(), name='signup'),
+    path(
+        'privacy-policy/',
+        TemplateView.as_view(template_name='privacy_policy.html'),
+        name='privacy_policy',
+    ),
     # API Mobile
     path('api/v1/', include('api.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

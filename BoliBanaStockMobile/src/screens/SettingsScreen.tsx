@@ -6,13 +6,18 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import { AppDispatch } from '../store';
 import { logout } from '../store/slices/authSlice';
+import { configurationService } from '../services/api';
+import errorService from '../services/errorService';
+import { AppError } from '../types/errors';
 import theme from '../utils/theme';
+import { getPrivacyPolicyUrl } from '../config/networkConfig';
 
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -31,6 +36,165 @@ const SettingsScreen: React.FC = () => {
         },
       ]
     );
+  };
+
+  const formatPhoneNumber = (phone: string): string => {
+    // Supprimer tous les caractères non numériques sauf le +
+    let cleaned = phone.replace(/[^\d+]/g, '');
+    
+    // Si le numéro commence par +, le garder tel quel
+    if (cleaned.startsWith('+')) {
+      // Supprimer le + pour le format WhatsApp
+      return cleaned.substring(1);
+    }
+    
+    // Si le numéro commence par 0, le remplacer par l'indicatif du pays (223 pour le Mali)
+    if (cleaned.startsWith('0')) {
+      cleaned = '223' + cleaned.substring(1);
+    }
+    
+    // Si le numéro commence par 223, le garder tel quel
+    if (cleaned.startsWith('223')) {
+      return cleaned;
+    }
+    
+    // Sinon, ajouter 223 par défaut
+    return '223' + cleaned;
+  };
+
+  const formatErrorsForWhatsApp = (errors: AppError[]): string => {
+    if (errors.length === 0) {
+      return '';
+    }
+
+    let errorText = '\n\n📋 *Erreurs récentes :*\n';
+    errorText += `_${errors.length} erreur(s) détectée(s)_\n\n`;
+
+    // Limiter à 5 erreurs les plus récentes pour ne pas surcharger le message
+    const recentErrors = errors.slice(0, 5);
+    
+    recentErrors.forEach((error, index) => {
+      const date = new Date(error.timestamp);
+      const dateStr = date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      errorText += `${index + 1}. *${error.title}*\n`;
+      errorText += `   📅 ${dateStr}\n`;
+      errorText += `   📍 ${error.source || 'Non spécifié'}\n`;
+      errorText += `   ⚠️ ${error.userMessage || error.message}\n`;
+      
+      if (error.details && error.details.length > 0) {
+        errorText += `   📝 Détails: ${error.details.map(d => d.message).join(', ')}\n`;
+      }
+      
+      errorText += '\n';
+    });
+
+    if (errors.length > 5) {
+      errorText += `_... et ${errors.length - 5} autre(s) erreur(s)_\n`;
+    }
+
+    return errorText;
+  };
+
+  const handleWhatsAppSupport = async () => {
+    try {
+      // Récupérer le numéro de téléphone depuis la configuration
+      let supportPhone = null;
+      try {
+        const config = await configurationService.getConfiguration();
+        if (config && config.configuration && config.configuration.telephone) {
+          supportPhone = config.configuration.telephone;
+        } else if (config && config.telephone) {
+          supportPhone = config.telephone;
+        }
+      } catch (error) {
+        console.error('Erreur récupération configuration:', error);
+      }
+
+      // Récupérer les erreurs récentes (dernières 24h)
+      // Récupérer toutes les erreurs (de la queue et du stockage)
+      const allErrors = errorService.getErrors();
+      
+      // Trier par date (plus récentes en premier)
+      const sortedErrors = [...allErrors].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      
+      // Filtrer les erreurs des dernières 24h
+      const now = new Date();
+      const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const recentErrors = sortedErrors.filter(
+        (error) => new Date(error.timestamp) >= last24Hours
+      );
+
+      // Message par défaut
+      let defaultMessage = 'Bonjour, j\'ai besoin d\'assistance concernant l\'application BoliBana Stock.';
+      
+      // Ajouter les erreurs si disponibles
+      if (recentErrors.length > 0) {
+        defaultMessage += formatErrorsForWhatsApp(recentErrors);
+      }
+
+      const encodedMessage = encodeURIComponent(defaultMessage);
+
+      let whatsappUrl = '';
+      let webUrl = '';
+
+      if (supportPhone) {
+        const formattedPhone = formatPhoneNumber(supportPhone);
+        // URL pour ouvrir WhatsApp avec le numéro de support
+        whatsappUrl = `whatsapp://send?phone=${formattedPhone}&text=${encodedMessage}`;
+        webUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
+      } else {
+        // Si pas de numéro, ouvrir WhatsApp sans destinataire
+        whatsappUrl = `whatsapp://send?text=${encodedMessage}`;
+        webUrl = `https://wa.me/?text=${encodedMessage}`;
+      }
+
+      // Vérifier si WhatsApp est installé
+      const canOpen = await Linking.canOpenURL(whatsappUrl);
+
+      if (canOpen) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        // Si WhatsApp n'est pas installé, essayer avec l'URL web
+        await Linking.openURL(webUrl);
+      }
+    } catch (error) {
+      console.error('Erreur ouverture WhatsApp:', error);
+      Alert.alert(
+        'Erreur',
+        'Impossible d\'ouvrir WhatsApp. Veuillez vérifier que l\'application est installée.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const openPrivacyPolicy = async () => {
+    const url = getPrivacyPolicyUrl();
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert(
+          'Information',
+          'Impossible d\'ouvrir la politique de confidentialité pour le moment.'
+        );
+      }
+    } catch (error) {
+      console.error('Erreur ouverture politique de confidentialité:', error);
+      Alert.alert(
+        'Erreur',
+        'Une erreur est survenue lors de l\'ouverture de la politique de confidentialité.'
+      );
+    }
   };
 
   const menuItems = [
@@ -96,6 +260,24 @@ const SettingsScreen: React.FC = () => {
       iconColor: theme.colors.primary[500],
       iconBg: theme.colors.primary[100],
       onPress: () => navigation.navigate('Brands' as never),
+    },
+    {
+      id: 'privacy',
+      title: 'Politique de confidentialité',
+      subtitle: 'Consulter le document officiel',
+      icon: 'document-text',
+      iconColor: theme.colors.info[500],
+      iconBg: theme.colors.info[100],
+      onPress: openPrivacyPolicy,
+    },
+    {
+      id: 'whatsapp',
+      title: 'Assistance WhatsApp',
+      subtitle: 'Contacter le support technique',
+      icon: 'logo-whatsapp',
+      iconColor: '#25D366',
+      iconBg: '#E8F5E9',
+      onPress: handleWhatsAppSupport,
     },
   ];
 

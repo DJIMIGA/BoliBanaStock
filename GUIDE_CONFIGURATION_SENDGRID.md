@@ -123,11 +123,56 @@ Si vous préférez utiliser Mailgun au lieu de SendGrid :
 - Vérifiez que la clé API est correcte
 - Vérifiez que la clé API a les bonnes permissions
 
-### L'email est marqué comme spam
+### L'email est marqué comme spam ⚠️
 
-- Vérifiez que l'expéditeur est bien vérifié dans SendGrid
-- Utilisez un domaine personnalisé si possible
-- Évitez les mots déclencheurs de spam dans le sujet
+**Problème courant** : Les emails arrivent dans les spams même si SendGrid fonctionne correctement.
+
+**Solution : Vérifier l'expéditeur dans SendGrid**
+
+1. **Connectez-vous à SendGrid** : [https://app.sendgrid.com](https://app.sendgrid.com)
+
+2. **Allez dans Settings > Sender Authentication**
+
+3. **Vérifiez l'email utilisé comme expéditeur** :
+   - Si vous utilisez `bolibanastock@gmail.com` (fallback), vous devez le vérifier
+   - Cliquez sur **Verify a Single Sender**
+   - Remplissez le formulaire :
+     - **From Email Address** : `bolibanastock@gmail.com`
+     - **From Name** : `BoliBana Stock` (ou le nom de votre entreprise)
+     - **Reply To** : `bolibanastock@gmail.com` (ou un autre email pour les réponses)
+     - **Company Address** : Votre adresse
+     - **City** : Votre ville
+     - **State** : Votre région
+     - **Country** : Votre pays
+     - **Zip Code** : Votre code postal
+   - Cliquez sur **Create**
+
+4. **Vérifiez votre boîte email** :
+   - SendGrid enverra un email de vérification à `bolibanastock@gmail.com`
+   - Ouvrez l'email et cliquez sur le lien de vérification
+   - L'email sera marqué comme **Verified** dans SendGrid
+
+5. **Attendez quelques minutes** pour que la vérification soit propagée
+
+**Pourquoi c'est important ?**
+- Les emails non vérifiés sont souvent marqués comme spam
+- La vérification permet à SendGrid d'authentifier vos emails (SPF, DKIM)
+- Cela améliore significativement la délivrabilité
+
+**Alternative : Utiliser un domaine personnalisé (recommandé pour la production)**
+
+Pour une meilleure délivrabilité, utilisez un domaine personnalisé :
+
+1. Dans SendGrid, allez dans **Settings > Sender Authentication**
+2. Cliquez sur **Authenticate Your Domain**
+3. Suivez les instructions pour configurer les enregistrements DNS (SPF, DKIM, DMARC)
+4. Une fois configuré, utilisez un email de ce domaine (ex: `noreply@votredomaine.com`)
+
+**Autres conseils pour éviter les spams :**
+- Évitez les mots déclencheurs dans le sujet (ex: "GRATUIT", "CLIQUEZ ICI", etc.)
+- Utilisez un nom d'expéditeur clair et professionnel
+- Incluez un lien de désinscription si nécessaire
+- Évitez d'envoyer trop d'emails en peu de temps
 
 ## Support
 

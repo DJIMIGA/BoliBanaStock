@@ -38,11 +38,19 @@ interface Product {
 }
 
 export default function ProductsScreen({ navigation, route }: any) {
+  // Paramètres de navigation (doivent être définis en premier)
+  const brandFilter = route?.params?.brandFilter;
+  const brandName = route?.params?.brandName;
+  const categoryFilter = route?.params?.categoryFilter;
+  const categoryName = route?.params?.categoryName;
+  const initialFilter = route?.params?.filter; // Filtre initial depuis la navigation (low_stock, out_of_stock, etc.)
+  
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('all'); // all, low_stock, out_of_stock, negative_stock
+  // Initialiser le filtre avec la valeur de route.params.filter ou 'all' par défaut
+  const [filter, setFilter] = useState(route?.params?.filter || 'all'); // all, low_stock, out_of_stock, negative_stock
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   
@@ -61,12 +69,16 @@ export default function ProductsScreen({ navigation, route }: any) {
   
   // ✅ Référence pour le scroll des filtres
   const filtersScrollRef = useRef<ScrollView>(null);
-  
-  // Paramètres de navigation
-  const brandFilter = route?.params?.brandFilter;
-  const brandName = route?.params?.brandName;
-  const categoryFilter = route?.params?.categoryFilter;
-  const categoryName = route?.params?.categoryName;
+
+  // Fonction pour formater les montants en FCFA avec séparateurs de milliers
+  const formatFCFA = (value: number | string | null | undefined): string => {
+    const num = typeof value === 'number' ? value : parseFloat((value ?? 0).toString());
+    if (!isFinite(num)) return '0 FCFA';
+    // Formater avec des espaces comme séparateurs de milliers (format français)
+    const rounded = Math.round(num);
+    const formatted = rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `${formatted} FCFA`;
+  };
 
   const loadProducts = async (page: number = 1, append: boolean = false) => {
     try {
@@ -151,6 +163,19 @@ export default function ProductsScreen({ navigation, route }: any) {
       }
     }
   };
+
+  // Mettre à jour le filtre quand les paramètres de route changent (navigation avec paramètres)
+  useEffect(() => {
+    const routeFilter = route?.params?.filter;
+    if (routeFilter && routeFilter !== filter) {
+      // Si un filtre est passé via la navigation, l'appliquer
+      setFilter(routeFilter);
+    } else if (!routeFilter && filter !== 'all') {
+      // Si aucun filtre n'est passé et qu'on n'est pas sur "all", réinitialiser
+      // Cela permet de réinitialiser quand on revient sur l'écran sans paramètres
+      setFilter('all');
+    }
+  }, [route?.params?.filter]); // Écouter uniquement les changements de paramètres de route
 
   useEffect(() => {
     loadProducts(1, false);
@@ -299,8 +324,13 @@ export default function ProductsScreen({ navigation, route }: any) {
 
   // ✅ Fonction pour changer de filtre avec scroll automatique
   const handleFilterChange = (newFilter: string) => {
+    // Toujours permettre le changement de filtre, même si on vient d'une navigation avec paramètres
     setFilter(newFilter);
     scrollToSelectedFilter(newFilter);
+    // Nettoyer les paramètres de route pour éviter les conflits
+    if (route?.params?.filter && route.params.filter !== newFilter) {
+      navigation.setParams({ filter: undefined });
+    }
   };
 
 
@@ -376,7 +406,7 @@ export default function ProductsScreen({ navigation, route }: any) {
           </Text>
         </View>
         <Text style={styles.priceText}>
-          {item.selling_price.toLocaleString()} FCFA
+          {formatFCFA(item.selling_price)}
         </Text>
       </View>
     </TouchableOpacity>

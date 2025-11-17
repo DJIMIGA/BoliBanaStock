@@ -37,6 +37,12 @@ export const NETWORK_CONFIG = {
   EXPO_URL_MOBILE: 'http://172.20.10.2:8081',
 };
 
+const DEFAULT_PRIVACY_POLICY_URL = `${NETWORK_CONFIG.RAILWAY_URL}/privacy-policy/`;
+
+export const LEGAL_CONFIG = {
+  PRIVACY_POLICY_URL: DEFAULT_PRIVACY_POLICY_URL,
+};
+
 // Configuration pour l'application mobile
 export const MOBILE_CONFIG = {
   // URLs API prioritaires (dans l'ordre de préférence)
@@ -90,6 +96,13 @@ export const ERROR_MESSAGES = {
   UNKNOWN_ERROR: 'Une erreur inattendue s\'est produite. Veuillez réessayer.',
 };
 
+export const getPrivacyPolicyUrl = (): string => {
+  if (process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL) {
+    return process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL;
+  }
+  return LEGAL_CONFIG.PRIVACY_POLICY_URL;
+};
+
 // Fonctions utilitaires
 export const getCurrentApiUrl = (): string => {
   // Priorité à la variable d'environnement Expo
@@ -138,10 +151,12 @@ export default {
   MOBILE_CONFIG,
   ENV_CONFIG,
   ERROR_MESSAGES,
+  LEGAL_CONFIG,
   getCurrentApiUrl,
   getMobileApiUrl,
   getDevApiUrl,
   getPublicApiUrl,
   getAllowedHosts,
+  getPrivacyPolicyUrl,
   TEST_CONFIG,
 };

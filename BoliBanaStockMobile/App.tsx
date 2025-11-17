@@ -27,9 +27,6 @@ import {
   ConfigurationScreen,
   SettingsScreen,
   ProfileScreen,
-  LowStockScreen,
-  OutOfStockScreen,
-  StockValueScreen,
   NewSaleScreen,
   InventoryScreen,
   ReceptionScreen,
@@ -189,9 +186,6 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="Configuration" component={ConfigurationScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
-          <Stack.Screen name="LowStock" component={LowStockScreen} />
-          <Stack.Screen name="OutOfStock" component={OutOfStockScreen} />
-          <Stack.Screen name="StockValue" component={StockValueScreen} />
           <Stack.Screen name="NewSale" component={NewSaleScreen} />
           <Stack.Screen name="Inventory" component={InventoryScreen} />
           <Stack.Screen name="Reception" component={ReceptionScreen} />
