@@ -1655,6 +1655,17 @@ export const profileService = {
       throw error;
     }
   },
+
+  deleteAccount: async (password: string) => {
+    try {
+      const response = await api.post('/auth/delete-account/', {
+        password: password,
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
 };
 
 // Service pour la copie de produits entre sites

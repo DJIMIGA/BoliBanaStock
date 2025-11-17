@@ -38,9 +38,11 @@ export const NETWORK_CONFIG = {
 };
 
 const DEFAULT_PRIVACY_POLICY_URL = `${NETWORK_CONFIG.RAILWAY_URL}/privacy-policy/`;
+const DEFAULT_DELETE_ACCOUNT_URL = `${NETWORK_CONFIG.RAILWAY_URL}/delete-account/`;
 
 export const LEGAL_CONFIG = {
   PRIVACY_POLICY_URL: DEFAULT_PRIVACY_POLICY_URL,
+  DELETE_ACCOUNT_URL: DEFAULT_DELETE_ACCOUNT_URL,
 };
 
 // Configuration pour l'application mobile
@@ -103,6 +105,13 @@ export const getPrivacyPolicyUrl = (): string => {
   return LEGAL_CONFIG.PRIVACY_POLICY_URL;
 };
 
+export const getDeleteAccountUrl = (): string => {
+  if (process.env.EXPO_PUBLIC_DELETE_ACCOUNT_URL) {
+    return process.env.EXPO_PUBLIC_DELETE_ACCOUNT_URL;
+  }
+  return LEGAL_CONFIG.DELETE_ACCOUNT_URL;
+};
+
 // Fonctions utilitaires
 export const getCurrentApiUrl = (): string => {
   // Priorité à la variable d'environnement Expo
@@ -158,5 +167,6 @@ export default {
   getPublicApiUrl,
   getAllowedHosts,
   getPrivacyPolicyUrl,
+  getDeleteAccountUrl,
   TEST_CONFIG,
 };

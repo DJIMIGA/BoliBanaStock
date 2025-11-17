@@ -9,13 +9,20 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
 import theme, { actionColors } from '../utils/theme';
 import { User } from '../types';
 import { profileService } from '../services/api';
-import { updateUser } from '../store/slices/authSlice';
+import { updateUser, logout } from '../store/slices/authSlice';
+import { notifyKeepAwakeChanged } from '../hooks/useKeepAwake';
+import { getDeleteAccountUrl } from '../config/networkConfig';
+import { Linking } from 'react-native';
+
+const KEEP_SCREEN_AWAKE_KEY = '@bbstock:keep_screen_awake';
 
 const ProfileScreen: React.FC = () => {
   const user = useSelector((state: RootState) => state.auth.user);
@@ -26,6 +33,38 @@ const ProfileScreen: React.FC = () => {
   const [formData, setFormData] = useState<Partial<User>>({});
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  const [keepScreenAwake, setKeepScreenAwake] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+
+  // Charger les préférences depuis AsyncStorage
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const keepAwakeValue = await AsyncStorage.getItem(KEEP_SCREEN_AWAKE_KEY);
+        if (keepAwakeValue !== null) {
+          setKeepScreenAwake(JSON.parse(keepAwakeValue));
+        }
+      } catch (error) {
+        console.error('Erreur chargement préférences:', error);
+      }
+    };
+    loadPreferences();
+  }, []);
+
+  // Sauvegarder le paramètre keepScreenAwake
+  const handleKeepScreenAwakeChange = async (value: boolean) => {
+    try {
+      setKeepScreenAwake(value);
+      await AsyncStorage.setItem(KEEP_SCREEN_AWAKE_KEY, JSON.stringify(value));
+      console.log('🔋 Préférence écran sauvegardée:', value ? 'écran allumé' : 'veille activée');
+      // Notifier les autres composants du changement
+      notifyKeepAwakeChanged();
+    } catch (error) {
+      console.error('Erreur sauvegarde préférence écran:', error);
+      Alert.alert('Erreur', 'Impossible de sauvegarder la préférence');
+    }
+  };
 
   // Charger les données du profil depuis l'API
   useEffect(() => {
@@ -131,6 +170,70 @@ const ProfileScreen: React.FC = () => {
       'Cette fonctionnalité sera disponible prochainement',
       [{ text: 'OK' }]
     );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Supprimer mon compte',
+      'Cette action est irréversible. Toutes vos données seront supprimées définitivement dans les 30 jours.\n\nVoulez-vous continuer ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Voir les instructions',
+          onPress: () => {
+            const url = getDeleteAccountUrl();
+            Linking.openURL(url).catch((err) => {
+              console.error('Erreur ouverture URL:', err);
+              Alert.alert('Erreur', 'Impossible d\'ouvrir la page de suppression de compte');
+            });
+          },
+        },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            // Ouvrir le modal pour demander le mot de passe
+            setShowDeleteModal(true);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletePassword) {
+      Alert.alert('Erreur', 'Le mot de passe est requis');
+      return;
+    }
+    try {
+      setLoading(true);
+      const response = await profileService.deleteAccount(deletePassword);
+      if (response.success) {
+        setShowDeleteModal(false);
+        setDeletePassword('');
+        Alert.alert(
+          'Compte désactivé',
+          response.message || 'Votre compte a été désactivé. La suppression définitive sera effectuée dans les 30 jours.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Déconnexion automatique
+                dispatch(logout());
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Erreur', response.error || 'Erreur lors de la suppression du compte');
+      }
+    } catch (error: any) {
+      console.error('Erreur suppression compte:', error);
+      const errorMessage = error.response?.data?.error || 'Erreur lors de la suppression du compte';
+      Alert.alert('Erreur', errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!user || profileLoading) {
@@ -294,6 +397,20 @@ const ProfileScreen: React.FC = () => {
             </View>
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.menuItem, styles.dangerItem]} 
+            onPress={handleDeleteAccount}
+          >
+            <View style={styles.menuItemLeft}>
+              <Text style={styles.menuIcon}>🗑️</Text>
+              <View style={styles.menuText}>
+                <Text style={[styles.menuTitle, styles.dangerText]}>Supprimer mon compte</Text>
+                <Text style={styles.menuSubtitle}>Supprimer définitivement votre compte et vos données</Text>
+              </View>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Préférences */}
@@ -331,6 +448,22 @@ const ProfileScreen: React.FC = () => {
               thumbColor={darkMode ? '#ffffff' : '#f4f3f4'}
             />
           </View>
+
+          <View style={styles.menuItem}>
+            <View style={styles.menuItemLeft}>
+              <Text style={styles.menuIcon}>🔋</Text>
+              <View style={styles.menuText}>
+                <Text style={styles.menuTitle}>Garder l'écran allumé</Text>
+                <Text style={styles.menuSubtitle}>Empêcher la mise en veille</Text>
+              </View>
+            </View>
+            <Switch
+              value={keepScreenAwake}
+              onValueChange={handleKeepScreenAwakeChange}
+              trackColor={{ false: theme.colors.neutral[300], true: actionColors.primary }}
+              thumbColor={keepScreenAwake ? '#ffffff' : '#f4f3f4'}
+            />
+          </View>
         </View>
 
         {/* Informations du compte */}
@@ -364,6 +497,54 @@ const ProfileScreen: React.FC = () => {
           </View>
         </View>
       </View>
+
+      {/* Modal de confirmation de suppression */}
+      <Modal
+        visible={showDeleteModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Confirmer la suppression</Text>
+            <Text style={styles.modalMessage}>
+              Entrez votre mot de passe pour confirmer la suppression de votre compte :
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              placeholder="Mot de passe"
+              secureTextEntry
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel, styles.modalButtonFirst]}
+                onPress={() => {
+                  setShowDeleteModal(false);
+                  setDeletePassword('');
+                }}
+                disabled={loading}
+              >
+                <Text style={styles.modalButtonTextCancel}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonDelete]}
+                onPress={handleConfirmDelete}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.modalButtonTextDelete}>Supprimer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -569,6 +750,83 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.text.secondary,
     fontWeight: '500',
+  },
+  dangerItem: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.error[500],
+  },
+  dangerText: {
+    color: theme.colors.error[600],
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: 12,
+    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: theme.colors.text.secondary,
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[300],
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: theme.colors.background.primary,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  modalButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  modalButtonFirst: {
+    marginLeft: 0,
+  },
+  modalButtonCancel: {
+    backgroundColor: theme.colors.neutral[200],
+  },
+  modalButtonDelete: {
+    backgroundColor: theme.colors.error[500],
+  },
+  modalButtonTextCancel: {
+    color: theme.colors.text.primary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonTextDelete: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

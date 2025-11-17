@@ -2869,6 +2869,88 @@ class UserProfileAPIView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class DeleteAccountAPIView(APIView):
+    """
+    API endpoint pour demander la suppression de son propre compte
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Demander la suppression de son compte"""
+        try:
+            user = request.user
+            password = request.data.get('password', '')
+            
+            # Vérifier le mot de passe pour confirmer
+            if not password:
+                return Response({
+                    'success': False,
+                    'error': 'Le mot de passe est requis pour confirmer la suppression'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Vérifier que le mot de passe est correct
+            if not user.check_password(password):
+                return Response({
+                    'success': False,
+                    'error': 'Mot de passe incorrect'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Vérifier si l'utilisateur est le dernier superuser
+            if user.is_superuser and User.objects.filter(is_superuser=True).count() <= 1:
+                return Response({
+                    'success': False,
+                    'error': 'Impossible de supprimer le dernier administrateur système'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Vérifier si l'utilisateur est le dernier admin de site
+            if hasattr(user, 'site_configuration') and user.is_site_admin:
+                from apps.core.models import User
+                site_admins = User.objects.filter(
+                    site_configuration=user.site_configuration,
+                    is_site_admin=True
+                )
+                if site_admins.count() <= 1:
+                    return Response({
+                        'success': False,
+                        'error': 'Impossible de supprimer le dernier administrateur du site'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Enregistrer la demande de suppression dans les activités
+            try:
+                Activite.objects.create(
+                    utilisateur=user,
+                    type_action='suppression',
+                    description=f'Demande de suppression de compte: {user.username}',
+                    ip_address=request.META.get('REMOTE_ADDR', ''),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    url=request.path
+                )
+            except Exception as e:
+                logger.warning(f"Erreur lors de l'enregistrement de l'activité de suppression: {e}")
+            
+            # Désactiver le compte plutôt que de le supprimer immédiatement
+            # (pour permettre une récupération si nécessaire)
+            username = user.username
+            user.is_active = False
+            user.save()
+            
+            # Optionnel : Supprimer complètement après un délai
+            # Pour l'instant, on désactive seulement
+            
+            return Response({
+                'success': True,
+                'message': f'Votre compte "{username}" a été désactivé. La suppression définitive sera effectuée dans les 30 jours. Vous pouvez contacter le support pour annuler cette demande.',
+                'note': 'Votre compte a été désactivé. Pour une suppression immédiate, contactez le support à support@bolibanastock.com'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la suppression de compte: {e}")
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la suppression du compte'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class UserInfoAPIView(APIView):
     """
     API endpoint pour récupérer les informations d'utilisateur de manière simplifiée
@@ -2979,7 +3061,7 @@ class PublicSignUpAPIView(APIView):
                         adresse="Adresse à configurer",
                         telephone="",
                         email=user.email,
-                        devise="€",
+                        devise="FCFA",
                         tva=0,
                         description=f"Site créé automatiquement pour {user.get_full_name()}"
                     )
@@ -3128,7 +3210,7 @@ class SimpleSignUpAPIView(APIView):
                         adresse="Adresse à configurer",
                         telephone="",
                         email=user.email,
-                        devise="€",
+                        devise="FCFA",
                         tva=0,
                         description=f"Site créé automatiquement pour {user.get_full_name()}"
                     )

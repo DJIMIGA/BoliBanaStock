@@ -17,7 +17,7 @@ import { configurationService } from '../services/api';
 import errorService from '../services/errorService';
 import { AppError } from '../types/errors';
 import theme from '../utils/theme';
-import { getPrivacyPolicyUrl } from '../config/networkConfig';
+import { getPrivacyPolicyUrl, getDeleteAccountUrl } from '../config/networkConfig';
 
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -197,6 +197,27 @@ const SettingsScreen: React.FC = () => {
     }
   };
 
+  const openDeleteAccount = async () => {
+    const url = getDeleteAccountUrl();
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert(
+          'Information',
+          'Impossible d\'ouvrir la page de suppression de compte pour le moment.'
+        );
+      }
+    } catch (error) {
+      console.error('Erreur ouverture page suppression compte:', error);
+      Alert.alert(
+        'Erreur',
+        'Une erreur est survenue lors de l\'ouverture de la page de suppression de compte.'
+      );
+    }
+  };
+
   const menuItems = [
     {
       id: 'configuration',
@@ -335,6 +356,25 @@ const SettingsScreen: React.FC = () => {
                 </Text>
                 <Text style={styles.menuSubtitle}>
                   Fermer votre session
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, styles.dangerItem]}
+            onPress={openDeleteAccount}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuIconContainer, { backgroundColor: theme.colors.error[100] }]}>
+                <Ionicons name="trash-outline" size={20} color={theme.colors.error[500]} />
+              </View>
+              <View style={styles.menuText}>
+                <Text style={[styles.menuTitle, styles.dangerText]}>
+                  Supprimer mon compte
+                </Text>
+                <Text style={styles.menuSubtitle}>
+                  Supprimer définitivement votre compte et vos données
                 </Text>
               </View>
             </View>

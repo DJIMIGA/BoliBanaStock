@@ -39,6 +39,11 @@ urlpatterns = [
         TemplateView.as_view(template_name='privacy_policy.html'),
         name='privacy_policy',
     ),
+    path(
+        'delete-account/',
+        TemplateView.as_view(template_name='delete_account.html'),
+        name='delete_account',
+    ),
     # API Mobile
     path('api/v1/', include('api.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
