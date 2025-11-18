@@ -10,7 +10,7 @@ from .views import (
     LoginView, LogoutView, DashboardView,
     ConfigurationAPIView, SitesAPIView, ParametresAPIView, ConfigurationResetAPIView,
     UserProfileAPIView, UserInfoAPIView, UserPermissionsAPIView, UserListAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
-    DeleteAccountAPIView,
+    DeleteAccountAPIView, ChangePasswordAPIView,
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
     CustomerViewSet, CreditTransactionViewSet,
     RefreshTokenView, ForceLogoutAllView,
@@ -72,6 +72,8 @@ urlpatterns = [
     path('users/', UserProfileAPIView.as_view(), name='api_users'),  # Endpoint users principal
     path('users/profile/', UserProfileAPIView.as_view(), name='api_profile'),  # Alias pour compatibilité
     path('profile/', UserProfileAPIView.as_view(), name='api_profile_alt'),    # Alias alternatif
+    path('users/change-password/', ChangePasswordAPIView.as_view(), name='api_change_password'),
+    path('auth/change-password/', ChangePasswordAPIView.as_view(), name='api_change_password_auth'),  # Alias
     path('users/delete-account/', DeleteAccountAPIView.as_view(), name='api_delete_account'),
     path('auth/delete-account/', DeleteAccountAPIView.as_view(), name='api_delete_account_auth'),  # Alias
     

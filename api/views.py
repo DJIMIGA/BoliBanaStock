@@ -2981,6 +2981,86 @@ class DeleteAccountAPIView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class ChangePasswordAPIView(APIView):
+    """
+    API endpoint pour changer le mot de passe de l'utilisateur connecté
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Changer le mot de passe de l'utilisateur"""
+        try:
+            user = request.user
+            old_password = request.data.get('old_password', '')
+            new_password = request.data.get('new_password', '')
+            confirm_password = request.data.get('confirm_password', '')
+            
+            # Vérifier que tous les champs sont fournis
+            if not old_password or not new_password or not confirm_password:
+                return Response({
+                    'success': False,
+                    'error': 'Tous les champs sont requis'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Vérifier que l'ancien mot de passe est correct
+            if not user.check_password(old_password):
+                return Response({
+                    'success': False,
+                    'error': 'L\'ancien mot de passe est incorrect'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Vérifier que les nouveaux mots de passe correspondent
+            if new_password != confirm_password:
+                return Response({
+                    'success': False,
+                    'error': 'Les nouveaux mots de passe ne correspondent pas'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Vérifier que le nouveau mot de passe est différent de l'ancien
+            if user.check_password(new_password):
+                return Response({
+                    'success': False,
+                    'error': 'Le nouveau mot de passe doit être différent de l\'ancien'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Valider la longueur du mot de passe
+            if len(new_password) < 8:
+                return Response({
+                    'success': False,
+                    'error': 'Le mot de passe doit contenir au moins 8 caractères'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Changer le mot de passe
+            user.set_password(new_password)
+            user.save()
+            
+            # Enregistrer l'activité
+            try:
+                from apps.core.models import Activite
+                Activite.objects.create(
+                    utilisateur=user,
+                    type_action='modification',
+                    description=f'Changement de mot de passe pour {user.username}',
+                    ip_address=request.META.get('REMOTE_ADDR', ''),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    url=request.path
+                )
+            except Exception as e:
+                logger.warning(f"Erreur lors de l'enregistrement de l'activité de changement de mot de passe: {e}")
+            
+            return Response({
+                'success': True,
+                'message': 'Mot de passe modifié avec succès'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Erreur lors du changement de mot de passe: {e}")
+            return Response({
+                'success': False,
+                'error': 'Erreur lors du changement de mot de passe'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class UserInfoAPIView(APIView):
     """
     API endpoint pour récupérer les informations d'utilisateur de manière simplifiée

@@ -67,6 +67,11 @@ def is_manager(user):
     """Vérifie si l'utilisateur peut gérer les utilisateurs de son site"""
     return user.is_superuser or user.is_site_admin
 
+def is_site_admin(user):
+    """Vérifie si l'utilisateur est administrateur du site (ou superuser)"""
+    from .services import PermissionService
+    return PermissionService.can_user_perform_action(user, 'manage_site_settings')
+
 class ManagerRequiredMixin(UserPassesTestMixin):
     """Mixin pour vérifier que l'utilisateur peut gérer les utilisateurs de son site"""
     def test_func(self):
@@ -74,6 +79,15 @@ class ManagerRequiredMixin(UserPassesTestMixin):
 
     def handle_no_permission(self):
         messages.error(self.request, "Vous n'avez pas les permissions pour accéder à cette page.")
+        return redirect('theme:home')
+
+class SiteAdminRequiredMixin(UserPassesTestMixin):
+    """Mixin pour vérifier que l'utilisateur est administrateur du site"""
+    def test_func(self):
+        return is_site_admin(self.request.user)
+
+    def handle_no_permission(self):
+        messages.error(self.request, "Seuls les administrateurs du site peuvent accéder à cette page.")
         return redirect('theme:home')
 
 class CustomLoginView(LoginView):
@@ -411,7 +425,7 @@ def user_toggle_status(request, pk):
     
     return redirect('core:user_list')
 
-class ConfigurationUpdateView(LoginRequiredMixin, UpdateView):
+class ConfigurationUpdateView(LoginRequiredMixin, SiteAdminRequiredMixin, UpdateView):
     model = Configuration
     template_name = 'core/configuration_form.html'
     fields = [
@@ -636,6 +650,11 @@ def configuration_export(request):
 @login_required
 def configuration_history(request):
     """Afficher l'historique des modifications de la configuration"""
+    from .services import PermissionService
+    if not PermissionService.can_user_perform_action(request.user, 'manage_site_settings'):
+        messages.error(request, "Seuls les administrateurs du site peuvent accéder à cette page.")
+        return redirect('theme:home')
+    
     try:
         config = get_user_site_configuration(request.user)
     except Http404:

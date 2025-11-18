@@ -1679,6 +1679,20 @@ export const profileService = {
     }
   },
 
+  changePassword: async (oldPassword: string, newPassword: string, confirmPassword: string) => {
+    try {
+      const response = await api.post('/auth/change-password/', {
+        old_password: oldPassword,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur changement mot de passe:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
   deleteAccount: async (password: string) => {
     try {
       const response = await api.post('/auth/delete-account/', {

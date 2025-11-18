@@ -11,6 +11,9 @@ import {
   Switch,
   Modal,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
@@ -25,6 +28,8 @@ import { Linking } from 'react-native';
 const KEEP_SCREEN_AWAKE_KEY = '@bbstock:keep_screen_awake';
 
 const ProfileScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const user = useSelector((state: RootState) => state.auth.user);
   const dispatch = useDispatch<AppDispatch>();
   const [loading, setLoading] = useState(false);
@@ -32,11 +37,17 @@ const ProfileScreen: React.FC = () => {
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<User>>({});
   const [notifications, setNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const [keepScreenAwake, setKeepScreenAwake] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [showDeletePassword, setShowDeletePassword] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Charger les préférences depuis AsyncStorage
   useEffect(() => {
@@ -158,19 +169,49 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleChangePassword = () => {
-    Alert.alert(
-      'Changer le mot de passe',
-      'Cette fonctionnalité sera disponible prochainement',
-      [{ text: 'OK' }]
-    );
+    setShowChangePasswordModal(true);
   };
 
-  const handleExportData = () => {
-    Alert.alert(
-      'Exporter les données',
-      'Cette fonctionnalité sera disponible prochainement',
-      [{ text: 'OK' }]
-    );
+  const handleConfirmChangePassword = async () => {
+    // Validation côté client
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      Alert.alert('Erreur', 'Tous les champs sont requis');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Erreur', 'Les nouveaux mots de passe ne correspondent pas');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 8 caractères');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await profileService.changePassword(oldPassword, newPassword, confirmPassword);
+      
+      if (response.success) {
+        setShowChangePasswordModal(false);
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setShowOldPassword(false);
+        setShowNewPassword(false);
+        setShowConfirmPassword(false);
+        Alert.alert('Succès', response.message || 'Mot de passe modifié avec succès');
+      } else {
+        Alert.alert('Erreur', response.error || 'Erreur lors du changement de mot de passe');
+      }
+    } catch (error: any) {
+      console.error('Erreur changement mot de passe:', error);
+      const errorMessage = error.response?.data?.error || 'Erreur lors du changement de mot de passe';
+      Alert.alert('Erreur', errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -247,21 +288,56 @@ const ProfileScreen: React.FC = () => {
     );
   }
 
+  const getInitials = () => {
+    if (user?.first_name && user?.last_name) {
+      return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase();
+    }
+    return user?.username?.[0]?.toUpperCase() || 'U';
+  };
+
+  const getFullName = () => {
+    if (user?.first_name && user?.last_name) {
+      return `${user.first_name} ${user.last_name}`;
+    }
+    return user?.username || 'Utilisateur';
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatar}>
-            {user.first_name?.[0] || user.username[0].toUpperCase()}
-          </Text>
+    <View style={styles.container}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+          {/* Bouton retour */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+
+          {/* Contenu du header */}
+          <View style={styles.headerContent}>
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatarInner}>
+                <Text style={styles.avatar}>
+                  {getInitials()}
+                </Text>
+              </View>
+              <View style={styles.avatarBadge}>
+                <Ionicons name="checkmark" size={16} color="white" />
+              </View>
+            </View>
+            
+            <Text style={styles.name}>{getFullName()}</Text>
+            <Text style={styles.username}>@{user?.username || 'username'}</Text>
+            
+            {user?.poste && (
+              <View style={styles.posteContainer}>
+                <Ionicons name="briefcase-outline" size={14} color={theme.colors.secondary[500]} />
+                <Text style={styles.poste}>{user.poste}</Text>
+              </View>
+            )}
+          </View>
         </View>
-        <Text style={styles.name}>
-          {user.first_name && user.last_name
-            ? `${user.first_name} ${user.last_name}`
-            : user.username}
-        </Text>
-        <Text style={styles.username}>@{user.username}</Text>
-      </View>
 
       <View style={styles.content}>
         {/* Informations personnelles */}
@@ -389,17 +465,6 @@ const ProfileScreen: React.FC = () => {
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleExportData}>
-            <View style={styles.menuItemLeft}>
-              <Text style={styles.menuIcon}>📤</Text>
-              <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Exporter mes données</Text>
-                <Text style={styles.menuSubtitle}>Télécharger vos données personnelles</Text>
-              </View>
-            </View>
-            <Text style={styles.menuArrow}>›</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity 
             style={[styles.menuItem, styles.dangerItem]} 
             onPress={handleDeleteAccount}
@@ -432,22 +497,6 @@ const ProfileScreen: React.FC = () => {
               onValueChange={setNotifications}
               trackColor={{ false: theme.colors.neutral[300], true: actionColors.primary }}
               thumbColor={notifications ? '#ffffff' : '#f4f3f4'}
-            />
-          </View>
-
-          <View style={styles.menuItem}>
-            <View style={styles.menuItemLeft}>
-              <Text style={styles.menuIcon}>🌙</Text>
-              <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Mode sombre</Text>
-                <Text style={styles.menuSubtitle}>Interface sombre</Text>
-              </View>
-            </View>
-            <Switch
-              value={darkMode}
-              onValueChange={setDarkMode}
-              trackColor={{ false: theme.colors.neutral[300], true: actionColors.primary }}
-              thumbColor={darkMode ? '#ffffff' : '#f4f3f4'}
             />
           </View>
 
@@ -499,6 +548,127 @@ const ProfileScreen: React.FC = () => {
           </View>
         </View>
       </View>
+      </ScrollView>
+
+      {/* Modal de changement de mot de passe */}
+      <Modal
+        visible={showChangePasswordModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowChangePasswordModal(false);
+          setOldPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+          setShowOldPassword(false);
+          setShowNewPassword(false);
+          setShowConfirmPassword(false);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Changer le mot de passe</Text>
+            <Text style={styles.modalMessage}>
+              Entrez votre mot de passe actuel et votre nouveau mot de passe :
+            </Text>
+            
+            <View style={styles.modalPasswordContainer}>
+              <TextInput
+                style={[styles.modalInput, styles.modalPasswordInput]}
+                value={oldPassword}
+                onChangeText={setOldPassword}
+                placeholder="Ancien mot de passe"
+                placeholderTextColor={theme.colors.text.tertiary}
+                secureTextEntry={!showOldPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={styles.modalEyeButton}
+                onPress={() => setShowOldPassword(!showOldPassword)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalEyeIcon}>
+                  {showOldPassword ? '👁️' : '👁️‍🗨️'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalPasswordContainer}>
+              <TextInput
+                style={[styles.modalInput, styles.modalPasswordInput]}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Nouveau mot de passe (min. 8 caractères)"
+                placeholderTextColor={theme.colors.text.tertiary}
+                secureTextEntry={!showNewPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={styles.modalEyeButton}
+                onPress={() => setShowNewPassword(!showNewPassword)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalEyeIcon}>
+                  {showNewPassword ? '👁️' : '👁️‍🗨️'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalPasswordContainer}>
+              <TextInput
+                style={[styles.modalInput, styles.modalPasswordInput]}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Confirmer le nouveau mot de passe"
+                placeholderTextColor={theme.colors.text.tertiary}
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={styles.modalEyeButton}
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalEyeIcon}>
+                  {showConfirmPassword ? '👁️' : '👁️‍🗨️'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel, styles.modalButtonFirst]}
+                onPress={() => {
+                  setShowChangePasswordModal(false);
+                  setOldPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  setShowOldPassword(false);
+                  setShowNewPassword(false);
+                  setShowConfirmPassword(false);
+                }}
+                disabled={loading}
+              >
+                <Text style={styles.modalButtonTextCancel}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={handleConfirmChangePassword}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.modalButtonTextPrimary}>Modifier</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal de confirmation de suppression */}
       <Modal
@@ -531,7 +701,8 @@ const ProfileScreen: React.FC = () => {
               />
               <TouchableOpacity
                 style={styles.modalEyeButton}
-                onPress={() => setShowDeletePassword(!showDeletePassword)}
+                onPressIn={() => setShowDeletePassword(!showDeletePassword)}
+                activeOpacity={0.7}
               >
                 <Text style={styles.modalEyeIcon}>
                   {showDeletePassword ? '👁️' : '👁️‍🗨️'}
@@ -565,7 +736,7 @@ const ProfileScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 };
 
@@ -573,6 +744,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background.secondary,
+  },
+  scrollView: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -586,35 +760,96 @@ const styles = StyleSheet.create({
     color: theme.colors.text.tertiary,
   },
   header: {
-    padding: 20,
-    backgroundColor: theme.colors.background.primary,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.neutral[200],
+    backgroundColor: theme.colors.primary[500],
+    paddingBottom: 32,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: actionColors.primary,
+  backButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10,
+  },
+  headerContent: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingHorizontal: 20,
+  },
+  avatarContainer: {
+    position: 'relative',
     marginBottom: 16,
   },
+  avatarInner: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: theme.colors.secondary[500],
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   avatar: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: 'bold',
-    color: theme.colors.text.inverse,
+    color: theme.colors.primary[500],
+  },
+  avatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.success[500],
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'white',
   },
   name: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: theme.colors.text.primary,
+    color: 'white',
     marginBottom: 4,
+    textAlign: 'center',
   },
   username: {
     fontSize: 16,
-    color: theme.colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 8,
+  },
+  posteContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 4,
+  },
+  poste: {
+    fontSize: 14,
+    color: 'white',
+    marginLeft: 6,
+    fontWeight: '500',
   },
   content: {
     padding: 20,
@@ -855,12 +1090,20 @@ const styles = StyleSheet.create({
   modalButtonDelete: {
     backgroundColor: theme.colors.error[500],
   },
+  modalButtonPrimary: {
+    backgroundColor: actionColors.primary,
+  },
   modalButtonTextCancel: {
     color: theme.colors.text.primary,
     fontSize: 16,
     fontWeight: '600',
   },
   modalButtonTextDelete: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonTextPrimary: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
