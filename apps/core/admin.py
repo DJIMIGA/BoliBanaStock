@@ -38,6 +38,18 @@ class UserAdmin(BaseUserAdmin):
     )
     
     readonly_fields = ('last_login', 'date_joined', 'derniere_connexion')
+    
+    def get_form(self, request, obj=None, **kwargs):
+        """Personnaliser le formulaire pour rendre groups et user_permissions optionnels"""
+        form = super().get_form(request, obj, **kwargs)
+        
+        # Rendre groups et user_permissions optionnels
+        if 'groups' in form.base_fields:
+            form.base_fields['groups'].required = False
+        if 'user_permissions' in form.base_fields:
+            form.base_fields['user_permissions'].required = False
+        
+        return form
 
 @admin.register(Configuration)
 class ConfigurationAdmin(admin.ModelAdmin):
