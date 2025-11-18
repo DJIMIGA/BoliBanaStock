@@ -16,7 +16,11 @@ class User(AbstractUser):
     adresse = models.TextField(blank=True, null=True)
     poste = models.CharField(max_length=100, blank=True, null=True)
     photo = models.ImageField(upload_to='users/', blank=True, null=True)
-    est_actif = models.BooleanField(default=True)
+    est_actif = models.BooleanField(
+        default=True,
+        verbose_name=_('Est actif'),
+        help_text=_('Désactivez ceci plutôt que de supprimer le compte')
+    )
     derniere_connexion = models.DateTimeField(null=True, blank=True)
     
     # Nouveaux champs pour le système multi-sites
@@ -40,6 +44,12 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.get_full_name() or self.username}"
+    
+    def save(self, *args, **kwargs):
+        """Synchroniser est_actif avec is_active"""
+        # Synchroniser is_active avec est_actif
+        self.is_active = self.est_actif
+        super().save(*args, **kwargs)
 
     def get_derniere_connexion_display(self):
         """

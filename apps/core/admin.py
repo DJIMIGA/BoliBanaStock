@@ -18,8 +18,9 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('first_name', 'last_name', 'email', 'telephone', 'adresse', 'poste', 'photo')
         }),
         (_('Permissions'), {
-            'fields': ('is_active', 'est_actif', 'is_staff', 'is_superuser', 'is_site_admin', 
+            'fields': ('est_actif', 'is_staff', 'is_superuser', 'is_site_admin', 
                       'groups', 'user_permissions'),
+            'description': _('Le champ "Est actif" contrôle à la fois l\'accès au système et à l\'administration.'),
         }),
         (_('Configuration du site'), {
             'fields': ('site_configuration',),
@@ -32,7 +33,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('username', 'email', 'password1', 'password2', 'first_name', 'last_name'),
+            'fields': ('username', 'email', 'password1', 'password2', 'first_name', 'last_name', 'est_actif'),
         }),
     )
     
