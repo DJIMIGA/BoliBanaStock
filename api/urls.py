@@ -9,7 +9,7 @@ from apps.inventory import views as inventory_views
 from .views import (
     LoginView, LogoutView, DashboardView,
     ConfigurationAPIView, SitesAPIView, ParametresAPIView, ConfigurationResetAPIView,
-    UserProfileAPIView, UserInfoAPIView, UserPermissionsAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
+    UserProfileAPIView, UserInfoAPIView, UserPermissionsAPIView, UserListAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
     DeleteAccountAPIView,
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
     CustomerViewSet, CreditTransactionViewSet,
@@ -78,6 +78,7 @@ urlpatterns = [
     # Nouvelles APIs pour les informations utilisateur
     path('user/info/', UserInfoAPIView.as_view(), name='api_user_info'),
     path('user/permissions/', UserPermissionsAPIView.as_view(), name='api_user_permissions'),
+    path('users/list/', UserListAPIView.as_view(), name='api_user_list'),
     
     # Configuration et paramètres
     path('configuration/', ConfigurationAPIView.as_view(), name='api_configuration'),

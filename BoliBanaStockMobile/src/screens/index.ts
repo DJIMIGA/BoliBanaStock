@@ -1,5 +1,6 @@
 // Export de tous les écrans
 export { default as AddEmployeeScreen } from './AddEmployeeScreen';
+export { default as EmployeeListScreen } from './EmployeeListScreen';
 export { default as AddProductScreen } from './AddProductScreen';
 export { default as BarcodeTest } from '../components/BarcodeTest';
 export { default as BarcodeTestScreen } from './BarcodeTestScreen';

@@ -2487,6 +2487,13 @@ class ConfigurationAPIView(APIView):
     
     def get(self, request):
         """Récupérer la configuration actuelle"""
+        from apps.core.services import PermissionService
+        if not PermissionService.can_user_perform_action(request.user, 'manage_site_settings'):
+            return Response({
+                'success': False,
+                'error': 'Seuls les administrateurs du site peuvent accéder à la configuration'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         try:
             # Utiliser la logique de la vue existante
             config = get_user_site_configuration_api(request.user)
@@ -2534,6 +2541,13 @@ class ConfigurationAPIView(APIView):
     
     def put(self, request):
         """Mettre à jour la configuration"""
+        from apps.core.services import PermissionService
+        if not PermissionService.can_user_perform_action(request.user, 'manage_site_settings'):
+            return Response({
+                'success': False,
+                'error': 'Seuls les administrateurs du site peuvent modifier la configuration'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         try:
             config = get_user_site_configuration_api(request.user)
             
@@ -2724,6 +2738,13 @@ class ConfigurationResetAPIView(APIView):
     
     def post(self, request):
         """Réinitialiser la configuration avec des valeurs par défaut"""
+        from apps.core.services import PermissionService
+        if not PermissionService.can_user_perform_action(request.user, 'manage_site_settings'):
+            return Response({
+                'success': False,
+                'error': 'Seuls les administrateurs du site peuvent réinitialiser la configuration'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         try:
             config = get_user_site_configuration_api(request.user)
             
@@ -3021,6 +3042,73 @@ class UserPermissionsAPIView(APIView):
                 'success': False,
                 'error': 'Erreur lors de la récupération des permissions',
                 'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class UserListAPIView(APIView):
+    """
+    API endpoint pour récupérer la liste des utilisateurs/employés du site
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Récupérer la liste des utilisateurs du site"""
+        try:
+            user = request.user
+            
+            # Vérifier que l'utilisateur peut gérer les utilisateurs
+            if not (user.is_superuser or user.is_site_admin):
+                return Response({
+                    'success': False,
+                    'error': 'Vous n\'avez pas la permission de voir la liste des utilisateurs'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Récupérer les utilisateurs selon les permissions
+            if user.is_superuser:
+                # Les superusers voient tous les utilisateurs
+                users = User.objects.all().order_by('-date_joined')
+            else:
+                # Les admins de site ne voient que les utilisateurs de leur site
+                if not user.site_configuration:
+                    return Response({
+                        'success': False,
+                        'error': 'Aucun site configuré pour votre compte'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                users = User.objects.filter(
+                    site_configuration=user.site_configuration
+                ).order_by('-date_joined')
+            
+            # Formater les données des utilisateurs
+            users_data = []
+            for u in users:
+                users_data.append({
+                    'id': u.id,
+                    'username': u.username,
+                    'email': u.email,
+                    'first_name': u.first_name,
+                    'last_name': u.last_name,
+                    'telephone': getattr(u, 'telephone', '') or '',
+                    'poste': getattr(u, 'poste', '') or '',
+                    'is_staff': u.is_staff,
+                    'is_superuser': u.is_superuser,
+                    'is_site_admin': u.is_site_admin,
+                    'is_active': u.is_active,
+                    'date_joined': u.date_joined.isoformat(),
+                    'last_login': u.last_login.isoformat() if u.last_login else None,
+                    'derniere_connexion': u.derniere_connexion.isoformat() if u.derniere_connexion else None,
+                })
+            
+            return Response({
+                'success': True,
+                'users': users_data,
+                'count': len(users_data)
+            })
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de la liste des utilisateurs: {e}")
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de la récupération de la liste des utilisateurs'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

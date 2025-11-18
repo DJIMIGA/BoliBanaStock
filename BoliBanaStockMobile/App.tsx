@@ -41,6 +41,7 @@ import {
   TransactionsScreen,
   AddProductScreen,
   AddEmployeeScreen,
+  EmployeeListScreen,
   TestScannerScreen,
   LabelGeneratorScreen,
   LabelPreviewScreen,
@@ -218,6 +219,7 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="Transactions" component={TransactionsScreen} />
           <Stack.Screen name="Labels" component={LabelGeneratorScreen} />
           <Stack.Screen name="AddEmployee" component={AddEmployeeScreen} />
+          <Stack.Screen name="EmployeeList" component={EmployeeListScreen} />
         </>
       )}
     </Stack.Navigator>

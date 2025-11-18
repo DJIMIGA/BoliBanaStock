@@ -23,7 +23,7 @@ import { useUserPermissions } from '../hooks/useUserPermissions';
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch<AppDispatch>();
-  const { canManageUsers } = useUserPermissions();
+  const { canManageUsers, canManageSite } = useUserPermissions();
 
   const handleLogout = () => {
     Alert.alert(
@@ -221,7 +221,7 @@ const SettingsScreen: React.FC = () => {
   };
 
   const menuItems = [
-    {
+    ...(canManageSite ? [{
       id: 'configuration',
       title: 'Configuration',
       subtitle: 'Paramètres de votre entreprise',
@@ -229,7 +229,7 @@ const SettingsScreen: React.FC = () => {
       iconColor: theme.colors.primary[500],
       iconBg: theme.colors.primary[100],
       onPress: () => navigation.navigate('Configuration' as never),
-    },
+    }] : []),
     {
       id: 'profile',
       title: 'Profil utilisateur',
@@ -239,15 +239,26 @@ const SettingsScreen: React.FC = () => {
       iconBg: theme.colors.info[100],
       onPress: () => navigation.navigate('Profile' as never),
     },
-    ...(canManageUsers ? [{
-      id: 'add_employee',
-      title: 'Ajouter un employé',
-      subtitle: 'Créer un compte pour un nouvel employé',
-      icon: 'person-add',
-      iconColor: theme.colors.success[500],
-      iconBg: theme.colors.success[100],
-      onPress: () => navigation.navigate('AddEmployee' as never),
-    }] : []),
+    ...(canManageUsers ? [
+      {
+        id: 'employee_list',
+        title: 'Liste des employés',
+        subtitle: 'Voir et gérer les employés du site',
+        icon: 'people',
+        iconColor: theme.colors.info[500],
+        iconBg: theme.colors.info[100],
+        onPress: () => navigation.navigate('EmployeeList' as never),
+      },
+      {
+        id: 'add_employee',
+        title: 'Ajouter un employé',
+        subtitle: 'Créer un compte pour un nouvel employé',
+        icon: 'person-add',
+        iconColor: theme.colors.success[500],
+        iconBg: theme.colors.success[100],
+        onPress: () => navigation.navigate('AddEmployee' as never),
+      },
+    ] : []),
     {
       id: 'notifications',
       title: 'Notifications',
