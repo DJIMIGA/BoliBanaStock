@@ -18,7 +18,6 @@ import requests
 import json
 from apps.core.forms import CustomUserUpdateForm, PublicSignUpForm
 from apps.core.models import User, Configuration, Parametre, Activite, PasswordResetToken
-from apps.core.views import PublicSignUpView
 from apps.core.services import (
     PermissionService, UserInfoService,
     can_user_manage_brand_quick, can_user_create_brand_quick, can_user_delete_brand_quick,
@@ -3058,7 +3057,7 @@ class PublicSignUpAPIView(APIView):
                         counter += 1
                     
                     # D'abord sauvegarder l'utilisateur sans site_configuration
-                    user.est_actif = True
+                    user.is_active = True
                     user.is_staff = True  # Donner accès à l'administration
                     user.is_superuser = False
                     user.save()
@@ -3178,14 +3177,33 @@ class PublicSignUpAPIView(APIView):
 
 class SimpleSignUpAPIView(APIView):
     """
-    Vue d'inscription simplifiée sans journalisation d'activité
-    Pour éviter les problèmes de contrainte de clé étrangère
+    Vue d'inscription simplifiée pour les admins de site
+    Permet aux admins de site de créer des employés/utilisateurs pour leur site existant
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        """Créer un nouveau compte utilisateur et site sans journalisation d'activité"""
+        """Créer un nouveau compte utilisateur pour le site de l'admin connecté"""
         try:
+            # Vérifier que l'utilisateur est admin de site ou superuser
+            if not (request.user.is_superuser or request.user.is_site_admin):
+                return Response({
+                    'success': False,
+                    'error': 'Vous devez être administrateur de site pour créer des utilisateurs'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Vérifier que l'admin a un site configuré
+            if not request.user.site_configuration and not request.user.is_superuser:
+                return Response({
+                    'success': False,
+                    'error': 'Aucun site configuré pour votre compte'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # IMPORTANT: Compter les sites avant pour vérifier qu'aucun nouveau site n'est créé
+            sites_count_before = Configuration.objects.count()
+            admin_site = request.user.site_configuration
+            
+            # Utiliser le formulaire pour la validation
             form = PublicSignUpForm(request.data)
             
             if form.is_valid():
@@ -3193,50 +3211,63 @@ class SimpleSignUpAPIView(APIView):
                     # Créer l'utilisateur
                     user = form.save(commit=False)
                     
-                    # Générer un nom de site unique
-                    import time
-                    timestamp = int(time.time())
-                    base_site_name = f"{user.first_name}-{user.last_name}".replace(' ', '-').lower()
-                    site_name = f"{base_site_name}-{timestamp}"
+                    # Assigner l'utilisateur au site de l'admin (NE PAS CRÉER DE NOUVEAU SITE)
+                    if request.user.is_superuser:
+                        # Les superusers peuvent créer des utilisateurs pour n'importe quel site
+                        # Si un site_id est fourni dans les données, l'utiliser
+                        site_id = request.data.get('site_configuration_id')
+                        if site_id:
+                            try:
+                                site_config = Configuration.objects.get(id=site_id)
+                                user.site_configuration = site_config
+                            except Configuration.DoesNotExist:
+                                return Response({
+                                    'success': False,
+                                    'error': 'Site spécifié introuvable'
+                                }, status=status.HTTP_400_BAD_REQUEST)
+                        else:
+                            # Sinon, utiliser le site de l'admin
+                            user.site_configuration = request.user.site_configuration
+                    else:
+                        # Les admins de site ne peuvent créer que pour leur site
+                        # IMPORTANT: Utiliser le site existant de l'admin, ne pas en créer un nouveau
+                        if not request.user.site_configuration:
+                            return Response({
+                                'success': False,
+                                'error': 'Aucun site configuré pour votre compte. Impossible de créer un employé.'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        user.site_configuration = request.user.site_configuration
                     
-                    # Vérifier l'unicité du nom de site
-                    counter = 1
-                    original_site_name = site_name
-                    while Configuration.objects.filter(site_name=site_name).exists():
-                        site_name = f"{original_site_name}-{counter}"
-                        counter += 1
-                    
-                    # Sauvegarder l'utilisateur
-                    user.est_actif = True
-                    user.is_staff = True  # Donner accès à l'administration
+                    # Configurer les permissions (employé standard, pas admin)
+                    user.is_active = True
+                    user.is_staff = request.data.get('is_staff', False)  # Optionnel, par défaut False
                     user.is_superuser = False
+                    user.is_site_admin = False  # Pas admin par défaut
+                    user.created_by = request.user
                     user.save()
                     
-                    # Créer la configuration du site
-                    site_config = Configuration(
-                        site_name=site_name,
-                        site_owner=user,
-                        nom_societe=f"Entreprise {user.first_name} {user.last_name}",
-                        adresse="Adresse à configurer",
-                        telephone="",
-                        email=user.email,
-                        devise="FCFA",
-                        tva=0,
-                        description=f"Site créé automatiquement pour {user.get_full_name()}"
-                    )
-                    site_config.save()
+                    # Vérifier qu'aucun nouveau site n'a été créé
+                    sites_count_after = Configuration.objects.count()
+                    if sites_count_after > sites_count_before:
+                        logger.error(f"ERREUR: Un nouveau site a été créé lors de l'inscription d'un employé !")
+                        logger.error(f"  Sites avant: {sites_count_before}, Sites après: {sites_count_after}")
+                        # Ne pas retourner d'erreur, mais logger l'incident
+                        # L'utilisateur est déjà créé, on continue
                     
-                    # Lier l'utilisateur à sa configuration
-                    user.site_configuration = site_config
-                    user.is_site_admin = True
-                    user.save()
+                    # Journaliser l'activité (maintenant que l'utilisateur existe)
+                    try:
+                        Activite.objects.create(
+                            utilisateur=request.user,
+                            type_action='creation',
+                            description=f'Création de l\'utilisateur: {user.username} pour le site {user.site_configuration.site_name}',
+                            ip_address=request.META.get('REMOTE_ADDR'),
+                            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                            url=request.path
+                        )
+                    except Exception as e:
+                        logger.warning(f"Erreur lors de la journalisation de l'activité: {e}")
                     
-                    # Générer les tokens d'authentification
-                    refresh = RefreshToken.for_user(user)
-                    access_token = str(refresh.access_token)
-                    refresh_token = str(refresh)
-                    
-                    # Retourner la réponse
+                    # Retourner la réponse (sans tokens, l'admin doit inviter l'utilisateur)
                     user_data = {
                         'id': user.id,
                         'username': user.username,
@@ -3245,37 +3276,36 @@ class SimpleSignUpAPIView(APIView):
                         'last_name': user.last_name,
                         'is_staff': user.is_staff,
                         'is_active': user.is_active,
+                        'is_site_admin': user.is_site_admin,
                         'date_joined': user.date_joined.isoformat(),
-                        'site_name': site_name,
-                        'site_config_id': site_config.id
+                        'site_name': user.site_configuration.site_name if user.site_configuration else None,
+                        'site_config_id': user.site_configuration.id if user.site_configuration else None
                     }
                     
                     return Response({
                         'success': True,
-                        'message': 'Compte créé avec succès ! Vous êtes maintenant connecté.',
+                        'message': f'Utilisateur "{user.username}" créé avec succès pour le site "{user.site_configuration.site_name}"',
                         'user': user_data,
                         'site_info': {
-                            'site_name': site_name,
-                            'nom_societe': site_config.nom_societe
-                        },
-                        'tokens': {
-                            'access': access_token,
-                            'refresh': refresh_token
+                            'site_name': user.site_configuration.site_name if user.site_configuration else None,
+                            'nom_societe': user.site_configuration.nom_societe if user.site_configuration else None
                         }
-                    })
+                    }, status=status.HTTP_201_CREATED)
             else:
                 return Response({
                     'success': False,
                     'error': 'Données invalides',
                     'details': form.errors
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
-            print(f"❌ Erreur lors de la création du compte (SimpleSignUp): {e}")
+            logger.error(f"Erreur lors de la création du compte (SimpleSignUp): {e}")
+            import traceback
+            traceback.print_exc()
             return Response({
                 'success': False,
                 'error': f'Erreur lors de la création du compte: {str(e)}'
-            }, status=500)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ============ Labels API ============

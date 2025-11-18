@@ -86,36 +86,6 @@ class CustomLoginView(LoginView):
 class CustomLogoutView(LogoutView):
     next_page = 'login'
 
-class CustomSignUpView(LoginRequiredMixin, ManagerRequiredMixin, CreateView):
-    form_class = CustomUserCreationForm
-    template_name = 'registration/signup.html'
-    success_url = reverse_lazy('core:user_list')
-
-    def form_valid(self, form):
-        user = form.save(commit=False)
-        user.created_by = self.request.user
-        user.save()
-        
-        messages.success(self.request, f'Utilisateur "{user.username}" créé avec succès !')
-        
-        # Journaliser l'activité
-        Activite.objects.create(
-            utilisateur=self.request.user,
-            type_action='creation',
-            description=f'Création de l\'utilisateur: {user.username}',
-            ip_address=self.request.META.get('REMOTE_ADDR'),
-            user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
-            url=self.request.path
-        )
-        
-        return super().form_valid(form)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['title'] = 'Nouvel utilisateur'
-        context['subtitle'] = 'Ajouter un nouvel utilisateur au système'
-        return context
-
 class PublicSignUpView(CreateView):
     """
     Vue d'inscription publique - Crée un nouveau site avec son admin
@@ -139,6 +109,7 @@ class PublicSignUpView(CreateView):
             counter += 1
         
         # Configurer l'utilisateur comme admin de son site
+        user.is_active = True  # Activer le compte (synchronisera automatiquement est_actif)
         user.is_site_admin = True
         user.is_staff = True  # Donner accès à l'administration
         user.save()  # Sauvegarder l'utilisateur d'abord
@@ -225,6 +196,8 @@ class UserCreateView(LoginRequiredMixin, ManagerRequiredMixin, CreateView):
             user.site_configuration = self.request.user.site_configuration
             user.is_site_admin = False  # Par défaut, les nouveaux utilisateurs ne sont pas admins
         
+        # Activer le compte (synchronisera automatiquement est_actif)
+        user.is_active = True
         user.created_by = self.request.user
         user.save()
         
@@ -696,43 +669,6 @@ def test_auth(request):
         'username': request.user.username if request.user.is_authenticated else None,
     }
     return render(request, 'core/test_auth.html', context)
-
-def debug_signup(request):
-    """
-    Vue de debug pour tester l'inscription et la connexion
-    """
-    if request.method == 'POST':
-        from django.contrib.auth.forms import UserCreationForm
-        form = UserCreationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            
-            # Créer une session
-            if not request.session.session_key:
-                request.session.create()
-            
-            # Connecter l'utilisateur
-            login(request, user)
-            
-            # Vérifier la connexion
-            is_authenticated = request.user.is_authenticated
-            session_key = request.session.session_key
-            
-            return JsonResponse({
-                'success': True,
-                'user_id': user.id,
-                'username': user.username,
-                'is_authenticated': is_authenticated,
-                'session_key': session_key,
-                'message': 'Inscription et connexion réussies'
-            })
-        else:
-            return JsonResponse({
-                'success': False,
-                'errors': form.errors
-            })
-    
-    return render(request, 'core/debug_signup.html')
 
 def health_check(request):
     """Vue ultra-simple pour le healthcheck Railway"""

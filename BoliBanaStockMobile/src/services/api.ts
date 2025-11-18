@@ -250,8 +250,8 @@ export const authService = {
     email: string;
   }) => {
     try {
-      // Utiliser l'endpoint simplifié qui fonctionne
-      const response = await api.post('/auth/signup-simple/', userData);
+      // Utiliser l'endpoint public pour créer un nouveau site avec son admin
+      const response = await api.post('/auth/signup/', userData);
       
       // Si l'inscription retourne des tokens, les adapter au format attendu
       if (response.data.tokens) {
@@ -266,6 +266,29 @@ export const authService = {
       return response.data;
     } catch (error: any) {
       console.error('❌ Erreur d\'inscription:', error.response?.data || error.message);
+      console.error('📊 Status:', error.response?.status);
+      throw error;
+    }
+  },
+
+  // Inscription d'employé pour les admins de site (authentifié)
+  signupEmployee: async (userData: {
+    username: string;
+    password1: string;
+    password2: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    is_staff?: boolean;
+  }) => {
+    try {
+      // Utiliser l'endpoint authentifié pour créer un employé pour le site existant
+      const response = await api.post('/auth/signup-simple/', userData);
+      
+      // L'inscription d'employé ne retourne pas de tokens
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Erreur d\'inscription d\'employé:', error.response?.data || error.message);
       console.error('📊 Status:', error.response?.status);
       throw error;
     }

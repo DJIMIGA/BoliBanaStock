@@ -6,7 +6,6 @@ app_name = 'core'
 urlpatterns = [
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', views.CustomLogoutView.as_view(), name='logout'),
-    path('register/', views.CustomSignUpView.as_view(), name='register'),
     path('configuration/', views.ConfigurationUpdateView.as_view(), name='configuration'),
     path('configuration/quick-edit/', views.configuration_quick_edit, name='configuration_quick_edit'),
     path('configuration/reset/', views.configuration_reset_defaults, name='configuration_reset'),
@@ -17,8 +16,7 @@ urlpatterns = [
     path('parametres/', views.ParametreListView.as_view(), name='parametre_list'),
     path('parametres/<int:pk>/edit/', views.ParametreUpdateView.as_view(), name='parametre_update'),
     path('settings/', views.settings, name='settings'),
-    path('test-auth/', views.test_auth, name='test_auth'),
-    path('debug-signup/', views.debug_signup, name='debug_signup'),
+    path('test-auth/', views.test_auth, name='test_auth'),  # Gardé pour debug si nécessaire
     
     # Gestion des utilisateurs (gérants uniquement)
     path('users/', views.UserListView.as_view(), name='user_list'),

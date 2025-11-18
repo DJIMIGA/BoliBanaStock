@@ -18,10 +18,12 @@ import errorService from '../services/errorService';
 import { AppError } from '../types/errors';
 import theme from '../utils/theme';
 import { getPrivacyPolicyUrl, getDeleteAccountUrl } from '../config/networkConfig';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 
 const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch<AppDispatch>();
+  const { canManageUsers } = useUserPermissions();
 
   const handleLogout = () => {
     Alert.alert(
@@ -237,6 +239,15 @@ const SettingsScreen: React.FC = () => {
       iconBg: theme.colors.info[100],
       onPress: () => navigation.navigate('Profile' as never),
     },
+    ...(canManageUsers ? [{
+      id: 'add_employee',
+      title: 'Ajouter un employé',
+      subtitle: 'Créer un compte pour un nouvel employé',
+      icon: 'person-add',
+      iconColor: theme.colors.success[500],
+      iconBg: theme.colors.success[100],
+      onPress: () => navigation.navigate('AddEmployee' as never),
+    }] : []),
     {
       id: 'notifications',
       title: 'Notifications',

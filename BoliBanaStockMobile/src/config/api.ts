@@ -122,8 +122,8 @@ export const API_CONFIG = {
   
   // Configuration des endpoints de fallback
   FALLBACK: {
-    // En cas de problème avec l'inscription principale, utiliser l'inscription simplifiée
-    SIGNUP_ENDPOINT: 'SIGNUP_SIMPLE', // 'SIGNUP' ou 'SIGNUP_SIMPLE'
+    // Endpoint d'inscription publique par défaut (pour créer un nouveau site)
+    SIGNUP_ENDPOINT: 'SIGNUP', // 'SIGNUP' (public) ou 'SIGNUP_SIMPLE' (authentifié, pour employés)
   },
 };
 

@@ -12,6 +12,7 @@ import { store } from './src/store';
 import { checkAuthStatus, logout } from './src/store/slices/authSlice';
 import { RootState } from './src/store';
 import { AuthWrapper, ErrorBoundary, GlobalSessionNotification, LoadingScreen } from './src/components';
+import { useGlobalKeepAwake } from './src/hooks/useKeepAwake';
 // import { SessionProvider } from './src/contexts/SessionContext'; // Supprimé - approche Redux simplifiée
 import {
   LoginScreen,
@@ -39,6 +40,7 @@ import {
   FinancialReportScreen,
   TransactionsScreen,
   AddProductScreen,
+  AddEmployeeScreen,
   TestScannerScreen,
   LabelGeneratorScreen,
   LabelPreviewScreen,
@@ -147,6 +149,9 @@ const MainTabs = () => {
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading } = useSelector((state: RootState) => state.auth);
+  
+  // Gérer le mode veille globalement - permettre à l'écran de s'éteindre normalement
+  useGlobalKeepAwake();
 
   useEffect(() => {
     // Vérifier l'état d'authentification au démarrage
@@ -212,6 +217,7 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
           <Stack.Screen name="Transactions" component={TransactionsScreen} />
           <Stack.Screen name="Labels" component={LabelGeneratorScreen} />
+          <Stack.Screen name="AddEmployee" component={AddEmployeeScreen} />
         </>
       )}
     </Stack.Navigator>
