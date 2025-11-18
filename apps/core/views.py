@@ -362,7 +362,7 @@ class UserDeleteView(LoginRequiredMixin, ManagerRequiredMixin, DeleteView):
             )
             return redirect('core:user_list')
         except ProtectedError as e:
-            user.est_actif = False
+            user.is_active = False
             user.save()
             transaction_count = user.transaction_set.count()
             sale_count = user.sale_set.count()
@@ -412,15 +412,15 @@ def user_toggle_status(request, pk):
                     return redirect('core:user_list')
         
         # Empêcher la désactivation du dernier superuser
-        if user.is_superuser and User.objects.filter(is_superuser=True, est_actif=True).count() <= 1:
+        if user.is_superuser and User.objects.filter(is_superuser=True, is_active=True).count() <= 1:
             messages.error(request, 'Vous ne pouvez pas désactiver le dernier superutilisateur actif.')
             return redirect('core:user_list')
         
         # Basculer le statut
-        user.est_actif = not user.est_actif
+        user.is_active = not user.is_active
         user.save()
         
-        status = "activé" if user.est_actif else "désactivé"
+        status = "activé" if user.is_active else "désactivé"
         messages.success(request, f'Utilisateur "{user.username}" {status} avec succès.')
         
         # Journaliser l'activité

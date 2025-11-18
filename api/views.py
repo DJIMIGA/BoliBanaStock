@@ -2940,6 +2940,7 @@ class DeleteAccountAPIView(APIView):
             # Désactiver le compte plutôt que de le supprimer immédiatement
             # (pour permettre une récupération si nécessaire)
             username = user.username
+            # Désactiver is_active (qui synchronisera automatiquement est_actif)
             user.is_active = False
             user.save()
             

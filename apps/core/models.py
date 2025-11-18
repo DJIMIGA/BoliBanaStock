@@ -46,9 +46,9 @@ class User(AbstractUser):
         return f"{self.get_full_name() or self.username}"
     
     def save(self, *args, **kwargs):
-        """Synchroniser est_actif avec is_active"""
-        # Synchroniser is_active avec est_actif
-        self.is_active = self.est_actif
+        """Synchroniser est_actif avec is_active (est_actif suit is_active)"""
+        # Synchroniser est_actif avec is_active (pour compatibilité avec le code existant)
+        self.est_actif = self.is_active
         super().save(*args, **kwargs)
 
     def get_derniere_connexion_display(self):

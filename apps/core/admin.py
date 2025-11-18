@@ -7,8 +7,8 @@ from .models import User, Configuration, Activite, Notification, Parametre, Pass
 class UserAdmin(BaseUserAdmin):
     """Configuration admin pour le modèle User personnalisé"""
     list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'is_superuser', 
-                    'is_site_admin', 'site_configuration', 'est_actif', 'derniere_connexion')
-    list_filter = ('is_staff', 'is_superuser', 'is_site_admin', 'est_actif', 'site_configuration', 'date_joined')
+                    'is_site_admin', 'site_configuration', 'is_active', 'derniere_connexion')
+    list_filter = ('is_staff', 'is_superuser', 'is_site_admin', 'is_active', 'site_configuration', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name', 'telephone')
     ordering = ('-date_joined',)
     
@@ -18,9 +18,9 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('first_name', 'last_name', 'email', 'telephone', 'adresse', 'poste', 'photo')
         }),
         (_('Permissions'), {
-            'fields': ('est_actif', 'is_staff', 'is_superuser', 'is_site_admin', 
+            'fields': ('is_active', 'is_staff', 'is_superuser', 'is_site_admin', 
                       'groups', 'user_permissions'),
-            'description': _('Le champ "Est actif" contrôle à la fois l\'accès au système et à l\'administration.'),
+            'description': _('Le champ "Actif" contrôle l\'accès au système. Décochez ceci plutôt que de supprimer le compte.'),
         }),
         (_('Configuration du site'), {
             'fields': ('site_configuration',),
@@ -33,7 +33,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('username', 'email', 'password1', 'password2', 'first_name', 'last_name', 'est_actif'),
+            'fields': ('username', 'email', 'password1', 'password2', 'first_name', 'last_name', 'is_active'),
         }),
     )
     
