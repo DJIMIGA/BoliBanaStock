@@ -2903,16 +2903,25 @@ class DeleteAccountAPIView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # Vérifier si l'utilisateur est le dernier admin de site
+            # Mais permettre la suppression si c'est le seul utilisateur du site
             if hasattr(user, 'site_configuration') and user.is_site_admin:
                 from apps.core.models import User
                 site_admins = User.objects.filter(
                     site_configuration=user.site_configuration,
                     is_site_admin=True
                 )
-                if site_admins.count() <= 1:
+                site_users = User.objects.filter(
+                    site_configuration=user.site_configuration
+                )
+                # Bloquer seulement s'il y a d'autres utilisateurs sur le site
+                if site_admins.count() <= 1 and site_users.count() > 1:
                     return Response({
                         'success': False,
-                        'error': 'Impossible de supprimer le dernier administrateur du site'
+                        'error': 'Impossible de supprimer le dernier administrateur du site. Veuillez d\'abord créer un autre administrateur ou supprimer les autres utilisateurs.',
+                        'details': {
+                            'site_admins_count': site_admins.count(),
+                            'site_users_count': site_users.count(),
+                        }
                     }, status=status.HTTP_400_BAD_REQUEST)
             
             # Enregistrer la demande de suppression dans les activités
