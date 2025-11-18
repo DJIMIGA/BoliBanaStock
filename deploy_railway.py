@@ -383,7 +383,7 @@ def deploy_railway():
                 """)
                 migrations_table_exists = cursor.fetchone()[0]
                 
-                # Vérifier si la table auth_permission existe (pour détecter le problème)
+                # Vérifier si les tables auth existent (pour détecter le problème)
                 cursor.execute("""
                     SELECT EXISTS (
                         SELECT FROM information_schema.tables 
@@ -392,12 +392,21 @@ def deploy_railway():
                     );
                 """)
                 auth_permission_exists = cursor.fetchone()[0]
+                
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'auth_group'
+                    );
+                """)
+                auth_group_exists = cursor.fetchone()[0]
             
             if not migrations_table_exists:
                 print("📋 Base de données vide, application des migrations...")
                 # Base vide, appliquer normalement
                 call_command('migrate', '--noinput', verbosity=1)
-            elif not auth_permission_exists:
+            elif not auth_permission_exists or not auth_group_exists:
                 print("⚠️ Tables manquantes détectées, réapplication des migrations...")
                 # Les migrations sont marquées comme appliquées mais les tables n'existent pas
                 # Supprimer les entrées de django_migrations pour forcer la réapplication

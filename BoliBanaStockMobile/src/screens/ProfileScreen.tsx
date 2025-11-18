@@ -36,6 +36,7 @@ const ProfileScreen: React.FC = () => {
   const [keepScreenAwake, setKeepScreenAwake] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
 
   // Charger les préférences depuis AsyncStorage
   useEffect(() => {
@@ -211,6 +212,7 @@ const ProfileScreen: React.FC = () => {
       if (response.success) {
         setShowDeleteModal(false);
         setDeletePassword('');
+        setShowDeletePassword(false);
         Alert.alert(
           'Compte désactivé',
           response.message || 'Votre compte a été désactivé. La suppression définitive sera effectuée dans les 30 jours.',
@@ -503,7 +505,11 @@ const ProfileScreen: React.FC = () => {
         visible={showDeleteModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowDeleteModal(false)}
+        onRequestClose={() => {
+          setShowDeleteModal(false);
+          setDeletePassword('');
+          setShowDeletePassword(false);
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -511,20 +517,34 @@ const ProfileScreen: React.FC = () => {
             <Text style={styles.modalMessage}>
               Entrez votre mot de passe pour confirmer la suppression de votre compte :
             </Text>
-            <TextInput
-              style={styles.modalInput}
-              value={deletePassword}
-              onChangeText={setDeletePassword}
-              placeholder="Mot de passe"
-              secureTextEntry
-              autoFocus
-            />
+            <View style={styles.modalPasswordContainer}>
+              <TextInput
+                style={[styles.modalInput, styles.modalPasswordInput]}
+                value={deletePassword}
+                onChangeText={setDeletePassword}
+                placeholder="Mot de passe"
+                placeholderTextColor={theme.colors.text.tertiary}
+                secureTextEntry={!showDeletePassword}
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={styles.modalEyeButton}
+                onPress={() => setShowDeletePassword(!showDeletePassword)}
+              >
+                <Text style={styles.modalEyeIcon}>
+                  {showDeletePassword ? '👁️' : '👁️‍🗨️'}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonCancel, styles.modalButtonFirst]}
                 onPress={() => {
                   setShowDeleteModal(false);
                   setDeletePassword('');
+                  setShowDeletePassword(false);
                 }}
                 disabled={loading}
               >
@@ -796,6 +816,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: theme.colors.background.primary,
     marginBottom: 20,
+  },
+  modalPasswordContainer: {
+    position: 'relative',
+    marginBottom: 20,
+  },
+  modalPasswordInput: {
+    paddingRight: 50,
+    marginBottom: 0,
+  },
+  modalEyeButton: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    padding: 4,
+  },
+  modalEyeIcon: {
+    fontSize: 20,
   },
   modalButtons: {
     flexDirection: 'row',

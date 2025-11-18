@@ -1,5 +1,42 @@
 from django.contrib import admin
-from .models import Configuration, Activite, Notification, Parametre, PasswordResetToken
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.utils.translation import gettext_lazy as _
+from .models import User, Configuration, Activite, Notification, Parametre, PasswordResetToken
+
+@admin.register(User)
+class UserAdmin(BaseUserAdmin):
+    """Configuration admin pour le modèle User personnalisé"""
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'is_superuser', 
+                    'is_site_admin', 'site_configuration', 'est_actif', 'derniere_connexion')
+    list_filter = ('is_staff', 'is_superuser', 'is_site_admin', 'est_actif', 'site_configuration', 'date_joined')
+    search_fields = ('username', 'email', 'first_name', 'last_name', 'telephone')
+    ordering = ('-date_joined',)
+    
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        (_('Informations personnelles'), {
+            'fields': ('first_name', 'last_name', 'email', 'telephone', 'adresse', 'poste', 'photo')
+        }),
+        (_('Permissions'), {
+            'fields': ('is_active', 'est_actif', 'is_staff', 'is_superuser', 'is_site_admin', 
+                      'groups', 'user_permissions'),
+        }),
+        (_('Configuration du site'), {
+            'fields': ('site_configuration',),
+        }),
+        (_('Dates importantes'), {
+            'fields': ('last_login', 'derniere_connexion', 'date_joined'),
+        }),
+    )
+    
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('username', 'email', 'password1', 'password2', 'first_name', 'last_name'),
+        }),
+    )
+    
+    readonly_fields = ('last_login', 'date_joined', 'derniere_connexion')
 
 @admin.register(Configuration)
 class ConfigurationAdmin(admin.ModelAdmin):
