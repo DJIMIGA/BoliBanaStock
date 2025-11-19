@@ -127,7 +127,7 @@ def test_inscription_directe():
                 nom_societe=f"Test Entreprise {user.first_name} {user.last_name}",
                 adresse="Adresse de test",
                 email=user.email,
-                devise="€",
+                devise="FCFA",
                 tva=0,
                 description=f"Site de test pour {user.get_full_name()}"
             )

@@ -12,7 +12,9 @@ import {
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { configurationService, loyaltyService } from '../services/api';
+import { useUserPermissions } from '../hooks/useUserPermissions';
 import theme from '../utils/theme';
 
 interface Configuration {
@@ -43,6 +45,8 @@ interface LoyaltyProgram {
 }
 
 const ConfigurationScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const { canManageSite, loading: permissionsLoading } = useUserPermissions();
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,9 +65,20 @@ const ConfigurationScreen: React.FC = () => {
   });
 
   useEffect(() => {
-    loadConfiguration();
-    loadLoyaltyProgram();
-  }, []);
+    if (!permissionsLoading && !canManageSite) {
+      Alert.alert(
+        'Accès refusé',
+        'Seuls les administrateurs du site peuvent accéder à la configuration.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+    
+    if (canManageSite) {
+      loadConfiguration();
+      loadLoyaltyProgram();
+    }
+  }, [canManageSite, permissionsLoading]);
 
   const loadConfiguration = async () => {
     try {
@@ -182,11 +197,25 @@ const ConfigurationScreen: React.FC = () => {
   };
 
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1e40af" />
         <Text style={styles.loadingText}>Chargement de la configuration...</Text>
+      </View>
+    );
+  }
+
+  if (!canManageSite) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Ionicons name="lock-closed" size={64} color="#dc2626" />
+        <Text style={[styles.loadingText, { marginTop: 16, color: '#dc2626', fontWeight: 'bold' }]}>
+          Accès refusé
+        </Text>
+        <Text style={[styles.loadingText, { marginTop: 8 }]}>
+          Seuls les administrateurs du site peuvent accéder à la configuration.
+        </Text>
       </View>
     );
   }

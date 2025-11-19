@@ -266,7 +266,7 @@ const SettingsScreen: React.FC = () => {
       icon: 'notifications',
       iconColor: theme.colors.warning[500],
       iconBg: theme.colors.warning[100],
-      onPress: () => Alert.alert('Info', 'Notifications - À venir'),
+      onPress: () => navigation.navigate('Notifications' as never),
     },
     {
       id: 'backup',
@@ -275,7 +275,7 @@ const SettingsScreen: React.FC = () => {
       icon: 'save',
       iconColor: theme.colors.success[500],
       iconBg: theme.colors.success[100],
-      onPress: () => Alert.alert('Info', 'Sauvegarde - À venir'),
+      onPress: () => navigation.navigate('Export' as never),
     },
     {
       id: 'about',
@@ -284,7 +284,7 @@ const SettingsScreen: React.FC = () => {
       icon: 'information-circle',
       iconColor: theme.colors.info[500],
       iconBg: theme.colors.info[100],
-      onPress: () => Alert.alert('Info', 'À propos - À venir'),
+      onPress: () => navigation.navigate('About' as never),
     },
     {
       id: 'categories',
@@ -362,7 +362,7 @@ const SettingsScreen: React.FC = () => {
         </View>
 
         {/* Actions de sécurité */}
-        <View style={styles.section}>
+        <View style={[styles.section, styles.securitySection]}>
           <Text style={styles.sectionTitle}>Sécurité</Text>
           <TouchableOpacity
             style={[styles.menuItem, styles.dangerItem]}
@@ -404,20 +404,6 @@ const SettingsScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Informations système */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Système</Text>
-          <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Version</Text>
-            <Text style={styles.infoValue}>1.0.0</Text>
-          </View>
-          <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Dernière mise à jour</Text>
-            <Text style={styles.infoValue}>
-              {new Date().toLocaleDateString()}
-            </Text>
-          </View>
-        </View>
       </View>
     </ScrollView>
   );
@@ -478,6 +464,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  securitySection: {
+    marginBottom: 32,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -529,23 +518,6 @@ const styles = StyleSheet.create({
   },
   dangerText: {
     color: '#dc2626',
-  },
-  infoItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  infoLabel: {
-    fontSize: 16,
-    color: '#374151',
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#6b7280',
-    fontWeight: '500',
   },
 });
 

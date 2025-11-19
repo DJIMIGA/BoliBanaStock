@@ -217,7 +217,7 @@ def test_login_api():
             adresse="Adresse de test",
             telephone="",
             email=user.email,
-            devise="€",
+            devise="FCFA",
             tva=0,
             description="Site de test pour la connexion"
         )

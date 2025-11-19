@@ -56,6 +56,9 @@ import {
   ProductCopyManagementScreen,
   CustomerListScreen,
   CustomerDetailScreen,
+  AboutScreen,
+  ExportScreen,
+  NotificationScreen,
 } from './src/screens';
 import { RootStackParamList } from './src/types';
 import theme, { actionColors } from './src/utils/theme';
@@ -192,6 +195,9 @@ const AppContent: React.FC = () => {
           <Stack.Screen name="Configuration" component={ConfigurationScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="About" component={AboutScreen} />
+          <Stack.Screen name="Export" component={ExportScreen} />
+          <Stack.Screen name="Notifications" component={NotificationScreen} />
           <Stack.Screen name="NewSale" component={NewSaleScreen} />
           <Stack.Screen name="Inventory" component={InventoryScreen} />
           <Stack.Screen name="Reception" component={ReceptionScreen} />

@@ -115,7 +115,12 @@ export const signup = createAsyncThunk(
       // Si pas de tokens, retourner juste les données d'inscription
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Erreur d\'inscription');
+      // Retourner l'objet d'erreur complet pour permettre une meilleure gestion des erreurs
+      return rejectWithValue({
+        response: error.response,
+        message: error.response?.data?.message || error.message || 'Erreur d\'inscription',
+        data: error.response?.data,
+      });
     }
   }
 );

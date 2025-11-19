@@ -17,6 +17,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types';
 import { productService } from '../services/api';
 import { BarcodeScanner } from '../components';
+import { useKeepAwake } from '../hooks/useKeepAwake';
 
 type ScanProductScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ScanProduct'>;
 
@@ -30,6 +31,8 @@ const ScanProductScreen: React.FC = () => {
   const [lastScannedCode, setLastScannedCode] = useState<string>('');
   const [scannerBlocked, setScannerBlocked] = useState(false);
   
+  // Garder l'écran allumé uniquement quand le scanner est actif pour faciliter le scan
+  useKeepAwake(showScanner);
 
   useEffect(() => {
     // Les permissions sont gérées par le composant BarcodeScanner

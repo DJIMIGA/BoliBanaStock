@@ -459,12 +459,13 @@ export default function ProductsScreen({ navigation, route }: any) {
           >
             <Ionicons name="logo-apple" size={20} color="#666" />
           </TouchableOpacity>
-          <TouchableOpacity 
+          {/* Temporairement désactivé - problème d'URL d'image */}
+          {/* <TouchableOpacity 
             style={styles.headerButton}
             onPress={() => navigation.navigate('ProductCopy')}
           >
             <Ionicons name="copy-outline" size={20} color="#666" />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
           <TouchableOpacity onPress={() => navigation.navigate('AddProduct')}>
             <Ionicons name="add" size={24} color="#4CAF50" />
           </TouchableOpacity>

@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { api } from '../services/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import api from '../services/api';
 import theme from '../utils/theme';
 import { useUserPermissions } from '../hooks/useUserPermissions';
 
@@ -34,6 +35,7 @@ interface Employee {
 
 const EmployeeListScreen: React.FC = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { canManageUsers } = useUserPermissions();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,7 +171,7 @@ const EmployeeListScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}

@@ -1,0 +1,20 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting sendgrid
+  Downloading sendgrid-6.12.5-py3-none-any.whl.metadata (12 kB)
+Collecting python-http-client>=3.2.1 (from sendgrid)
+  Downloading python_http_client-3.3.7-py3-none-any.whl.metadata (6.9 kB)
+Requirement already satisfied: cryptography>=45.0.6 in c:\users\djimi\appdata\roaming\python\python39\site-packages (from sendgrid) (46.0.1)
+Collecting werkzeug>=1.0.0 (from sendgrid)
+  Downloading werkzeug-3.1.3-py3-none-any.whl.metadata (3.7 kB)
+Requirement already satisfied: cffi>=2.0.0 in c:\users\djimi\appdata\roaming\python\python39\site-packages (from cryptography>=45.0.6->sendgrid) (2.0.0)
+Requirement already satisfied: typing-extensions>=4.13.2 in c:\users\djimi\appdata\roaming\python\python39\site-packages (from cryptography>=45.0.6->sendgrid) (4.15.0)
+Requirement already satisfied: pycparser in c:\users\djimi\appdata\roaming\python\python39\site-packages (from cffi>=2.0.0->cryptography>=45.0.6->sendgrid) (2.22)
+Collecting MarkupSafe>=2.1.1 (from werkzeug>=1.0.0->sendgrid)
+  Downloading markupsafe-3.0.3-cp39-cp39-win_amd64.whl.metadata (2.8 kB)
+Downloading sendgrid-6.12.5-py3-none-any.whl (102 kB)
+Downloading python_http_client-3.3.7-py3-none-any.whl (8.4 kB)
+Downloading werkzeug-3.1.3-py3-none-any.whl (224 kB)
+Downloading markupsafe-3.0.3-cp39-cp39-win_amd64.whl (15 kB)
+Installing collected packages: python-http-client, MarkupSafe, werkzeug, sendgrid
+
+Successfully installed MarkupSafe-3.0.3 python-http-client-3.3.7 sendgrid-6.12.5 werkzeug-3.1.3

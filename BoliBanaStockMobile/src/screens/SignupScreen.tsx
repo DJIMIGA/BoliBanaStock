@@ -12,6 +12,7 @@ import {
   Platform,
   Linking,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,6 +46,64 @@ const SignupScreen: React.FC = () => {
   });
   const [showPassword1, setShowPassword1] = useState(false);
   const [showPassword2, setShowPassword2] = useState(false);
+
+  const formatPhoneNumber = (phone: string): string => {
+    // Supprimer tous les caractères non numériques sauf le +
+    let cleaned = phone.replace(/[^\d+]/g, '');
+    
+    // Si le numéro commence par +, le garder tel quel
+    if (cleaned.startsWith('+')) {
+      // Supprimer le + pour le format WhatsApp
+      return cleaned.substring(1);
+    }
+    
+    // Si le numéro commence par 0, le remplacer par l'indicatif du pays (223 pour le Mali)
+    if (cleaned.startsWith('0')) {
+      cleaned = '223' + cleaned.substring(1);
+    }
+    
+    // Si le numéro commence par 223, le garder tel quel
+    if (cleaned.startsWith('223')) {
+      return cleaned;
+    }
+    
+    // Sinon, ajouter 223 par défaut
+    return '223' + cleaned;
+  };
+
+  const handleWhatsAppSupport = async () => {
+    try {
+      // Sur l'écran d'inscription, on ne peut pas récupérer la configuration (pas authentifié)
+      // Utiliser un numéro de support par défaut
+      const defaultSupportPhone = '+22372464294';
+      
+      // Message par défaut pour l'assistance
+      const defaultMessage = 'Bonjour, j\'ai besoin d\'assistance concernant l\'inscription à l\'application BoliBana Stock.';
+      const encodedMessage = encodeURIComponent(defaultMessage);
+
+      // Utiliser le numéro par défaut
+      const formattedPhone = formatPhoneNumber(defaultSupportPhone);
+      const whatsappUrl = `whatsapp://send?phone=${formattedPhone}&text=${encodedMessage}`;
+      const webUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
+
+      // Vérifier si WhatsApp est installé
+      const canOpen = await Linking.canOpenURL(whatsappUrl);
+
+      if (canOpen) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        // Si WhatsApp n'est pas installé, essayer avec l'URL web
+        await Linking.openURL(webUrl);
+      }
+    } catch (error) {
+      console.error('Erreur ouverture WhatsApp:', error);
+      Alert.alert(
+        'Erreur',
+        'Impossible d\'ouvrir WhatsApp. Veuillez vérifier que l\'application est installée.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
 
   const handleOpenPrivacyPolicy = async () => {
     const url = getPrivacyPolicyUrl();
@@ -559,6 +618,15 @@ const SignupScreen: React.FC = () => {
           </View>
         </View>
       </ScrollView>
+      
+      {/* Bouton d'assistance WhatsApp flottant */}
+      <TouchableOpacity
+        style={styles.whatsappButton}
+        onPress={handleWhatsAppSupport}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="logo-whatsapp" size={28} color="white" />
+      </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 };
@@ -738,6 +806,22 @@ const styles = StyleSheet.create({
     color: actionColors.primary,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  whatsappButton: {
+    position: 'absolute',
+    bottom: 80,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#25D366',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });
 
