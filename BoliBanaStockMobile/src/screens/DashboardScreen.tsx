@@ -20,6 +20,7 @@ import { useDraftStatus } from '../hooks/useDraftStatus';
 import errorService from '../services/errorService';
 import { AppError } from '../types/errors';
 import theme, { stockColors, actionColors } from '../utils/theme';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface DashboardStats {
   total_products: number;
@@ -122,15 +123,6 @@ export default function DashboardScreen({ navigation }: any) {
     );
   };
 
-  // Fonction pour formater les montants en FCFA avec séparateurs de milliers
-  const formatFCFA = (value: number | string | null | undefined): string => {
-    const num = typeof value === 'number' ? value : parseFloat((value ?? 0).toString());
-    if (!isFinite(num)) return '0 FCFA';
-    // Formater avec des espaces comme séparateurs de milliers (format français)
-    const rounded = Math.round(num);
-    const formatted = rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    return `${formatted} FCFA`;
-  };
 
   const formatPhoneNumber = (phone: string): string => {
     // Supprimer tous les caractères non numériques sauf le +
@@ -380,7 +372,7 @@ export default function DashboardScreen({ navigation }: any) {
             />
             <StatCard
               title="Valeur Stock"
-              value={formatFCFA(stats?.total_stock_value || 0)}
+              value={formatCurrency(stats?.total_stock_value || 0)}
               icon="cash-outline"
               color={actionColors.info}
               onPress={() => navigation.navigate('StockReport')}

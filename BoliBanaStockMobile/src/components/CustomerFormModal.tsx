@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { customerService, loyaltyService } from '../services/api';
+import { getCachedCurrency } from '../hooks/useConfiguration';
 
 const { width, height } = Dimensions.get('window');
 
@@ -668,7 +669,7 @@ export default function CustomerFormModal({
                     fieldPositions.current.credit_limit = y;
                   }}
                 >
-                  <Text style={styles.fieldLabel}>Limite de crédit (FCFA)</Text>
+                  <Text style={styles.fieldLabel}>Limite de crédit ({getCachedCurrency()})</Text>
                   <View style={[styles.inputContainer, errors.credit_limit && styles.inputContainerError]}>
                     <Ionicons name="card-outline" size={20} color={theme.colors.text.secondary} style={styles.inputIcon} />
                     <TextInput

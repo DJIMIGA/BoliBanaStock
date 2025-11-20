@@ -8,7 +8,7 @@ from rest_framework import permissions
 from apps.inventory import views as inventory_views
 from .views import (
     LoginView, LogoutView, DashboardView,
-    ConfigurationAPIView, SitesAPIView, ParametresAPIView, ConfigurationResetAPIView,
+    ConfigurationAPIView, CurrenciesAPIView, SitesAPIView, ParametresAPIView, ConfigurationResetAPIView,
     UserProfileAPIView, UserInfoAPIView, UserPermissionsAPIView, UserListAPIView, PublicSignUpAPIView, SimpleSignUpAPIView,
     DeleteAccountAPIView, ChangePasswordAPIView,
     ProductViewSet, CategoryViewSet, BrandViewSet, TransactionViewSet, SaleViewSet,
@@ -85,6 +85,7 @@ urlpatterns = [
     # Configuration et paramètres
     path('configuration/', ConfigurationAPIView.as_view(), name='api_configuration'),
     path('configuration/reset/', ConfigurationResetAPIView.as_view(), name='api_configuration_reset'),
+    path('currencies/', CurrenciesAPIView.as_view(), name='api_currencies'),
     path('sites/', SitesAPIView.as_view(), name='api_sites'),
     path('parametres/', ParametresAPIView.as_view(), name='api_parametres'),
     

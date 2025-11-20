@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { transactionService, dashboardService, siteService } from '../services/api';
 import { useUserPermissions } from '../hooks/useUserPermissions';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface LossTransaction {
   id: number;
@@ -480,7 +481,7 @@ export default function LossReportScreen({ navigation }: any) {
               {Math.abs(parseInt(String(item.quantity || 0)))} unité(s)
             </Text>
             <Text style={styles.lossAmount}>
-              {parseFloat(String(item.total_amount || 0)).toLocaleString()} FCFA
+              {formatCurrency(parseFloat(String(item.total_amount || 0)))}
             </Text>
           </View>
         </View>
@@ -687,11 +688,11 @@ export default function LossReportScreen({ navigation }: any) {
                       )}
                     </View>
                     <Text style={styles.compactStatValue}>
-                      {Math.round(stats.total_value).toLocaleString()} FCFA
+                      {formatCurrency(Math.round(stats.total_value))}
                     </Text>
                     {stats.previousYear && (
                       <Text style={styles.previousYearValue}>
-                        An dernier: {Math.round(stats.previousYear.total_value).toLocaleString()} FCFA
+                        An dernier: {formatCurrency(Math.round(stats.previousYear.total_value))}
                       </Text>
                     )}
                   </View>
@@ -726,7 +727,7 @@ export default function LossReportScreen({ navigation }: any) {
                       {stats.loss_rate.toFixed(2)}%
                     </Text>
                     <Text style={styles.compactStatSubtext}>
-                      Stock total: {Math.round(stats.total_stock_value).toLocaleString()} FCFA
+                      Stock total: {formatCurrency(Math.round(stats.total_stock_value))}
                     </Text>
                     {stats.previousYear && (
                       <Text style={styles.previousYearValue}>
@@ -800,7 +801,7 @@ export default function LossReportScreen({ navigation }: any) {
                       <View style={styles.productStatItem}>
                         <Ionicons name="cash-outline" size={14} color={theme.colors.text.secondary} />
                         <Text style={styles.productStatValue}>
-                          {Math.round(product.total_value).toLocaleString()} FCFA
+                          {formatCurrency(Math.round(product.total_value))}
                         </Text>
                       </View>
                       <View style={styles.productStatItem}>

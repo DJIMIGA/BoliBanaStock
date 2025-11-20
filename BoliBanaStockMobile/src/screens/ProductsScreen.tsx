@@ -21,6 +21,7 @@ import HierarchicalCategorySelector from '../components/HierarchicalCategorySele
 import CategorySelector from '../components/CategorySelector';
 import { Category } from '../types';
 import { useUserPermissions } from '../hooks/useUserPermissions';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 
 interface Product {
@@ -70,15 +71,6 @@ export default function ProductsScreen({ navigation, route }: any) {
   // ✅ Référence pour le scroll des filtres
   const filtersScrollRef = useRef<ScrollView>(null);
 
-  // Fonction pour formater les montants en FCFA avec séparateurs de milliers
-  const formatFCFA = (value: number | string | null | undefined): string => {
-    const num = typeof value === 'number' ? value : parseFloat((value ?? 0).toString());
-    if (!isFinite(num)) return '0 FCFA';
-    // Formater avec des espaces comme séparateurs de milliers (format français)
-    const rounded = Math.round(num);
-    const formatted = rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    return `${formatted} FCFA`;
-  };
 
   const loadProducts = async (page: number = 1, append: boolean = false) => {
     try {
@@ -406,7 +398,7 @@ export default function ProductsScreen({ navigation, route }: any) {
           </Text>
         </View>
         <Text style={styles.priceText}>
-          {formatFCFA(item.selling_price)}
+          {formatCurrency(item.selling_price)}
         </Text>
       </View>
     </TouchableOpacity>

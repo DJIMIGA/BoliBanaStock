@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { customerService } from '../services/api';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -241,7 +242,7 @@ export default function CustomerSelectorModal({
               <View style={styles.debtBadge}>
                 <Ionicons name="warning" size={16} color="white" />
                 <Text style={styles.debtText}>
-                  {item.credit_debt_amount?.toLocaleString() || '0'} FCFA
+                  {formatCurrency(item.credit_debt_amount || 0)}
                 </Text>
               </View>
             ) : (

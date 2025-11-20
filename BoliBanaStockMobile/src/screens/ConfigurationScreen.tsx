@@ -11,6 +11,7 @@ import {
   Image,
   Switch,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { configurationService, loyaltyService } from '../services/api';
@@ -53,6 +54,10 @@ const ConfigurationScreen: React.FC = () => {
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Configuration>>({});
   
+  // État pour les devises disponibles
+  const [currencies, setCurrencies] = useState<Array<{code: string, name: string}>>([]);
+  const [currenciesLoading, setCurrenciesLoading] = useState(false);
+  
   // État pour le programme de fidélité
   const [loyaltyProgram, setLoyaltyProgram] = useState<LoyaltyProgram | null>(null);
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
@@ -77,8 +82,25 @@ const ConfigurationScreen: React.FC = () => {
     if (canManageSite) {
       loadConfiguration();
       loadLoyaltyProgram();
+      loadCurrencies();
     }
   }, [canManageSite, permissionsLoading]);
+
+  const loadCurrencies = async () => {
+    try {
+      setCurrenciesLoading(true);
+      const response = await configurationService.getCurrencies();
+      if (response.success) {
+        setCurrencies(response.currencies || []);
+      }
+    } catch (error) {
+      console.error('Erreur chargement devises:', error);
+      // Fallback sur une liste par défaut si l'API échoue
+      setCurrencies([{code: 'FCFA', name: 'Franc CFA (FCFA)'}]);
+    } finally {
+      setCurrenciesLoading(false);
+    }
+  };
 
   const loadConfiguration = async () => {
     try {
@@ -302,13 +324,34 @@ const ConfigurationScreen: React.FC = () => {
             <View style={styles.row}>
               <View style={[styles.inputGroup, styles.halfWidth]}>
                 <Text style={styles.label}>Devise</Text>
-                <TextInput
-                  style={[styles.input, !editing && styles.inputDisabled]}
-                  value={formData.devise || ''}
-                  onChangeText={(text) => updateFormData('devise', text)}
-                  editable={editing}
-                  placeholder="FCFA"
-                />
+                {editing ? (
+                  <View style={[styles.input, styles.pickerContainer]}>
+                    {currenciesLoading ? (
+                      <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                    ) : (
+                      <Picker
+                        selectedValue={formData.devise || 'FCFA'}
+                        onValueChange={(itemValue) => updateFormData('devise', itemValue)}
+                        style={styles.picker}
+                        dropdownIconColor={theme.colors.text.primary}
+                      >
+                        {currencies.map((currency) => (
+                          <Picker.Item
+                            key={currency.code}
+                            label={currency.name}
+                            value={currency.code}
+                          />
+                        ))}
+                      </Picker>
+                    )}
+                  </View>
+                ) : (
+                  <View style={[styles.input, styles.inputDisabled]}>
+                    <Text style={styles.inputDisabled}>
+                      {currencies.find(c => c.code === formData.devise)?.name || formData.devise || 'FCFA'}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               <View style={[styles.inputGroup, styles.halfWidth]}>
@@ -702,6 +745,17 @@ const styles = StyleSheet.create({
   },
   halfWidth: {
     width: '48%',
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    backgroundColor: 'white',
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
+    width: '100%',
   },
   actions: {
     marginTop: 20,

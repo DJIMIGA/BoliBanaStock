@@ -2,6 +2,7 @@ import { PermissionsAndroid, Platform, Alert, Linking } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
+import { getCachedCurrency } from '../hooks/useConfiguration';
 
 // Interface pour les imprimantes Bluetooth
 export interface BluetoothPrinter {
@@ -1437,7 +1438,7 @@ class ReceiptPrinterService {
       year: 'numeric'
     });
     const paymentMethodText = this.getPaymentMethodText(sale.payment_method);
-    const currency = site.currency || 'FCFA';
+    const currency = site.currency || getCachedCurrency();
     
     // Convertir le montant en lettres
     const amountInWords = this.numberToFrenchWords(sale.total_amount);
@@ -1803,7 +1804,7 @@ class ReceiptPrinterService {
   private numberToFrenchWords(num: number): string {
     if (num === 0) return 'zéro';
     
-    // Pour FCFA, on utilise uniquement la partie entière
+    // Pour les devises sans décimales, on utilise uniquement la partie entière
     const intPart = Math.floor(num);
     
     let result = '';

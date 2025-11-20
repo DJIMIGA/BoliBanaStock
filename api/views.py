@@ -2606,6 +2606,24 @@ class ConfigurationAPIView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class CurrenciesAPIView(APIView):
+    """API pour récupérer la liste des devises disponibles"""
+    permission_classes = [permissions.AllowAny]
+    
+    def get(self, request):
+        """Retourne la liste des devises disponibles"""
+        from apps.core.models import Configuration
+        currencies = [
+            {'code': code, 'name': name} 
+            for code, name in Configuration.CURRENCY_CHOICES
+        ]
+        return Response({
+            'success': True,
+            'currencies': currencies,
+            'count': len(currencies)
+        })
+
+
 class SitesAPIView(APIView):
     """API pour récupérer la liste des sites (uniquement pour les superusers)"""
     permission_classes = [permissions.IsAuthenticated]

@@ -1613,6 +1613,16 @@ export const configurationService = {
     }
   },
 
+  // Récupérer la liste des devises disponibles
+  getCurrencies: async () => {
+    try {
+      const response = await api.get('/currencies/');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
   // Mettre à jour la configuration
   updateConfiguration: async (configData: any) => {
     try {
@@ -2440,7 +2450,7 @@ export const loyaltyService = {
     }
   },
 
-  // Calculer la valeur en FCFA de points
+  // Calculer la valeur des points en devise
   calculatePointsValue: async (points: number) => {
     try {
       // Ne pas envoyer de requête si les points sont 0, négatifs, null ou undefined

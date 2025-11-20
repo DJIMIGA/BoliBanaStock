@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -88,7 +89,7 @@ export default function SaraliPaymentModal({
           <View style={styles.totalSection}>
             <Text style={styles.totalLabel}>Total à payer</Text>
             <Text style={styles.totalAmount}>
-              {totalAmount.toLocaleString()} FCFA
+              {formatCurrency(totalAmount)}
             </Text>
           </View>
 

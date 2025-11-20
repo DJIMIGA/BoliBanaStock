@@ -22,6 +22,7 @@ import BarcodeManager from '../components/BarcodeManager';
 import BarcodeModal from '../components/BarcodeModal';
 import theme, { stockColors } from '../utils/theme';
 import ProductImage from '../components/ProductImage';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 
 type ProductDetailScreenRouteProp = RouteProp<RootStackParamList, 'ProductDetail'>;
@@ -102,15 +103,6 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   // ✅ État pour le modal des codes-barres
   const [barcodeModalVisible, setBarcodeModalVisible] = useState(false);
 
-  // Fonction pour formater les montants en FCFA avec séparateurs de milliers
-  const formatFCFA = (value: number | string | null | undefined): string => {
-    const num = typeof value === 'number' ? value : parseFloat((value ?? 0).toString());
-    if (!isFinite(num)) return '0 FCFA';
-    // Formater avec des espaces comme séparateurs de milliers (format français)
-    const rounded = Math.round(num);
-    const formatted = rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    return `${formatted} FCFA`;
-  };
 
   const loadProduct = useCallback(async () => {
     try {
@@ -497,7 +489,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             <Text style={styles.label}>Prix de vente</Text>
           </View>
           <Text style={[styles.value, { color: theme.colors.success[600], fontWeight: '700' }]}>
-            {formatFCFA(product?.selling_price)}
+            {formatCurrency(product?.selling_price)}
           </Text>
         </View>
 
@@ -507,7 +499,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             <Text style={styles.label}>Prix d'achat</Text>
           </View>
           <Text style={[styles.value, { color: theme.colors.info[600] }]}>
-            {formatFCFA(product?.purchase_price)}
+            {formatCurrency(product?.purchase_price)}
           </Text>
         </View>
 
@@ -578,7 +570,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             <Ionicons name="cash-outline" size={24} color={theme.colors.success[500]} />
             <Text style={styles.stockInfoLabel}>Valeur stock</Text>
             <Text style={styles.stockInfoValue}>
-              {formatFCFA((product?.quantity || 0) * (product?.purchase_price || 0))}
+              {formatCurrency((product?.quantity || 0) * (product?.purchase_price || 0))}
             </Text>
           </View>
           
@@ -586,7 +578,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             <Ionicons name="trending-up-outline" size={24} color={theme.colors.info[500]} />
             <Text style={styles.stockInfoLabel}>Marge</Text>
             <Text style={styles.stockInfoValue}>
-              {formatFCFA((product?.selling_price || 0) - (product?.purchase_price || 0))}
+              {formatCurrency((product?.selling_price || 0) - (product?.purchase_price || 0))}
             </Text>
           </View>
         </View>

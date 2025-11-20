@@ -213,6 +213,30 @@ class Configuration(BaseModel):
     """
     Configuration de site - Support multi-sites
     """
+    # Définir les devises disponibles directement dans le modèle
+    CURRENCY_CHOICES = [
+        ('FCFA', 'Franc CFA (FCFA)'),
+        ('XOF', 'Franc CFA Ouest (XOF)'),
+        ('XAF', 'Franc CFA Centre (XAF)'),
+        ('EUR', 'Euro (EUR)'),
+        ('USD', 'Dollar US (USD)'),
+        ('GBP', 'Livre Sterling (GBP)'),
+        ('JPY', 'Yen Japonais (JPY)'),
+        ('CNY', 'Yuan Chinois (CNY)'),
+        ('INR', 'Roupie Indienne (INR)'),
+        ('BRL', 'Real Brésilien (BRL)'),
+        ('ZAR', 'Rand Sud-Africain (ZAR)'),
+        ('NGN', 'Naira Nigérian (NGN)'),
+        ('GHS', 'Cedi Ghanéen (GHS)'),
+        ('KES', 'Shilling Kenyan (KES)'),
+        ('EGP', 'Livre Égyptienne (EGP)'),
+        ('MAD', 'Dirham Marocain (MAD)'),
+        ('TND', 'Dinar Tunisien (TND)'),
+        ('DZD', 'Dinar Algérien (DZD)'),
+        ('XPF', 'Franc Pacifique (XPF)'),
+        ('MGA', 'Ariary Malgache (MGA)'),
+    ]
+    
     # Champs d'identification du site
     site_name = models.CharField(
         max_length=100, 
@@ -232,7 +256,12 @@ class Configuration(BaseModel):
     adresse = models.TextField(verbose_name=_('Adresse'))
     telephone = models.CharField(max_length=20, verbose_name=_('Téléphone'))
     email = models.EmailField(verbose_name=_('Email'))
-    devise = models.CharField(max_length=10, default='FCFA', verbose_name=_('Devise'))
+    devise = models.CharField(
+        max_length=10, 
+        default='FCFA', 
+        verbose_name=_('Devise'),
+        choices=CURRENCY_CHOICES
+    )
     tva = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name=_('TVA (%)'))
     logo = models.ImageField(
         upload_to='assets/logos/site-default/',  # ✅ NOUVELLE STRUCTURE S3

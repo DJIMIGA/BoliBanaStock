@@ -1,5 +1,6 @@
 import { PermissionsAndroid, Platform, Alert, Linking } from 'react-native';
 import { labelPrintService } from './api';
+import { getCachedCurrency } from '../hooks/useConfiguration';
 
 // Interface pour les imprimantes Bluetooth
 export interface BluetoothPrinter {
@@ -1053,7 +1054,8 @@ class BluetoothPrinterService {
         // 4. Prix (un peu plus bas que le CUG)
         // Mettre le prix en valeur avec une police plus grande, un scale plus élevé, positionné juste après le CUG horizontalement mais plus bas verticalement
         if (includePrice && product.selling_price && product.selling_price > 0) {
-          const priceText = `${formatPrice(product.selling_price)} FCFA`;
+          const currency = getCachedCurrency();
+          const priceText = `${formatPrice(product.selling_price)} ${currency}`;
           const convertedPriceText = convertFrenchChars(priceText);
           
           // Utiliser FONT_2 (taille normale) et MUL_1 (taille normale) pour le prix (réduit pour éviter débordement)

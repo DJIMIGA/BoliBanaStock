@@ -1,7 +1,9 @@
 /**
- * Décomposition d'un montant en pièces et billets FCFA
- * Coupures disponibles selon la Banque Centrale des États d'Afrique de l'Ouest
+ * Décomposition d'un montant en pièces et billets
+ * Coupures disponibles selon la Banque Centrale des États d'Afrique de l'Ouest (pour FCFA)
  */
+
+import { getCachedCurrency } from '../hooks/useConfiguration';
 
 export interface CurrencyBreakdown {
   denomination: number;
@@ -9,35 +11,40 @@ export interface CurrencyBreakdown {
   label: string;
 }
 
-// Coupures FCFA classées du plus grand au plus petit
-export const CFA_DENOMINATIONS = [
-  { value: 10000, label: '10 000 FCFA' },
-  { value: 5000, label: '5 000 FCFA' },
-  { value: 2500, label: '2 500 FCFA' },
-  { value: 2000, label: '2 000 FCFA' },
-  { value: 1000, label: '1 000 FCFA' },
-  { value: 500, label: '500 FCFA' },
-  { value: 250, label: '250 FCFA' },
-  { value: 100, label: '100 FCFA' },
-  { value: 50, label: '50 FCFA' },
-  { value: 25, label: '25 FCFA' },
-  { value: 10, label: '10 FCFA' },
-  { value: 5, label: '5 FCFA' },
+// Coupures FCFA classées du plus grand au plus petit (valeurs uniquement)
+export const CFA_DENOMINATIONS_VALUES = [
+  10000, 5000, 2500, 2000, 1000, 500, 250, 100, 50, 25, 10, 5
 ] as const;
 
+// Fonction pour obtenir les dénominations avec la devise configurée
+export const getDenominations = (currency?: string) => {
+  const currentCurrency = currency || getCachedCurrency();
+  return CFA_DENOMINATIONS_VALUES.map(value => ({
+    value,
+    label: `${value.toLocaleString('fr-FR').replace(/\s/g, ' ')} ${currentCurrency}`,
+  }));
+};
+
+// Coupures FCFA classées du plus grand au plus petit (pour compatibilité)
+export const CFA_DENOMINATIONS = getDenominations();
+
 /**
- * Décompose un montant en billets et pièces FCFA
+ * Décompose un montant en billets et pièces
  * Utilise l'algorithme glouton pour minimiser le nombre de billets/pièces
+ * @param amount - Le montant à décomposer
+ * @param currency - Optionnel: devise spécifique (sinon utilise la devise de la configuration)
  */
-export const breakdownCFAAmount = (amount: number): CurrencyBreakdown[] => {
+export const breakdownCFAAmount = (amount: number, currency?: string): CurrencyBreakdown[] => {
   if (amount <= 0 || !Number.isInteger(amount)) {
     return [];
   }
 
+  const currentCurrency = currency || getCachedCurrency();
+  const denominations = getDenominations(currentCurrency);
   const breakdown: CurrencyBreakdown[] = [];
   let remaining = amount;
 
-  for (const { value, label } of CFA_DENOMINATIONS) {
+  for (const { value, label } of denominations) {
     const count = Math.floor(remaining / value);
     if (count > 0) {
       breakdown.push({
@@ -49,12 +56,12 @@ export const breakdownCFAAmount = (amount: number): CurrencyBreakdown[] => {
     }
   }
 
-  // Si il reste un montant (< 5 FCFA), on l'ajoute en tant que "restant"
+  // Si il reste un montant (< 5), on l'ajoute en tant que "restant"
   if (remaining > 0) {
     breakdown.push({
       denomination: remaining,
       count: 1,
-      label: `${remaining} FCFA (restant)`,
+      label: `${remaining} ${currentCurrency} (restant)`,
     });
   }
 
@@ -88,13 +95,13 @@ export const getTotalPieces = (breakdown: CurrencyBreakdown[]): number => {
 };
 
 /**
- * Arrondit un montant à la prochaine coupure FCFA valide supérieure
+ * Arrondit un montant à la prochaine coupure valide supérieure
  */
 export const roundToNextDenomination = (amount: number): number => {
   if (amount <= 0) return 0;
   
   // Trier les coupures par ordre croissant
-  const denominations = CFA_DENOMINATIONS.map(d => d.value).sort((a, b) => a - b);
+  const denominations = [...CFA_DENOMINATIONS_VALUES].sort((a, b) => a - b);
   
   // Trouver la plus petite coupure qui est supérieure ou égale au montant
   for (const denomination of denominations) {

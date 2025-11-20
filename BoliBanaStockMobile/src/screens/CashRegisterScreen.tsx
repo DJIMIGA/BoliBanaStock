@@ -31,6 +31,7 @@ import { loadSalesCartDraft, saveSalesCartDraft, clearSalesCartDraft } from '../
 import { useUserPermissions } from '../hooks/useUserPermissions';
 import { productService, saleService, customerService, loyaltyService, configurationService } from '../services/api';
 import { sanitizeBarcode, validateBarcode, areSimilarBarcodes, validateBarcodeQuality } from '../utils/barcodeUtils';
+import { formatCurrency, getCurrency } from '../utils/currencyFormatter';
 
 const { width } = Dimensions.get('window');
 
@@ -131,7 +132,7 @@ export default function CashRegisterScreen({ navigation }: any) {
     }
   }, [scanner.scanList, selectedCustomer, loyaltyProgram, loyaltyDiscountAmount]);
 
-  // Calculer la valeur en FCFA des points utilisés
+  // Calculer la valeur des points utilisés
   useEffect(() => {
     if (loyaltyPointsUsed > 0 && loyaltyProgram) {
       (async () => {
@@ -153,13 +154,13 @@ export default function CashRegisterScreen({ navigation }: any) {
               setLoyaltyPointsUsed(adjustedPoints);
               Alert.alert(
                 'Réduction limitée',
-                `La réduction de ${calculatedDiscount.toLocaleString()} FCFA dépasse le total de ${subtotal.toLocaleString()} FCFA.\n\nSeulement ${actualDiscount.toLocaleString()} FCFA seront déduits (${adjustedPoints.toFixed(2)} points).`,
+                `La réduction de ${formatCurrency(calculatedDiscount)} dépasse le total de ${formatCurrency(subtotal)}.\n\nSeulement ${formatCurrency(actualDiscount)} seront déduits (${adjustedPoints.toFixed(2)} points).`,
                 [{ text: 'OK' }]
               );
             }
             
             setLoyaltyDiscountAmount(actualDiscount);
-            console.log('✅ [LOYALTY] Réduction calculée:', actualDiscount, 'FCFA (max:', maxDiscount, 'FCFA)');
+            console.log('✅ [LOYALTY] Réduction calculée:', formatCurrency(actualDiscount), '(max:', formatCurrency(maxDiscount), ')');
           } else {
             console.warn('⚠️ [LOYALTY] Réponse invalide:', valueResponse);
             setLoyaltyDiscountAmount(0);
@@ -461,7 +462,7 @@ export default function CashRegisterScreen({ navigation }: any) {
     if (total === 0) {
       Alert.alert(
         'Vente gratuite',
-        'Le total est de 0 FCFA (gratuit).\n\nVoulez-vous finaliser cette vente ?',
+        `Le total est de ${formatCurrency(0)} (gratuit).\n\nVoulez-vous finaliser cette vente ?`,
         [
           { text: 'Annuler', style: 'cancel' },
           {
@@ -631,20 +632,20 @@ export default function CashRegisterScreen({ navigation }: any) {
       if (item.barcode) {
         receipt += `   CUG: ${item.barcode}\n`;
       }
-      receipt += `   ${item.quantity} x ${item.unitPrice.toLocaleString()} FCFA = ${item.totalPrice.toLocaleString()} FCFA\n\n`;
+      receipt += `   ${item.quantity} x ${formatCurrency(item.unitPrice)} = ${formatCurrency(item.totalPrice)}\n\n`;
     });
     
     receipt += '────────────────\n';
     
     // Totaux
     const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
-    receipt += `Sous-total: ${subtotal.toLocaleString()} FCFA\n`;
+    receipt += `Sous-total: ${formatCurrency(subtotal)}\n`;
     
     if (loyaltyDiscount > 0) {
-      receipt += `Réduction fidélité: -${loyaltyDiscount.toLocaleString()} FCFA\n`;
+      receipt += `Réduction fidélité: -${formatCurrency(loyaltyDiscount)}\n`;
     }
     
-    receipt += `\n*TOTAL: ${sale.total_amount.toLocaleString()} FCFA*\n\n`;
+    receipt += `\n*TOTAL: ${formatCurrency(sale.total_amount)}*\n\n`;
     
     // Paiement
     receipt += '💳 *PAIEMENT*\n';
@@ -655,7 +656,7 @@ export default function CashRegisterScreen({ navigation }: any) {
     receipt += `Méthode: ${paymentMethodText}\n`;
     
     if (paymentMethod === 'cash' && changeAmount > 0) {
-      receipt += `Monnaie rendue: ${changeAmount.toLocaleString()} FCFA\n`;
+      receipt += `Monnaie rendue: ${formatCurrency(changeAmount)}\n`;
     } else if (paymentMethod === 'sarali' && saraliReference) {
       receipt += `Réf. Sarali: ${saraliReference}\n`;
     } else if (paymentMethod === 'credit' && customer) {
@@ -867,16 +868,16 @@ export default function CashRegisterScreen({ navigation }: any) {
       
       // Afficher le détail si réduction fidélité
       if (discount > 0) {
-        successMessage += `\nSous-total: ${saleSubtotal.toLocaleString()} FCFA`;
-        successMessage += `\nRéduction fidélité: -${discount.toLocaleString()} FCFA`;
+        successMessage += `\nSous-total: ${formatCurrency(saleSubtotal)}`;
+        successMessage += `\nRéduction fidélité: -${formatCurrency(discount)}`;
       }
-      successMessage += `\nTotal: ${finalTotal.toLocaleString()} FCFA`;
+      successMessage += `\nTotal: ${formatCurrency(finalTotal)}`;
       
       // Utiliser customerOverride si fourni (pour éviter les problèmes de state asynchrone)
       const customerForDisplay = customerOverride || selectedCustomer;
       
       if (paymentMethod === 'cash' && changeAmount > 0) {
-        successMessage += `\nMonnaie rendue: ${changeAmount.toLocaleString()} FCFA`;
+        successMessage += `\nMonnaie rendue: ${formatCurrency(changeAmount)}`;
       } else if (paymentMethod === 'credit' && customerForDisplay) {
         const customerName = customerForDisplay.name || '';
         const customerFirstName = customerForDisplay.first_name || '';
@@ -1006,7 +1007,7 @@ export default function CashRegisterScreen({ navigation }: any) {
     const subtotal = scanner.getTotalValue();
     
     if (points > 0 && points <= availablePoints) {
-      // Calculer immédiatement la valeur en FCFA des points utilisés
+      // Calculer immédiatement la valeur des points utilisés
       if (loyaltyProgram) {
         try {
           const valueResponse = await loyaltyService.calculatePointsValue(points);
@@ -1026,15 +1027,15 @@ export default function CashRegisterScreen({ navigation }: any) {
               
               Alert.alert(
                 'Réduction limitée',
-                `La réduction de ${calculatedDiscount.toLocaleString()} FCFA dépasse le total de ${subtotal.toLocaleString()} FCFA.\n\nSeulement ${actualDiscount.toLocaleString()} FCFA seront déduits (${adjustedPoints.toFixed(2)} points).`,
+                `La réduction de ${formatCurrency(calculatedDiscount)} dépasse le total de ${formatCurrency(subtotal)}.\n\nSeulement ${formatCurrency(actualDiscount)} seront déduits (${adjustedPoints.toFixed(2)} points).`,
                 [{ text: 'OK' }]
               );
-              console.log('✅ [LOYALTY] Points ajustés:', adjustedPoints, '→ Réduction limitée:', actualDiscount, 'FCFA');
+              console.log('✅ [LOYALTY] Points ajustés:', adjustedPoints, '→ Réduction limitée:', formatCurrency(actualDiscount));
             } else {
               setLoyaltyPointsUsed(points);
               setLoyaltyDiscountAmount(actualDiscount);
               setLoyaltyPointsModalVisible(false);
-              console.log('✅ [LOYALTY] Points utilisés:', points, '→ Réduction:', actualDiscount, 'FCFA');
+              console.log('✅ [LOYALTY] Points utilisés:', points, '→ Réduction:', formatCurrency(actualDiscount));
             }
           }
         } catch (error) {
@@ -1129,7 +1130,7 @@ export default function CashRegisterScreen({ navigation }: any) {
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.searchResultQty}>{item.quantity}</Text>
-          <Text style={styles.searchResultPrice}>{price.toLocaleString()} FCFA</Text>
+          <Text style={styles.searchResultPrice}>{formatCurrency(price)}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -1258,7 +1259,7 @@ export default function CashRegisterScreen({ navigation }: any) {
                       <View style={styles.loyaltyCompactInfo}>
                         {loyaltyDiscountAmount > 0 && (
                           <Text style={styles.loyaltyCompactValue}>
-                            -{loyaltyDiscountAmount.toLocaleString()} FCFA
+                            -{formatCurrency(loyaltyDiscountAmount)}
                           </Text>
                         )}
                         {loyaltyPointsEarned > 0 && (
@@ -1341,10 +1342,10 @@ export default function CashRegisterScreen({ navigation }: any) {
                       activeOpacity={0.7}
                     >
                       <View style={styles.priceContainer}>
-                        <Text style={styles.unitPrice}>{item.unitPrice?.toLocaleString()} FCFA</Text>
+                        <Text style={styles.unitPrice}>{formatCurrency(item.unitPrice)}</Text>
                         <Ionicons name="pencil" size={14} color={theme.colors.primary[500]} />
                       </View>
-                      <Text style={styles.totalPrice}>{item.totalPrice?.toLocaleString()} FCFA</Text>
+                      <Text style={styles.totalPrice}>{formatCurrency(item.totalPrice)}</Text>
                     </TouchableOpacity>
                     
                     <TouchableOpacity 
@@ -1374,7 +1375,7 @@ export default function CashRegisterScreen({ navigation }: any) {
                   <View style={styles.summaryItem}>
                     <Ionicons name="gift-outline" size={16} color={theme.colors.error[600]} />
                     <Text style={styles.summaryDiscount}>
-                      -{loyaltyDiscountAmount.toLocaleString()} FCFA
+                      -{formatCurrency(loyaltyDiscountAmount)}
                     </Text>
                   </View>
                 )}
@@ -1386,8 +1387,8 @@ export default function CashRegisterScreen({ navigation }: any) {
                     const subtotal = scanner.getTotalValue();
                     const discount = Math.min(loyaltyDiscountAmount, subtotal); // Limiter la réduction au subtotal
                     const total = Math.max(0, subtotal - discount); // Ne pas permettre un total négatif
-                    return total.toLocaleString();
-                  })()} FCFA
+                    return formatCurrency(total);
+                  })()}
                 </Text>
               </View>
             </View>
@@ -1499,7 +1500,7 @@ export default function CashRegisterScreen({ navigation }: any) {
                 <View style={styles.modalPreview}>
                   <Text style={styles.modalPreviewLabel}>Valeur estimée:</Text>
                   <Text style={styles.modalPreviewValue}>
-                    {(parseFloat(loyaltyPointsInput) * parseFloat(loyaltyProgram.amount_per_point || '100')).toLocaleString()} FCFA
+                    {formatCurrency(parseFloat(loyaltyPointsInput) * parseFloat(loyaltyProgram.amount_per_point || '100'))}
                   </Text>
                 </View>
               )}
@@ -1544,7 +1545,7 @@ export default function CashRegisterScreen({ navigation }: any) {
               <Text style={styles.priceEditProductName}>
                 {selectedItemForPriceEdit?.productName}
               </Text>
-              <Text style={styles.modalLabel}>Prix unitaire (FCFA)</Text>
+              <Text style={styles.modalLabel}>Prix unitaire ({getCurrency()})</Text>
               <TextInput
                 style={styles.modalInput}
                 value={priceInput}
@@ -1558,7 +1559,7 @@ export default function CashRegisterScreen({ navigation }: any) {
                 Quantité: {selectedItemForPriceEdit?.quantity || 1}
                 {priceInput && !isNaN(parseFloat(priceInput)) && parseFloat(priceInput) >= 0 && (
                   <Text style={styles.modalPreviewValue}>
-                    {'\n'}Total: {(parseFloat(priceInput) * (selectedItemForPriceEdit?.quantity || 1)).toLocaleString()} FCFA
+                    {'\n'}Total: {formatCurrency(parseFloat(priceInput) * (selectedItemForPriceEdit?.quantity || 1))}
                   </Text>
                 )}
               </Text>
