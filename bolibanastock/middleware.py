@@ -55,3 +55,5 @@ class TailwindCSSMiddleware:
         response = self.get_response(request)
         return response
 
+
+

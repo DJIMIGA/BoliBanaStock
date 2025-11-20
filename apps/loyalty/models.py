@@ -25,16 +25,16 @@ class LoyaltyProgram(models.Model):
         default=Decimal('1.00'),
         validators=[MinValueValidator(Decimal('0.01'))],
         verbose_name=_('Points par montant dépensé'),
-        help_text=_('Exemple: 1 point pour 1000 FCFA dépensés = 1.00')
+        help_text=_('Exemple: 1 point pour 1000 dépensés = 1.00')
     )
     
     amount_for_points = models.DecimalField(
         max_digits=12,
-        decimal_places=0,
-        default=Decimal('1000'),
-        validators=[MinValueValidator(Decimal('1'))],
-        verbose_name=_('Montant pour gagner des points (FCFA)'),
-        help_text=_('Montant en FCFA à dépenser pour gagner le nombre de points défini')
+        decimal_places=2,
+        default=Decimal('1000.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        verbose_name=_('Montant pour gagner des points'),
+        help_text=_('Montant à dépenser pour gagner le nombre de points défini')
     )
     
     # Configuration de la valeur des points
@@ -43,8 +43,8 @@ class LoyaltyProgram(models.Model):
         decimal_places=2,
         default=Decimal('100.00'),
         validators=[MinValueValidator(Decimal('0.01'))],
-        verbose_name=_('Valeur d\'un point (FCFA)'),
-        help_text=_('Exemple: 1 point = 100 FCFA de réduction')
+        verbose_name=_('Valeur d\'un point'),
+        help_text=_('Exemple: 1 point = 100 de réduction')
     )
     
     is_active = models.BooleanField(

@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { dashboardService } from '../services/api';
 import theme from '../utils/theme';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface StockValueData {
   total_stock_value: number;
@@ -56,10 +57,6 @@ export default function StockValueScreen({ navigation }: any) {
   useEffect(() => {
     loadStockValue();
   }, []);
-
-  const formatCurrency = (amount: number) => {
-    return amount.toLocaleString() + ' FCFA';
-  };
 
   if (loading) {
     return (

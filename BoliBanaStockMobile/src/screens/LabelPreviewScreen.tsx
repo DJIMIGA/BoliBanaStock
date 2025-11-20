@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeBarcode } from '../components';
 import theme from '../utils/theme';
+import { formatCurrency, getCurrency } from '../utils/currencyFormatter';
 
 interface Label {
   product_id: number;
@@ -71,8 +72,9 @@ const LabelPreviewScreen: React.FC<LabelPreviewScreenProps> = ({ route, navigati
         selectedLabels.has(label.product_id)
       );
 
+      const currency = getCurrency();
       const shareText = selectedLabelData.map(label => 
-        `${label.name}\nCUG: ${label.cug}\nCode-barres: ${label.barcode_ean}${label.price ? `\nPrix: ${label.price} FCFA` : ''}${label.stock !== undefined ? `\nStock: ${label.stock}` : ''}`
+        `${label.name}\nCUG: ${label.cug}\nCode-barres: ${label.barcode_ean}${label.price ? `\nPrix: ${formatCurrency(label.price)}` : ''}${label.stock !== undefined ? `\nStock: ${label.stock}` : ''}`
       ).join('\n\n---\n\n');
 
       await Share.share({
@@ -186,7 +188,7 @@ const LabelPreviewScreen: React.FC<LabelPreviewScreenProps> = ({ route, navigati
                   <Text style={styles.labelInfoText}>Marque: {label.brand}</Text>
                 )}
                 {includePrices && label.price && (
-                  <Text style={styles.labelInfoText}>Prix: {label.price.toLocaleString()} FCFA</Text>
+                  <Text style={styles.labelInfoText}>Prix: {formatCurrency(label.price)}</Text>
                 )}
                 {includeStock && label.stock !== undefined && (
                   <Text style={[styles.labelInfoText, { color: label.stock > 0 ? '#28a745' : '#dc3545' }]}>

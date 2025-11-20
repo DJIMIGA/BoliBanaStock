@@ -10,13 +10,15 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { dashboardService, configurationService } from '../services/api';
+import { dashboardService } from '../services/api';
 import { useDispatch } from 'react-redux';
 import { logout } from '../store/slices/authSlice';
 import { AppDispatch } from '../store';
 import { useAuthError } from '../hooks/useAuthError';
 import { useDraftStatus } from '../hooks/useDraftStatus';
+import { subscribeToCacheUpdates, useConfiguration } from '../hooks';
 import errorService from '../services/errorService';
 import { AppError } from '../types/errors';
 import theme, { stockColors, actionColors } from '../utils/theme';
@@ -48,10 +50,11 @@ export default function DashboardScreen({ navigation }: any) {
   const dispatch = useDispatch<AppDispatch>();
   const { handleApiError } = useAuthError();
   const draftStatus = useDraftStatus();
+  const { configuration, refresh: refreshConfiguration } = useConfiguration(); // Utiliser le hook pour mettre à jour le cache
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [, forceUpdate] = useState({});
 
   const loadDashboard = async () => {
     try {
@@ -86,20 +89,10 @@ export default function DashboardScreen({ navigation }: any) {
     }
   };
 
-  const loadConfiguration = async () => {
-    try {
-      const response = await configurationService.getConfiguration();
-      if (response.success) {
-        setConfiguration(response.configuration);
-      }
-    } catch (error) {
-      console.error('Erreur chargement configuration:', error);
-    }
-  };
-
   const onRefresh = async () => {
     setRefreshing(true);
     await loadDashboard();
+    refreshConfiguration(); // Rafraîchir la configuration aussi
     setRefreshing(false);
   };
 
@@ -123,6 +116,31 @@ export default function DashboardScreen({ navigation }: any) {
     );
   };
 
+
+  useEffect(() => {
+    loadDashboard();
+    refreshConfiguration(); // Charger la configuration via le hook (une seule fois au montage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Pas de dépendances - on veut juste charger au montage
+
+  // Recharger la configuration quand on revient sur l'écran (pour mettre à jour la devise)
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshConfiguration();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []) // Pas de dépendances - on veut juste recharger quand on revient sur l'écran
+  );
+
+  // S'abonner aux mises à jour du cache pour forcer le re-render
+  useEffect(() => {
+    const unsubscribe = subscribeToCacheUpdates(() => {
+      console.log('🔄 [DASHBOARD] Cache mis à jour, re-render forcé');
+      forceUpdate({});
+      // Ne pas appeler refreshConfiguration ici pour éviter les boucles infinies
+      // Le cache est déjà mis à jour, on force juste le re-render
+    });
+    return unsubscribe;
+  }, []); // Pas de dépendances - on veut juste s'abonner une fois
 
   const formatPhoneNumber = (phone: string): string => {
     // Supprimer tous les caractères non numériques sauf le +
@@ -190,18 +208,8 @@ export default function DashboardScreen({ navigation }: any) {
 
   const handleWhatsAppSupport = async () => {
     try {
-      // Récupérer le numéro de téléphone depuis la configuration
-      let supportPhone = null;
-      try {
-        const config = await configurationService.getConfiguration();
-        if (config && config.configuration && config.configuration.telephone) {
-          supportPhone = config.configuration.telephone;
-        } else if (config && config.telephone) {
-          supportPhone = config.telephone;
-        }
-      } catch (error) {
-        console.error('Erreur récupération configuration:', error);
-      }
+      // Récupérer le numéro de téléphone depuis la configuration (utiliser le hook)
+      const supportPhone = configuration?.telephone || null;
 
       // Récupérer les erreurs récentes (dernières 24h)
       // Récupérer toutes les erreurs (de la queue et du stockage)
@@ -264,8 +272,9 @@ export default function DashboardScreen({ navigation }: any) {
 
   useEffect(() => {
     loadDashboard();
-    loadConfiguration();
-  }, []);
+    refreshConfiguration();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Pas de dépendances - on veut juste charger au montage
 
   const StatCard = ({ title, value, icon, color, onPress, compact }: any) => (
     <TouchableOpacity style={[styles.statCard, { borderLeftColor: color }, compact && styles.statCardCompact]} onPress={onPress}>

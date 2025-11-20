@@ -167,7 +167,7 @@ class Command(BaseCommand):
             y = page_height - margin_y - (row + 1) * label_height
             
             # Dessiner l'étiquette
-            self.draw_label(c, product, x, y, label_width, label_height, show_prices, show_stock)
+            self.draw_label(c, product, x, y, label_width, label_height, show_prices, show_stock, site)
             
             products_on_current_page += 1
         
@@ -177,7 +177,7 @@ class Command(BaseCommand):
         self.stdout.write(f'   📏 Taille étiquette: {label_width/mm:.1f} x {label_height/mm:.1f} mm')
         self.stdout.write(f'   🔢 Étiquettes par page: {cols_per_page} x {rows_per_page} = {cols_per_page * rows_per_page}')
 
-    def draw_label(self, canvas, product, x, y, width, height, show_prices, show_stock):
+    def draw_label(self, canvas, product, x, y, width, height, show_prices, show_stock, site=None):
         """Dessine une étiquette individuelle avec un code-barres simple mais scannable"""
         
         # Récupérer le code-barres principal
@@ -214,7 +214,8 @@ class Command(BaseCommand):
         # Prix si demandé (en bas à gauche)
         if show_prices:
             canvas.setFont("Helvetica-Bold", 9)
-            price_text = f"Prix: {product.selling_price:,.0f} FCFA"
+            currency = site.devise if site and site.devise else 'FCFA'
+            price_text = f"Prix: {product.selling_price:,.0f} {currency}"
             canvas.drawString(x + 2 * mm, y + 2 * mm, price_text)
         
         # Stock si demandé (en bas à droite)

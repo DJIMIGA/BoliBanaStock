@@ -20,6 +20,7 @@ import api from '../services/api';
 import { CategorySelector } from '../components';
 import ProductImage from '../components/ProductImage';
 import theme from '../utils/theme';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface Product {
   id: number;
@@ -403,7 +404,7 @@ const LabelGeneratorScreen: React.FC<LabelGeneratorScreenProps> = ({ navigation 
                 </Text>
               </View>
               <Text style={styles.priceText}>
-                {item.selling_price.toLocaleString()} FCFA
+                {formatCurrency(item.selling_price)}
               </Text>
             </View>
           </TouchableOpacity>

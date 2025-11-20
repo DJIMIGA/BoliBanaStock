@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { transactionService, dashboardService, siteService } from '../services/api';
 import { useUserPermissions } from '../hooks/useUserPermissions';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface AdjustmentTransaction {
   id: number;
@@ -822,7 +823,7 @@ export default function StockReportScreen({ navigation }: any) {
               styles.transactionAmount,
               { color: isPositive ? theme.colors.success[600] : theme.colors.error[600] }
             ]}>
-              {isPositive ? '+' : ''}{Math.abs(parseFloat(String(item.total_amount || 0))).toLocaleString()} FCFA
+              {isPositive ? '+' : ''}{formatCurrency(Math.abs(parseFloat(String(item.total_amount || 0))))}
             </Text>
           </View>
         </View>
@@ -964,7 +965,7 @@ export default function StockReportScreen({ navigation }: any) {
                         <Text style={styles.compactStatLabelSmall}>Valeur stock</Text>
                       </View>
                       <Text style={styles.compactStatValueSmall} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.7}>
-                        {Math.round(stats.total_stock_value).toLocaleString()} FCFA
+                        {formatCurrency(Math.round(stats.total_stock_value))}
                       </Text>
                     </View>
                   </View>
@@ -1029,7 +1030,7 @@ export default function StockReportScreen({ navigation }: any) {
                             <Text style={styles.compactStatLabelSmall}>Valeur</Text>
                           </View>
                           <Text style={styles.compactStatValueSmall} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.7}>
-                            {Math.round(shrinkageStats.loss.total_value).toLocaleString()} FCFA
+                            {formatCurrency(Math.round(shrinkageStats.loss.total_value))}
                           </Text>
                         </View>
 
@@ -1072,7 +1073,7 @@ export default function StockReportScreen({ navigation }: any) {
                             <Text style={styles.compactStatLabelSmall}>Valeur</Text>
                           </View>
                           <Text style={styles.compactStatValueSmall} numberOfLines={1} adjustsFontSizeToFit={true} minimumFontScale={0.7}>
-                            {Math.round(shrinkageStats.unknown.total_value).toLocaleString()} FCFA
+                            {formatCurrency(Math.round(shrinkageStats.unknown.total_value))}
                           </Text>
                         </View>
 
@@ -1152,7 +1153,7 @@ export default function StockReportScreen({ navigation }: any) {
                             {stats.positive_adjustments} ajustement{stats.positive_adjustments > 1 ? 's' : ''}
                           </Text>
                           <Text style={[styles.adjustmentCardAmount, { color: theme.colors.success[600] }]}>
-                            {Math.round(stats.total_positive_value).toLocaleString()} FCFA
+                            {formatCurrency(Math.round(stats.total_positive_value))}
                           </Text>
                         </View>
                       </View>
@@ -1175,7 +1176,7 @@ export default function StockReportScreen({ navigation }: any) {
                             {stats.negative_adjustments} ajustement{stats.negative_adjustments > 1 ? 's' : ''}
                           </Text>
                           <Text style={[styles.adjustmentCardAmount, { color: theme.colors.error[600] }]}>
-                            {Math.round(stats.total_negative_value).toLocaleString()} FCFA
+                            {formatCurrency(Math.round(stats.total_negative_value))}
                           </Text>
                         </View>
                       </View>
@@ -1249,7 +1250,7 @@ export default function StockReportScreen({ navigation }: any) {
                       <View style={styles.productStatItem}>
                         <Ionicons name="cash-outline" size={14} color={theme.colors.text.secondary} />
                         <Text style={styles.productStatValue}>
-                          {Math.round(product.total_value).toLocaleString()} FCFA
+                          {formatCurrency(Math.round(product.total_value))}
                         </Text>
                       </View>
                       <View style={styles.productStatItem}>

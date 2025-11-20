@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { saleService, dashboardService, transactionService } from '../services/api';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface SalesStats {
   today: {
@@ -365,7 +366,7 @@ export default function ReportsScreen({ navigation }: any) {
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Chiffre d'affaires:</Text>
                       <Text style={styles.financialValue}>
-                        {salesStats.today.total_revenue.toLocaleString()} FCFA
+                        {formatCurrency(salesStats.today.total_revenue)}
                       </Text>
                     </View>
                     <View style={styles.financialRow}>
@@ -379,7 +380,7 @@ export default function ReportsScreen({ navigation }: any) {
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Valeur totale du stock:</Text>
                       <Text style={styles.financialValue}>
-                        {(dashboardStats.total_stock_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(dashboardStats.total_stock_value || 0)}
                       </Text>
                     </View>
                   </View>
@@ -423,7 +424,7 @@ export default function ReportsScreen({ navigation }: any) {
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>Valeur du stock</Text>
                       <Text style={styles.stockValue}>
-                        {(dashboardStats.total_stock_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(dashboardStats.total_stock_value || 0)}
                       </Text>
                     </View>
                   </View>
@@ -499,7 +500,7 @@ export default function ReportsScreen({ navigation }: any) {
                               styles.netValue,
                               { color: inventoryStats.net_value >= 0 ? theme.colors.success[600] : theme.colors.error[600], marginLeft: 8 }
                             ]}>
-                              ({inventoryStats.net_value >= 0 ? '+' : ''}{Math.round(inventoryStats.net_value).toLocaleString()} FCFA)
+                              ({inventoryStats.net_value >= 0 ? '+' : ''}{formatCurrency(Math.round(inventoryStats.net_value))})
                             </Text>
                           </View>
                         </View>
@@ -519,7 +520,7 @@ export default function ReportsScreen({ navigation }: any) {
                                   {product.name}
                                 </Text>
                                 <Text style={styles.topProductDetails}>
-                                  {product.count} ajustement(s) • {product.totalQuantity} unités • {Math.round(product.totalValue).toLocaleString()} FCFA
+                                  {product.count} ajustement(s) • {product.totalQuantity} unités • {formatCurrency(Math.round(product.totalValue))}
                                 </Text>
                               </View>
                             </View>
@@ -626,13 +627,13 @@ export default function ReportsScreen({ navigation }: any) {
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Valeur totale:</Text>
                       <Text style={styles.financialValue}>
-                        {(lossStats.total_loss_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(lossStats.total_loss_value || 0)}
                       </Text>
                     </View>
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Aujourd'hui:</Text>
                       <Text style={styles.financialValue}>
-                        {(lossStats.today_loss_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(lossStats.today_loss_value || 0)}
                       </Text>
                     </View>
                   </View>
@@ -642,13 +643,13 @@ export default function ReportsScreen({ navigation }: any) {
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Valeur totale stock:</Text>
                       <Text style={styles.financialValue}>
-                        {Math.round(lossStats.total_stock_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(Math.round(lossStats.total_stock_value || 0))}
                       </Text>
                     </View>
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Valeur totale casse:</Text>
                       <Text style={styles.financialValue}>
-                        {Math.round(lossStats.total_loss_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(Math.round(lossStats.total_loss_value || 0))}
                       </Text>
                     </View>
                     <View style={styles.financialRow}>
@@ -677,7 +678,7 @@ export default function ReportsScreen({ navigation }: any) {
                           </View>
                           <View style={styles.saleRight}>
                             <Text style={styles.saleAmount}>
-                              {loss.total_amount.toLocaleString()} FCFA
+                              {formatCurrency(loss.total_amount)}
                             </Text>
                           </View>
                         </View>
@@ -723,13 +724,13 @@ export default function ReportsScreen({ navigation }: any) {
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Valeur totale:</Text>
                       <Text style={styles.financialValue}>
-                        {(unknownShrinkageStats.total_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(unknownShrinkageStats.total_value || 0)}
                       </Text>
                     </View>
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Aujourd'hui:</Text>
                       <Text style={styles.financialValue}>
-                        {(unknownShrinkageStats.today_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(unknownShrinkageStats.today_value || 0)}
                       </Text>
                     </View>
                   </View>
@@ -739,13 +740,13 @@ export default function ReportsScreen({ navigation }: any) {
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Valeur totale stock:</Text>
                       <Text style={styles.financialValue}>
-                        {Math.round(unknownShrinkageStats.total_stock_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(Math.round(unknownShrinkageStats.total_stock_value || 0))}
                       </Text>
                     </View>
                     <View style={styles.financialRow}>
                       <Text style={styles.financialLabel}>Valeur totale démarque:</Text>
                       <Text style={styles.financialValue}>
-                        {Math.round(unknownShrinkageStats.total_value || 0).toLocaleString()} FCFA
+                        {formatCurrency(Math.round(unknownShrinkageStats.total_value || 0))}
                       </Text>
                     </View>
                     <View style={styles.financialRow}>
@@ -774,7 +775,7 @@ export default function ReportsScreen({ navigation }: any) {
                           </View>
                           <View style={styles.saleRight}>
                             <Text style={styles.saleAmount}>
-                              {tx.total_amount.toLocaleString()} FCFA
+                              {formatCurrency(tx.total_amount)}
                             </Text>
                           </View>
                         </View>

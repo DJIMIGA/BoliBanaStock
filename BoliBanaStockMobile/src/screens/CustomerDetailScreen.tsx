@@ -15,6 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import theme from '../utils/theme';
 import { customerService, saleService } from '../services/api';
 import { CustomerFormModal } from '../components';
+import { formatCurrency, getCurrency } from '../utils/currencyFormatter';
 
 interface Customer {
   id: number;
@@ -96,7 +97,7 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
         type: 'sale',
         type_display: 'Vente',
         amount: sale.total_amount || sale.revenue || 0,
-        formatted_amount: `${(sale.total_amount || sale.revenue || 0).toLocaleString()} FCFA`,
+        formatted_amount: formatCurrency(sale.total_amount || sale.revenue || 0),
         transaction_date: sale.sale_date || sale.date || sale.created_at,
         date: sale.sale_date || sale.date || sale.created_at,
         sale_reference: sale.reference,
@@ -225,7 +226,7 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
 
       Alert.alert(
         'Succès',
-        `Paiement de ${amount.toLocaleString()} FCFA enregistré.`,
+        `Paiement de ${formatCurrency(amount)} enregistré.`,
         [{ text: 'OK' }]
       );
 
@@ -269,7 +270,7 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
               </Text>
             </View>
             <Text style={[styles.transactionAmount, styles.saleAmount]}>
-              {item.formatted_amount || '0 FCFA'}
+              {item.formatted_amount || formatCurrency(0)}
             </Text>
           </View>
           
@@ -349,7 +350,7 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
                   }
                 })()
               ) : (
-                item.formatted_amount || '0 FCFA'
+                item.formatted_amount || formatCurrency(0)
               )}
             </Text>
           </View>
@@ -397,7 +398,7 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
             </Text>
           </View>
           <Text style={styles.transactionAmount}>
-            {item.formatted_amount || '0 FCFA'}
+            {item.formatted_amount || formatCurrency(0)}
           </Text>
         </View>
         
@@ -427,7 +428,7 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
             styles.transactionBalanceAmount,
             (item.balance_after || 0) < 0 && styles.negativeBalance
           ]}>
-            {item.formatted_balance_after || '0 FCFA'}
+            {item.formatted_balance_after || formatCurrency(0)}
           </Text>
         </View>
       </View>
@@ -535,7 +536,7 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
           
           {customer.credit_limit && (
             <Text style={styles.creditLimit}>
-              Limite: {customer.credit_limit.toLocaleString()} FCFA
+              Limite: {formatCurrency(customer.credit_limit)}
             </Text>
           )}
           
@@ -587,7 +588,7 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
             </View>
             
             <View style={styles.modalContent}>
-              <Text style={styles.modalLabel}>Montant (FCFA)</Text>
+              <Text style={styles.modalLabel}>Montant ({getCurrency()})</Text>
               <TextInput
                 style={styles.modalInput}
                 value={paymentAmount}

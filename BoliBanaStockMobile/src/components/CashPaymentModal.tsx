@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { generateQuickAmounts } from '../utils/currencyUtils';
+import { formatCurrency, getCurrency } from '../utils/currencyFormatter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -62,7 +63,7 @@ export default function CashPaymentModal({
     if (given < totalAmount) {
       Alert.alert(
         'Montant insuffisant',
-        `Le montant donné (${given.toLocaleString()} FCFA) est inférieur au total (${totalAmount.toLocaleString()} FCFA).`,
+        `Le montant donné (${formatCurrency(given)}) est inférieur au total (${formatCurrency(totalAmount)}).`,
         [{ text: 'OK' }]
       );
       return;
@@ -80,7 +81,7 @@ export default function CashPaymentModal({
 
   const isAmountValid = parseFloat(amountGiven) >= totalAmount;
 
-  // Générer les montants rapides respectant les coupures FCFA
+  // Générer les montants rapides respectant les coupures de la devise
   const quickAmounts = useMemo(() => {
     return generateQuickAmounts(totalAmount);
   }, [totalAmount]);
@@ -113,7 +114,7 @@ export default function CashPaymentModal({
           <View style={styles.totalSection}>
             <Text style={styles.totalLabel}>Total à payer</Text>
             <Text style={styles.totalAmount}>
-              {totalAmount.toLocaleString()} FCFA
+              {formatCurrency(totalAmount)}
             </Text>
           </View>
 
@@ -130,7 +131,7 @@ export default function CashPaymentModal({
                 autoFocus
                 selectTextOnFocus
               />
-              <Text style={styles.currencyLabel}>FCFA</Text>
+              <Text style={styles.currencyLabel}>{getCurrency()}</Text>
             </View>
           </View>
 
@@ -145,7 +146,7 @@ export default function CashPaymentModal({
                 styles.changeAmount,
                 changeAmount > 0 && styles.changeAmountPositive
               ]}>
-                {changeAmount.toLocaleString()} FCFA
+                {formatCurrency(changeAmount)}
               </Text>
             </View>
           </View>

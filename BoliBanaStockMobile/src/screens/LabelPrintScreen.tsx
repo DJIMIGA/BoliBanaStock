@@ -21,6 +21,7 @@ import { PrintOptionsConfig } from '../components/PrintOptionsConfig';
 import ThermalPrinterTest from '../components/ThermalPrinterTest';
 import { productService, labelPrintService } from '../services/api';
 import bluetoothPrinterService from '../services/bluetoothPrinterService';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface Product {
   id: number;
@@ -523,7 +524,7 @@ const LabelPrintScreen: React.FC<LabelPrintScreenProps> = ({ route }) => {
         
         // Gérer le prix
         const price = product.selling_price || product.price || 0;
-        const priceDisplay = price > 0 ? `${price.toLocaleString()} FCFA` : 'Prix N/A';
+        const priceDisplay = price > 0 ? formatCurrency(price) : 'Prix N/A';
         
         html += `
           <div class="label">

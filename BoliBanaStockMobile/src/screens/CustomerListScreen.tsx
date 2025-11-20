@@ -18,6 +18,7 @@ import theme from '../utils/theme';
 import { customerService, siteService } from '../services/api';
 import { CustomerFormModal } from '../components';
 import { useUserPermissions } from '../hooks/useUserPermissions';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface Customer {
   id: number;
@@ -198,7 +199,7 @@ export default function CustomerListScreen({ navigation }: any) {
           <View style={styles.debtBadge}>
             <Ionicons name="warning" size={16} color="white" />
             <Text style={styles.debtText}>
-              {item.credit_debt_amount.toLocaleString()} FCFA
+              {formatCurrency(item.credit_debt_amount)}
             </Text>
           </View>
         ) : (

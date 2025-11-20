@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../utils/theme';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types';
@@ -146,6 +146,26 @@ const ScanProductScreen: React.FC = () => {
     setScannerBlocked(false); // Reset du blocage
   };
 
+  // Lancer automatiquement le scanner quand on arrive sur la page
+  useFocusEffect(
+    React.useCallback(() => {
+      // Lancer le scanner automatiquement après un court délai pour laisser le temps à l'écran de se charger
+      const timer = setTimeout(() => {
+        if (hasPermission !== false) {
+          setScanned(false);
+          setLastScanTime(0);
+          setLastScannedCode('');
+          setScannerBlocked(false);
+          setShowScanner(true);
+        }
+      }, 300);
+      
+      return () => {
+        clearTimeout(timer);
+      };
+    }, [hasPermission])
+  );
+
   if (hasPermission === null) {
     return (
       <SafeAreaView style={styles.container}>
@@ -255,10 +275,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
-    backgroundColor: theme.colors.primary[500],
+    paddingTop: theme.spacing.lg,
+    paddingBottom: theme.spacing.md,
     zIndex: 1000,
-    elevation: 5,
   },
   headerBtn: {
     width: 36,
@@ -272,7 +291,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: theme.spacing.sm,
     fontSize: theme.fontSize.lg,
-    color: theme.colors.text.inverse,
+    color: theme.colors.text.primary,
     fontWeight: '700',
     textAlign: 'center',
   },

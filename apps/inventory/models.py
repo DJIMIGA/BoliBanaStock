@@ -279,10 +279,10 @@ class Product(models.Model):
     cug = models.CharField(max_length=50, unique=True, verbose_name="CUG")
     generated_ean = models.CharField(max_length=13, blank=True, null=True, verbose_name="EAN Généré", help_text="EAN-13 généré automatiquement depuis le CUG")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
-    # Prix d'achat en FCFA (sans décimales car le FCFA n'utilise pas de centimes)
-    purchase_price = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="Prix d'achat (FCFA)")
-    # Prix de vente en FCFA (sans décimales car le FCFA n'utilise pas de centimes)
-    selling_price = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="Prix de vente (FCFA)")
+    # Prix d'achat (stocké avec 2 décimales pour compatibilité internationale, formatage selon la devise)
+    purchase_price = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Prix d'achat")
+    # Prix de vente (stocké avec 2 décimales pour compatibilité internationale, formatage selon la devise)
+    selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Prix de vente")
     # Champs de stock
     quantity = models.IntegerField(default=0, verbose_name="Quantité en stock")  # Permet les valeurs négatives
     alert_threshold = models.IntegerField(default=5, verbose_name="Seuil d'alerte")
@@ -335,27 +335,29 @@ class Product(models.Model):
         """Retourne la quantité en backorder (valeur absolue si négatif)"""
         return abs(self.quantity) if self.quantity < 0 else 0
 
-    def format_fcfa(self, amount):
+    def format_price(self, amount):
         """
-        Formate un montant en FCFA avec séparateurs de milliers
-        Exemple: 150000 -> 150 000 FCFA
+        Formate un montant selon la devise du site avec le bon nombre de décimales
+        Exemple: 1500.00 avec FCFA -> "1 500 FCFA"
+        Exemple: 15.50 avec EUR -> "15,50 EUR"
         """
-        return f"{amount:,}".replace(",", " ") + " FCFA"
+        from apps.core.utils import format_currency_amount
+        return format_currency_amount(amount, site_configuration=self.site_configuration)
 
     @property
     def formatted_purchase_price(self):
-        """Retourne le prix d'achat formaté en FCFA"""
-        return self.format_fcfa(self.purchase_price)
+        """Retourne le prix d'achat formaté selon la devise du site"""
+        return self.format_price(self.purchase_price)
 
     @property
     def formatted_selling_price(self):
-        """Retourne le prix de vente formaté en FCFA"""
-        return self.format_fcfa(self.selling_price)
+        """Retourne le prix de vente formaté selon la devise du site"""
+        return self.format_price(self.selling_price)
 
     @property
     def formatted_margin(self):
-        """Retourne la marge formatée en FCFA"""
-        return self.format_fcfa(self.margin)
+        """Retourne la marge formatée selon la devise du site"""
+        return self.format_price(self.margin)
 
     def get_absolute_url(self):
         return reverse('inventory:product_detail', kwargs={'pk': self.pk})
@@ -665,17 +667,17 @@ class Customer(models.Model):
     # Gestion du crédit client
     credit_balance = models.DecimalField(
         max_digits=12, 
-        decimal_places=0, 
+        decimal_places=2, 
         default=0, 
-        verbose_name="Solde crédit (FCFA)",
+        verbose_name="Solde crédit",
         help_text="Montant total du crédit en cours (négatif = dette)"
     )
     credit_limit = models.DecimalField(
         max_digits=12, 
-        decimal_places=0, 
+        decimal_places=2, 
         null=True, 
         blank=True, 
-        verbose_name="Limite de crédit (FCFA)",
+        verbose_name="Limite de crédit",
         help_text="Limite de crédit autorisée (optionnel)"
     )
     is_active = models.BooleanField(
@@ -719,8 +721,9 @@ class Customer(models.Model):
 
     @property
     def formatted_credit_balance(self):
-        """Retourne le solde crédit formaté en FCFA"""
-        return f"{self.credit_balance:,}".replace(",", " ") + " FCFA"
+        """Retourne le solde crédit formaté selon la devise du site avec le bon nombre de décimales"""
+        from apps.core.utils import format_currency_amount
+        return format_currency_amount(self.credit_balance, site_configuration=self.site_configuration)
 
     @property
     def has_credit_debt(self):
@@ -857,9 +860,9 @@ class Transaction(models.Model):
     order = models.ForeignKey('Order', on_delete=models.PROTECT, null=True, blank=True, related_name='transactions')
     
     # Prix unitaire au moment de la transaction
-    unit_price = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     # Montant total de la transaction
-    total_amount = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     # Utilisateur qui a créé la transaction
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True)
     

@@ -102,18 +102,18 @@ class Sale(models.Model):
     )
     amount_given = models.DecimalField(
         max_digits=12, 
-        decimal_places=0, 
+        decimal_places=2, 
         null=True, 
         blank=True, 
-        verbose_name="Montant donné (FCFA)",
+        verbose_name="Montant donné",
         help_text="Montant donné par le client en liquide"
     )
     change_amount = models.DecimalField(
         max_digits=12, 
-        decimal_places=0, 
+        decimal_places=2, 
         null=True, 
         blank=True, 
-        verbose_name="Monnaie rendue (FCFA)",
+        verbose_name="Monnaie rendue",
         help_text="Montant de la monnaie rendue"
     )
     
@@ -134,10 +134,10 @@ class Sale(models.Model):
     )
     loyalty_discount_amount = models.DecimalField(
         max_digits=10,
-        decimal_places=0,
+        decimal_places=2,
         default=Decimal('0'),
-        verbose_name="Réduction fidélité (FCFA)",
-        help_text="Montant de la réduction en FCFA grâce aux points utilisés"
+        verbose_name="Réduction fidélité",
+        help_text="Montant de la réduction grâce aux points utilisés"
     )
     
     # Métadonnées
@@ -348,12 +348,12 @@ class CreditTransaction(models.Model):
     )
     amount = models.DecimalField(
         max_digits=12, 
-        decimal_places=0, 
-        verbose_name="Montant (FCFA)"
+        decimal_places=2, 
+        verbose_name="Montant"
     )
     balance_after = models.DecimalField(
         max_digits=12, 
-        decimal_places=0, 
+        decimal_places=2, 
         verbose_name="Solde après transaction"
     )
     transaction_date = models.DateTimeField(
@@ -380,21 +380,22 @@ class CreditTransaction(models.Model):
     )
 
     def __str__(self):
-        return f"{self.get_type_display()} - {self.customer} ({self.amount} FCFA)"
+        currency = self.customer.site_configuration.devise if self.customer.site_configuration and self.customer.site_configuration.devise else 'FCFA'
+        return f"{self.get_type_display()} - {self.customer} ({self.amount} {currency})"
 
     @property
     def formatted_amount(self):
-        """Retourne le montant formaté en FCFA"""
-        # Convertir en entier pour éviter les décimales
-        amount_int = int(self.amount)
-        return f"{amount_int:,}".replace(",", " ") + " FCFA"
+        """Retourne le montant formaté selon la devise du site avec le bon nombre de décimales"""
+        from apps.core.utils import format_currency_amount
+        site_config = self.customer.site_configuration if self.customer else None
+        return format_currency_amount(self.amount, site_configuration=site_config)
 
     @property
     def formatted_balance_after(self):
-        """Retourne le solde après transaction formaté en FCFA"""
-        # Convertir en entier pour éviter les décimales
-        balance_int = int(self.balance_after)
-        return f"{balance_int:,}".replace(",", " ") + " FCFA"
+        """Retourne le solde après transaction formaté selon la devise du site avec le bon nombre de décimales"""
+        from apps.core.utils import format_currency_amount
+        site_config = self.customer.site_configuration if self.customer else None
+        return format_currency_amount(self.balance_after, site_configuration=site_config)
 
     class Meta:
         verbose_name = "Transaction crédit"

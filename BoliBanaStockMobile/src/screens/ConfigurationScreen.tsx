@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { configurationService, loyaltyService } from '../services/api';
 import { useUserPermissions } from '../hooks/useUserPermissions';
+import { updateCache } from '../hooks';
 import theme from '../utils/theme';
 
 interface Configuration {
@@ -92,9 +93,10 @@ const ConfigurationScreen: React.FC = () => {
       const response = await configurationService.getCurrencies();
       if (response.success) {
         setCurrencies(response.currencies || []);
+        console.log('✅ [CONFIG] Devises chargées:', response.currencies?.length || 0, 'devises disponibles');
       }
     } catch (error) {
-      console.error('Erreur chargement devises:', error);
+      console.error('❌ [CONFIG] Erreur chargement devises:', error);
       // Fallback sur une liste par défaut si l'API échoue
       setCurrencies([{code: 'FCFA', name: 'Franc CFA (FCFA)'}]);
     } finally {
@@ -109,9 +111,10 @@ const ConfigurationScreen: React.FC = () => {
       if (response.success) {
         setConfiguration(response.configuration);
         setFormData(response.configuration);
+        console.log('✅ [CONFIG] Configuration chargée - Devise actuelle:', response.configuration?.devise || 'Non définie');
       }
     } catch (error) {
-      console.error('Erreur chargement configuration:', error);
+      console.error('❌ [CONFIG] Erreur chargement configuration:', error);
       Alert.alert('Erreur', 'Impossible de charger la configuration');
     } finally {
       setLoading(false);
@@ -121,15 +124,25 @@ const ConfigurationScreen: React.FC = () => {
   const handleSave = async () => {
     try {
       setSaving(true);
+      console.log('💾 [CONFIG] Sauvegarde configuration - Devise:', formData.devise);
       const response = await configurationService.updateConfiguration(formData);
       if (response.success) {
-        setConfiguration(response.configuration);
-        setFormData(response.configuration);
+        const updatedConfig = response.configuration;
+        setConfiguration(updatedConfig);
+        setFormData(updatedConfig);
+        console.log('✅ [CONFIG] Configuration sauvegardée - Devise:', updatedConfig?.devise);
+        
+        // Mettre à jour le cache global pour que tous les écrans utilisent la nouvelle devise
+        if (updatedConfig) {
+          updateCache(updatedConfig);
+          console.log('🔄 [CONFIG] Cache global mis à jour - Tous les écrans utiliseront:', updatedConfig.devise);
+        }
+        
         setEditing(false);
         Alert.alert('Succès', 'Configuration mise à jour avec succès');
       }
     } catch (error) {
-      console.error('Erreur sauvegarde configuration:', error);
+      console.error('❌ [CONFIG] Erreur sauvegarde configuration:', error);
       Alert.alert('Erreur', 'Impossible de sauvegarder la configuration');
     } finally {
       setSaving(false);
@@ -331,7 +344,12 @@ const ConfigurationScreen: React.FC = () => {
                     ) : (
                       <Picker
                         selectedValue={formData.devise || 'FCFA'}
-                        onValueChange={(itemValue) => updateFormData('devise', itemValue)}
+                        onValueChange={(itemValue) => {
+                          console.log('💰 [CONFIG] Devise sélectionnée:', itemValue);
+                          const selectedCurrency = currencies.find(c => c.code === itemValue);
+                          console.log('💰 [CONFIG] Détails devise:', selectedCurrency);
+                          updateFormData('devise', itemValue);
+                        }}
                         style={styles.picker}
                         dropdownIconColor={theme.colors.text.primary}
                       >

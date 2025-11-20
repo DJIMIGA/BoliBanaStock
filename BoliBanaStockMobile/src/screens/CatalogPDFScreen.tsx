@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrintOptionsConfig } from '../components/PrintOptionsConfig';
 import { catalogService } from '../services/api';
 import theme from '../utils/theme';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface Product {
   id: number;
@@ -206,7 +207,7 @@ const CatalogPDFScreen: React.FC<CatalogPDFScreenProps> = ({ route }) => {
           ${includeBarcode ? `<td class="barcode-cell">${barcodeHtml}</td>` : ''}
           <td>${p.category || 'N/A'}</td>
           <td>${p.brand || 'N/A'}</td>
-          ${includePrices ? `<td class="price">${p.selling_price ? `${p.selling_price} FCFA` : 'N/A'}</td>` : ''}
+          ${includePrices ? `<td class="price">${p.selling_price ? formatCurrency(p.selling_price) : 'N/A'}</td>` : ''}
           ${includeStock ? `<td class="stock ${stockClass}">${p.quantity || 'N/A'}</td>` : ''}
       </tr>
       `;

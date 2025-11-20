@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { saleService, dashboardService, siteService, transactionService } from '../services/api';
 import { useUserPermissions } from '../hooks/useUserPermissions';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 interface FinancialStats {
   // Revenus
@@ -533,7 +534,7 @@ export default function FinancialReportScreen({ navigation }: any) {
           </Text>
         </View>
         <Text style={styles.previousYearText}>
-          An dernier: {Math.round(previous).toLocaleString()} FCFA
+          An dernier: {formatCurrency(Math.round(previous))}
         </Text>
       </View>
     );
@@ -631,7 +632,7 @@ export default function FinancialReportScreen({ navigation }: any) {
                     styles.resultValue,
                     { color: stats.net_profit >= 0 ? theme.colors.success[600] : theme.colors.error[600] }
                   ]}>
-                    {Math.round(stats.net_profit).toLocaleString()} FCFA
+                    {formatCurrency(Math.round(stats.net_profit))}
                   </Text>
                   <Text style={styles.resultMargin}>
                     Marge de profit: {stats.profit_margin.toFixed(2)}%
@@ -648,7 +649,7 @@ export default function FinancialReportScreen({ navigation }: any) {
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Chiffre d'affaires</Text>
                 <Text style={[styles.statValue, { color: theme.colors.success[600] }]}>
-                  {Math.round(stats.total_revenue).toLocaleString()} FCFA
+                  {formatCurrency(Math.round(stats.total_revenue))}
                 </Text>
               </View>
               {renderComparison(stats.total_revenue, stats.previousYear?.total_revenue, '')}
@@ -656,7 +657,7 @@ export default function FinancialReportScreen({ navigation }: any) {
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Marge brute</Text>
                 <Text style={styles.statValue}>
-                  {Math.round(stats.gross_profit).toLocaleString()} FCFA
+                  {formatCurrency(Math.round(stats.gross_profit))}
                 </Text>
               </View>
               <View style={styles.statRow}>
@@ -673,21 +674,21 @@ export default function FinancialReportScreen({ navigation }: any) {
                   <Ionicons name="cash-outline" size={16} color={theme.colors.success[500]} />
                   <Text style={styles.paymentLabel}>Espèces:</Text>
                   <Text style={styles.paymentValue}>
-                    {Math.round(stats.cash_revenue).toLocaleString()} FCFA
+                    {formatCurrency(Math.round(stats.cash_revenue))}
                   </Text>
                 </View>
                 <View style={styles.paymentRow}>
                   <Ionicons name="card-outline" size={16} color={theme.colors.info[500]} />
                   <Text style={styles.paymentLabel}>Crédit:</Text>
                   <Text style={styles.paymentValue}>
-                    {Math.round(stats.credit_revenue).toLocaleString()} FCFA
+                    {formatCurrency(Math.round(stats.credit_revenue))}
                   </Text>
                 </View>
                 <View style={styles.paymentRow}>
                   <Ionicons name="phone-portrait-outline" size={16} color={theme.colors.warning[500]} />
                   <Text style={styles.paymentLabel}>Sarali:</Text>
                   <Text style={styles.paymentValue}>
-                    {Math.round(stats.sarali_revenue).toLocaleString()} FCFA
+                    {formatCurrency(Math.round(stats.sarali_revenue))}
                   </Text>
                 </View>
               </View>
@@ -700,7 +701,7 @@ export default function FinancialReportScreen({ navigation }: any) {
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Casse</Text>
                 <Text style={[styles.statValue, { color: theme.colors.error[600] }]}>
-                  {Math.round(stats.total_losses).toLocaleString()} FCFA
+                  {formatCurrency(Math.round(stats.total_losses))}
                 </Text>
               </View>
               <View style={styles.statRow}>
@@ -714,7 +715,7 @@ export default function FinancialReportScreen({ navigation }: any) {
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Démarque inconnue</Text>
                 <Text style={[styles.statValue, { color: theme.colors.error[600] }]}>
-                  {Math.round(stats.total_shrinkage).toLocaleString()} FCFA
+                  {formatCurrency(Math.round(stats.total_shrinkage))}
                 </Text>
               </View>
               <View style={styles.statRow}>
@@ -728,7 +729,7 @@ export default function FinancialReportScreen({ navigation }: any) {
               <View style={[styles.totalCostsRow, { borderTopColor: theme.colors.error[200] }]}>
                 <Text style={styles.totalCostsLabel}>Total pertes</Text>
                 <Text style={[styles.totalCostsValue, { color: theme.colors.error[600] }]}>
-                  {Math.round(stats.total_costs).toLocaleString()} FCFA
+                  {formatCurrency(Math.round(stats.total_costs))}
                 </Text>
               </View>
             </View>
@@ -766,7 +767,7 @@ export default function FinancialReportScreen({ navigation }: any) {
                 <View style={styles.stockValueInfo}>
                   <Text style={styles.stockValueLabel}>Valeur du stock</Text>
                   <Text style={styles.stockValueAmount}>
-                    {Math.round(stats.total_stock_value).toLocaleString()} FCFA
+                    {formatCurrency(Math.round(stats.total_stock_value))}
                   </Text>
                 </View>
               </View>
@@ -780,19 +781,19 @@ export default function FinancialReportScreen({ navigation }: any) {
                 <View style={styles.analysisRow}>
                   <Text style={styles.analysisLabel}>Revenus</Text>
                   <Text style={[styles.analysisValue, { color: theme.colors.success[600] }]}>
-                    +{Math.round(stats.total_revenue).toLocaleString()} FCFA
+                    +{formatCurrency(Math.round(stats.total_revenue))}
                   </Text>
                 </View>
                 <View style={styles.analysisRow}>
                   <Text style={styles.analysisLabel}>Marge brute</Text>
                   <Text style={styles.analysisValue}>
-                    +{Math.round(stats.gross_profit).toLocaleString()} FCFA
+                    +{formatCurrency(Math.round(stats.gross_profit))}
                   </Text>
                 </View>
                 <View style={styles.analysisRow}>
                   <Text style={styles.analysisLabel}>Pertes (casse + démarque)</Text>
                   <Text style={[styles.analysisValue, { color: theme.colors.error[600] }]}>
-                    -{Math.round(stats.total_costs).toLocaleString()} FCFA
+                    -{formatCurrency(Math.round(stats.total_costs))}
                   </Text>
                 </View>
                 <View style={[styles.analysisRow, styles.analysisTotal]}>
@@ -801,7 +802,7 @@ export default function FinancialReportScreen({ navigation }: any) {
                     styles.analysisTotalValue,
                     { color: stats.net_profit >= 0 ? theme.colors.success[600] : theme.colors.error[600] }
                   ]}>
-                    {stats.net_profit >= 0 ? '+' : ''}{Math.round(stats.net_profit).toLocaleString()} FCFA
+                    {stats.net_profit >= 0 ? '+' : ''}{formatCurrency(Math.round(stats.net_profit))}
                   </Text>
                 </View>
               </View>

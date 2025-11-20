@@ -19,6 +19,7 @@
     "generate-splash-logos": "node generate-splash-logos.js",
     "generate-google-play-graphics": "node generate-google-play-graphics.js",
     "verify-logos": "node verify-logos.js",
+    "test:currency": "node test-currency-config.js",
     "postinstall": "patch-package"
   },
   "dependencies": {

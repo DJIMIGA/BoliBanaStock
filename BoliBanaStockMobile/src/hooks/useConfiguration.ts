@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { configurationService } from '../services/api';
 
 export interface Configuration {
@@ -40,7 +40,7 @@ export const useConfiguration = () => {
     };
   }, []);
 
-  const loadConfiguration = async (forceRefresh = false) => {
+  const loadConfiguration = useCallback(async (forceRefresh = false) => {
     // Vérifier le cache si pas de refresh forcé
     if (!forceRefresh && globalCache) {
       const now = Date.now();
@@ -92,16 +92,16 @@ export const useConfiguration = () => {
         }
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadConfiguration();
-  }, []);
+  }, [loadConfiguration]);
 
-  // Fonction pour forcer le rafraîchissement
-  const refresh = () => {
+  // Fonction pour forcer le rafraîchissement (mémorisée pour éviter les re-renders)
+  const refresh = useCallback(() => {
     loadConfiguration(true);
-  };
+  }, [loadConfiguration]);
 
   // Fonction pour obtenir la devise avec fallback
   const getCurrency = (): string => {
@@ -130,5 +130,61 @@ export const getCachedCurrency = (): string => {
     return globalCache.configuration.devise;
   }
   return 'FCFA';
+};
+
+// Liste des callbacks pour notifier les écrans du changement de configuration
+let cacheUpdateCallbacks: Array<() => void> = [];
+
+// Fonction pour notifier tous les abonnés d'un changement de cache
+const notifyCacheUpdate = () => {
+  cacheUpdateCallbacks.forEach(callback => {
+    try {
+      callback();
+    } catch (error) {
+      console.error('Erreur lors de la notification de mise à jour du cache:', error);
+    }
+  });
+};
+
+// Fonction pour mettre à jour le cache global (utile après une sauvegarde)
+export const updateCache = (configuration: Configuration) => {
+  globalCache = {
+    configuration: configuration,
+    timestamp: Date.now(),
+  };
+  console.log('🔄 [CONFIG] Cache mis à jour - Devise:', configuration.devise);
+  notifyCacheUpdate();
+};
+
+// Fonction pour s'abonner aux mises à jour du cache
+export const subscribeToCacheUpdates = (callback: () => void) => {
+  cacheUpdateCallbacks.push(callback);
+  return () => {
+    cacheUpdateCallbacks = cacheUpdateCallbacks.filter(cb => cb !== callback);
+  };
+};
+
+// Fonction pour invalider le cache global
+export const invalidateGlobalCache = () => {
+  globalCache = null;
+  console.log('🔄 [CONFIG] Cache invalidé');
+  notifyCacheUpdate(); // Notify subscribers
+};
+
+// Fonction pour initialiser le cache au démarrage (peut être appelée sans hook)
+export const initializeConfigurationCache = async (): Promise<void> => {
+  try {
+    const response = await configurationService.getConfiguration();
+    if (response.success && response.configuration) {
+      globalCache = {
+        configuration: response.configuration,
+        timestamp: Date.now(),
+      };
+      console.log('✅ [CONFIG] Cache initialisé au démarrage - Devise:', response.configuration.devise);
+      notifyCacheUpdate();
+    }
+  } catch (error) {
+    console.error('❌ [CONFIG] Erreur initialisation cache:', error);
+  }
 };
 

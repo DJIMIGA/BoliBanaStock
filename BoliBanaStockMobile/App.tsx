@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
-import React, { useEffect } from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Animated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Provider } from 'react-redux';
 import { NavigationContainer } from '@react-navigation/native';
@@ -13,6 +13,7 @@ import { checkAuthStatus, logout } from './src/store/slices/authSlice';
 import { RootState } from './src/store';
 import { AuthWrapper, ErrorBoundary, GlobalSessionNotification, LoadingScreen } from './src/components';
 import { useGlobalKeepAwake } from './src/hooks/useKeepAwake';
+import { initializeConfigurationCache } from './src/hooks';
 // import { SessionProvider } from './src/contexts/SessionContext'; // Supprimé - approche Redux simplifiée
 import {
   LoginScreen,
@@ -67,6 +68,66 @@ import { useDraftStatus } from './src/hooks/useDraftStatus';
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
+// Composant pour l'icône Caisse avec effet de pulsation
+const PulsingCashIcon = ({ color, size, hasDraft }: { color: string; size: number; hasDraft: boolean }) => {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulseAnimation.start();
+
+    return () => {
+      pulseAnimation.stop();
+    };
+  }, []);
+
+  return (
+    <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View
+        style={{
+          transform: [{ scale: pulseAnim }],
+        }}
+      >
+        <Ionicons name="calculator-outline" size={size} color={color} />
+      </Animated.View>
+      {hasDraft && (
+        <View
+          style={{
+            position: 'absolute',
+            top: -4,
+            right: -4,
+            width: 12,
+            height: 12,
+            borderRadius: 6,
+            backgroundColor: theme.colors.warning[500],
+            borderWidth: 2,
+            borderColor: 'white',
+            justifyContent: 'center',
+            alignItems: 'center',
+            ...theme.shadows.sm,
+          }}
+        >
+          <Ionicons name="ellipse" size={8} color="white" />
+        </View>
+      )}
+    </View>
+  );
+};
+
 const MainTabs = () => {
   const draftStatus = useDraftStatus();
 
@@ -110,29 +171,7 @@ const MainTabs = () => {
           tabBarLabel: 'Caisse',
           tabBarBadge: undefined,
           tabBarIcon: ({ color, size }) => (
-            <View style={{ position: 'relative' }}>
-              <Ionicons name="calculator-outline" size={size} color={color} />
-              {draftStatus.hasSalesCartDraft && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -4,
-                    width: 12,
-                    height: 12,
-                    borderRadius: 6,
-                    backgroundColor: theme.colors.warning[500],
-                    borderWidth: 2,
-                    borderColor: 'white',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    ...theme.shadows.sm,
-                  }}
-                >
-                  <Ionicons name="ellipse" size={8} color="white" />
-                </View>
-              )}
-            </View>
+            <PulsingCashIcon color={color} size={size} hasDraft={draftStatus.hasSalesCartDraft} />
           ),
         }}
       />
@@ -144,6 +183,17 @@ const MainTabs = () => {
           tabBarLabel: 'Clients',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="ScanProduct"
+        component={ScanProductScreen}
+        options={{
+          title: 'Scanner',
+          tabBarLabel: 'Scanner',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="scan-outline" size={size} color={color} />
           ),
         }}
       />
@@ -161,6 +211,14 @@ const AppContent: React.FC = () => {
     // Vérifier l'état d'authentification au démarrage
     store.dispatch(checkAuthStatus());
   }, []);
+
+  // Initialiser le cache de configuration dès que l'utilisateur est authentifié
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('🚀 [APP] Initialisation du cache de configuration...');
+      initializeConfigurationCache();
+    }
+  }, [isAuthenticated]);
 
   // Afficher l'écran de chargement pendant la vérification de la session
   if (loading) {

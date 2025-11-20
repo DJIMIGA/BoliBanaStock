@@ -62,14 +62,73 @@ def create_notification(user, type_notification, titre, message):
         message=message
     )
 
+def get_decimal_places_for_currency(currency_code):
+    """
+    Retourne le nombre de décimales selon la devise
+    
+    Args:
+        currency_code: Code de la devise (ex: 'FCFA', 'EUR', 'USD')
+    
+    Returns:
+        int: Nombre de décimales (0 ou 2)
+    """
+    # Devises sans centimes (pas de décimales)
+    NO_DECIMAL_CURRENCIES = ['FCFA', 'XOF', 'XAF', 'JPY', 'KRW', 'MGA', 'XPF']
+    
+    if currency_code in NO_DECIMAL_CURRENCIES:
+        return 0
+    # Par défaut, 2 décimales pour les autres devises (EUR, USD, GBP, etc.)
+    return 2
+
+
+def format_currency_amount(amount, currency_code=None, site_configuration=None):
+    """
+    Formate un montant selon la devise avec le bon nombre de décimales
+    
+    Args:
+        amount: Montant à formater (Decimal ou float)
+        currency_code: Code de la devise (optionnel, sera récupéré depuis site_configuration si non fourni)
+        site_configuration: Configuration du site (optionnel)
+    
+    Returns:
+        str: Montant formaté avec la devise (ex: "1 000 FCFA" ou "1 000.50 EUR")
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+    
+    # Déterminer la devise
+    if not currency_code:
+        if site_configuration and site_configuration.devise:
+            currency_code = site_configuration.devise
+        else:
+            config = get_configuration()
+            currency_code = config.devise if config else 'FCFA'
+    
+    # Déterminer le nombre de décimales
+    decimal_places = get_decimal_places_for_currency(currency_code)
+    
+    # Convertir en Decimal pour les calculs précis
+    if not isinstance(amount, Decimal):
+        amount = Decimal(str(amount))
+    
+    # Arrondir selon le nombre de décimales
+    if decimal_places == 0:
+        # Arrondir à l'entier le plus proche
+        rounded_amount = int(amount.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        formatted = f"{rounded_amount:,}".replace(",", " ")
+    else:
+        # Arrondir à 2 décimales
+        rounded_amount = amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        # Formater avec séparateur de milliers et virgule pour les décimales (format français)
+        formatted = f"{rounded_amount:,.2f}".replace(",", " ").replace(".", ",")
+    
+    return f"{formatted} {currency_code}"
+
+
 def format_currency(amount):
     """
-    Formate un montant selon la devise configurée
+    Formate un montant selon la devise configurée (fonction de compatibilité)
     """
-    config = get_configuration()
-    if config:
-        return f"{amount} {config.devise}"
-    return f"{amount} FCFA"
+    return format_currency_amount(amount)
 
 def calculate_tva(amount):
     """
