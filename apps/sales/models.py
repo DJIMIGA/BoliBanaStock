@@ -287,34 +287,39 @@ class Sale(models.Model):
 class SaleItem(models.Model):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
-    quantity = models.PositiveIntegerField(verbose_name="Quantité", default=1)
+    quantity = models.DecimalField(max_digits=10, decimal_places=3, verbose_name="Quantité", default=1)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Prix unitaire", default=0)
     amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Montant", default=0)
 
     def save(self, *args, **kwargs):
-        self.amount = self.quantity * self.unit_price
+        from decimal import Decimal
+        self.amount = Decimal(str(self.quantity)) * Decimal(str(self.unit_price))
         super().save(*args, **kwargs)
         self.sale.update_totals()
 
     @property
     def margin(self):
         """Calcule la marge réelle basée sur le prix de caisse (unit_price) - prix d'achat"""
-        return self.unit_price - self.product.purchase_price
+        from decimal import Decimal
+        return Decimal(str(self.unit_price)) - Decimal(str(self.product.purchase_price))
 
     @property
     def total_margin(self):
         """Calcule la marge totale (marge unitaire × quantité)"""
-        return self.margin * self.quantity
+        from decimal import Decimal
+        return self.margin * Decimal(str(self.quantity))
 
     @property
     def margin_percentage(self):
         """Calcule le pourcentage de marge basé sur le prix de caisse"""
+        from decimal import Decimal
         if self.product.purchase_price > 0:
-            return (self.margin / self.product.purchase_price) * 100
+            return (self.margin / Decimal(str(self.product.purchase_price))) * 100
         return 0
 
     def __str__(self):
-        return f"{self.product} x {self.quantity}"
+        unit = self.product.unit_display if hasattr(self.product, 'unit_display') else "unité(s)"
+        return f"{self.product} x {self.quantity} {unit}"
 
     class Meta:
         verbose_name = "Article vendu"

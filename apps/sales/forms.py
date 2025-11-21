@@ -19,13 +19,14 @@ class SaleItemForm(forms.ModelForm):
         model = SaleItem
         fields = ['product', 'quantity', 'unit_price']
         widgets = {
-            'unit_price': forms.NumberInput(attrs={'step': '0.01'}),
+            'quantity': forms.NumberInput(attrs={'step': '0.001', 'min': '0'}),
+            'unit_price': forms.NumberInput(attrs={'step': '0.01', 'min': '0'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if 'instance' in kwargs and kwargs['instance']:
-            self.fields['unit_price'].initial = kwargs['instance'].product.prix
+            self.fields['unit_price'].initial = kwargs['instance'].product.selling_price
 
 class PaymentForm(forms.ModelForm):
     class Meta:

@@ -70,7 +70,7 @@
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex-1">
                         <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Statut du stock</p>
-                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ product.quantity }}</p>
+                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ product.quantity }} {{ product.unit_display }}</p>
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                             {% if product.quantity == 0 %}bg-red-100 text-red-800
                             {% elif product.quantity <= product.alert_threshold %}bg-gold-100 text-gold-800
@@ -104,7 +104,12 @@
                     <p class="text-sm font-medium text-neutral-500">Catégorie: <span class="text-neutral-900 ml-2">{{ product.category.name|default:"Non catégorisé" }}</span></p>
                     <p class="text-sm font-medium text-neutral-500">Marque: <span class="text-neutral-900 ml-2">{{ product.brand.name|default:"Non spécifié" }}</span></p>
                     <p class="text-sm font-medium text-neutral-500">Marge: <span class="text-neutral-900 ml-2">{{ product.formatted_margin }} / {{ product.margin|divisibleby:5|intcomma }} wari</span></p>
-                    <p class="text-sm font-medium text-neutral-500">Seuil d'alerte: <span class="text-neutral-900 ml-2">{{ product.alert_threshold }}</span></p>
+                    <p class="text-sm font-medium text-neutral-500">Seuil d'alerte: <span class="text-neutral-900 ml-2">{{ product.alert_threshold }} {{ product.unit_display }}</span></p>
+                    {% if product.sale_unit_type == 'weight' %}
+                    <p class="text-sm font-medium text-neutral-500">Type de vente: <span class="text-neutral-900 ml-2">Poids ({{ product.weight_unit }})</span></p>
+                    {% else %}
+                    <p class="text-sm font-medium text-neutral-500">Type de vente: <span class="text-neutral-900 ml-2">Quantité</span></p>
+                    {% endif %}
                     <p class="text-sm font-medium text-neutral-500">Description: <span class="text-neutral-900 ml-2">{{ product.description|default:"Non renseignée" }}</span></p>
                     {% if product.barcodes.exists %}
                     <p class="text-sm font-medium text-neutral-500">EAN: 
@@ -130,7 +135,7 @@
                         {% for transaction in transactions %}
                         <div class="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-neutral-50 transition-colors duration-200">
                             <span class="text-neutral-900">{{ transaction.get_type_display }}</span>
-                            <span class="text-neutral-600">{{ transaction.quantity }}</span>
+                            <span class="text-neutral-600">{{ transaction.quantity }} {{ transaction.product.unit_display }}</span>
                             <span class="text-neutral-500">{{ transaction.transaction_date|date:"d/m/Y H:i" }}</span>
                         </div>
                                     {% endfor %}

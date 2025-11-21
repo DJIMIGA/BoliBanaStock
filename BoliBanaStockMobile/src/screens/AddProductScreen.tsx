@@ -42,6 +42,8 @@ interface ProductForm {
   name: string;
   cug: string;
   description: string;
+  sale_unit_type: 'quantity' | 'weight';
+  weight_unit?: 'kg' | 'g';
   purchase_price: string;
   selling_price: string;
   quantity: string;
@@ -82,6 +84,8 @@ export default function AddProductScreen({ navigation, route }: any) {
     name: '',
     cug: '',
     description: '',
+    sale_unit_type: 'quantity',
+    weight_unit: undefined,
     purchase_price: '',
     selling_price: '',
     quantity: '0',
@@ -183,6 +187,8 @@ export default function AddProductScreen({ navigation, route }: any) {
           name: p?.name || '',
           cug: p?.cug || '',
           description: p?.description || '',
+          sale_unit_type: p?.sale_unit_type || 'quantity',
+          weight_unit: p?.weight_unit || undefined,
           purchase_price: p?.purchase_price ? String(p.purchase_price) : '',
           selling_price: p?.selling_price ? String(p.selling_price) : '',
           quantity: p?.quantity ? String(p.quantity) : '',
@@ -331,14 +337,26 @@ export default function AddProductScreen({ navigation, route }: any) {
 
     // Si le champ est vide, utiliser 0 par défaut
     const quantityValue = form.quantity || '0';
-    const quantityNumber = parseInt(quantityValue);
+    const quantityNumber = parseFloat(quantityValue);
     
     if (isNaN(quantityNumber)) {
       Alert.alert('Erreur', 'La quantité doit être un nombre valide');
       return false;
     }
 
-    if (!form.alert_threshold || parseInt(form.alert_threshold) < 0) {
+    // Validation : weight_unit requis si sale_unit_type='weight'
+    if (form.sale_unit_type === 'weight' && !form.weight_unit) {
+      Alert.alert('Erreur', 'L\'unité de poids (kg ou g) est obligatoire pour les produits vendus au poids');
+      return false;
+    }
+    
+    // Validation : weight_unit doit être vide si sale_unit_type='quantity'
+    if (form.sale_unit_type === 'quantity' && form.weight_unit) {
+      Alert.alert('Erreur', 'L\'unité de poids ne doit pas être définie pour les produits vendus en quantité');
+      return false;
+    }
+
+    if (!form.alert_threshold || parseFloat(form.alert_threshold) < 0) {
       Alert.alert('Erreur', 'Le seuil d\'alerte doit être positif');
       return false;
     }
@@ -361,10 +379,12 @@ export default function AddProductScreen({ navigation, route }: any) {
       const productData: any = {
         name: form.name.trim(),
         description: form.description.trim(),
-        purchase_price: parseInt(form.purchase_price),
-        selling_price: parseInt(form.selling_price),
-        quantity: parseInt(form.quantity || '0'),
-        alert_threshold: parseInt(form.alert_threshold),
+        sale_unit_type: form.sale_unit_type,
+        weight_unit: form.sale_unit_type === 'weight' ? form.weight_unit : null,
+        purchase_price: parseFloat(form.purchase_price),
+        selling_price: parseFloat(form.selling_price),
+        quantity: parseFloat(form.quantity || '0'),
+        alert_threshold: parseFloat(form.alert_threshold),
         category: form.category_id ? parseInt(form.category_id) : null,
         brand: form.brand_id ? parseInt(form.brand_id) : null,
         is_active: form.is_active,
@@ -743,8 +763,59 @@ export default function AddProductScreen({ navigation, route }: any) {
 
             <Text style={styles.sectionTitle}>Prix et stock</Text>
 
+            <View style={styles.fieldContainer}>
+              <Text style={styles.label}>Type de vente *</Text>
+              <View style={styles.radioGroup}>
+                <TouchableOpacity
+                  style={[styles.radioOption, form.sale_unit_type === 'quantity' && styles.radioOptionSelected]}
+                  onPress={() => {
+                    updateForm('sale_unit_type', 'quantity');
+                    updateForm('weight_unit', undefined);
+                  }}
+                >
+                  <Text style={[styles.radioText, form.sale_unit_type === 'quantity' && styles.radioTextSelected]}>
+                    Quantité (unité)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.radioOption, form.sale_unit_type === 'weight' && styles.radioOptionSelected]}
+                  onPress={() => updateForm('sale_unit_type', 'weight')}
+                >
+                  <Text style={[styles.radioText, form.sale_unit_type === 'weight' && styles.radioTextSelected]}>
+                    Poids (kg/g)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {form.sale_unit_type === 'weight' && (
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Unité de poids *</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOption, form.weight_unit === 'kg' && styles.radioOptionSelected]}
+                    onPress={() => updateForm('weight_unit', 'kg')}
+                  >
+                    <Text style={[styles.radioText, form.weight_unit === 'kg' && styles.radioTextSelected]}>
+                      Kilogramme (kg)
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOption, form.weight_unit === 'g' && styles.radioOptionSelected]}
+                    onPress={() => updateForm('weight_unit', 'g')}
+                  >
+                    <Text style={[styles.radioText, form.weight_unit === 'g' && styles.radioTextSelected]}>
+                      Gramme (g)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             <FormField
-              label="Prix d'achat (FCFA)"
+              label={form.sale_unit_type === 'weight' && form.weight_unit 
+                ? `Prix d'achat / ${form.weight_unit} (FCFA)` 
+                : "Prix d'achat (FCFA)"}
               value={form.purchase_price}
               onChangeText={(value: string) => updateForm('purchase_price', value)}
               placeholder="0"
@@ -753,7 +824,9 @@ export default function AddProductScreen({ navigation, route }: any) {
             />
 
             <FormField
-              label="Prix de vente (FCFA)"
+              label={form.sale_unit_type === 'weight' && form.weight_unit 
+                ? `Prix de vente / ${form.weight_unit} (FCFA)` 
+                : "Prix de vente (FCFA)"}
               value={form.selling_price}
               onChangeText={(value: string) => updateForm('selling_price', value)}
               placeholder="0"
@@ -762,7 +835,9 @@ export default function AddProductScreen({ navigation, route }: any) {
             />
 
             <FormField
-              label="Quantité en stock"
+              label={form.sale_unit_type === 'weight' && form.weight_unit 
+                ? `Stock en ${form.weight_unit}` 
+                : "Quantité en stock"}
               value={form.quantity}
               onChangeText={(value: string) => updateForm('quantity', value)}
               placeholder="0"
@@ -774,7 +849,9 @@ export default function AddProductScreen({ navigation, route }: any) {
             </Text>
 
             <FormField
-              label="Seuil d'alerte"
+              label={form.sale_unit_type === 'weight' && form.weight_unit 
+                ? `Seuil d'alerte (${form.weight_unit})` 
+                : "Seuil d'alerte"}
               value={form.alert_threshold}
               onChangeText={(value: string) => updateForm('alert_threshold', value)}
               placeholder="5"
@@ -1132,5 +1209,32 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     color: theme.colors.text.tertiary,
+  },
+  radioGroup: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  radioOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[300],
+    borderRadius: 8,
+    backgroundColor: 'white',
+    alignItems: 'center',
+  },
+  radioOptionSelected: {
+    borderColor: theme.colors.primary[500],
+    backgroundColor: theme.colors.primary[50],
+  },
+  radioText: {
+    fontSize: 14,
+    color: theme.colors.text.primary,
+  },
+  radioTextSelected: {
+    color: theme.colors.primary[600],
+    fontWeight: '600',
   },
 });

@@ -320,10 +320,10 @@
                             </td>
                             <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-900">{{ product.category.name }}</td>
                             <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-900">{{ product.brand.name }}</td>
-                            <td class="px-4 py-3 text-sm text-neutral-900">{{ product.purchase_price|format_currency }}</td>
-                            <td class="px-4 py-3 text-sm text-neutral-900">{{ product.selling_price|format_currency }}</td>
+                            <td class="px-4 py-3 text-sm text-neutral-900">{{ product.formatted_purchase_price }}</td>
+                            <td class="px-4 py-3 text-sm text-neutral-900">{{ product.formatted_selling_price }}</td>
                             <td class="px-4 py-3 text-sm text-neutral-900">{{ product.margin|format_currency }}</td>
-                            <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ product.quantity }}</td>
+                            <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ product.quantity }} {{ product.unit_display }}</td>
                             <td class="px-3 sm:px-4 py-2 sm:py-4 whitespace-nowrap">
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                     {% if product.quantity == 0 %}bg-red-100 text-red-800
@@ -406,7 +406,7 @@
                         </div>
                         <div>
                             <span class="text-neutral-500">Quantité:</span>
-                            <span class="font-medium">{{ product.quantity }}</span>
+                            <span class="font-medium">{{ product.quantity }} {{ product.unit_display }}</span>
                         </div>
                         <div>
                             <span class="text-neutral-500">Statut:</span>

@@ -177,7 +177,52 @@
 
                     <div class="space-y-4">
                         <div class="form-group">
-                            <label for="{{ form.purchase_price.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                            <label for="{{ form.sale_unit_type.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.sale_unit_type.label }}{% if form.sale_unit_type.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <select name="{{ form.sale_unit_type.name }}" id="{{ form.sale_unit_type.id_for_label }}" 
+                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                        onchange="updatePriceLabels()"
+                                        {% if form.sale_unit_type.field.required %}required{% endif %}>
+                                    {% for value, label in form.sale_unit_type.field.choices %}
+                                    <option value="{{ value }}" {% if form.sale_unit_type.value == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% if form.sale_unit_type.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.sale_unit_type.help_text }}</p>
+                            {% endif %}
+                            {% if form.sale_unit_type.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.sale_unit_type.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group" id="weight_unit_group" style="display: none;">
+                            <label for="{{ form.weight_unit.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                                {{ form.weight_unit.label }}{% if form.weight_unit.field.required %} *{% endif %}
+                            </label>
+                            <div class="mt-1">
+                                <select name="{{ form.weight_unit.name }}" id="{{ form.weight_unit.id_for_label }}" 
+                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
+                                        onchange="updatePriceLabels()"
+                                        {% if form.weight_unit.field.required %}required{% endif %}>
+                                    <option value="">---------</option>
+                                    {% for value, label in form.weight_unit.field.choices %}
+                                    <option value="{{ value }}" {% if form.weight_unit.value == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% if form.weight_unit.help_text %}
+                                <p class="mt-1 text-sm text-neutral-500">{{ form.weight_unit.help_text }}</p>
+                            {% endif %}
+                            {% if form.weight_unit.errors %}
+                                <p class="mt-1 text-sm text-red-600">{{ form.weight_unit.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-group">
+                            <label for="{{ form.purchase_price.id_for_label }}" id="purchase_price_label" class="block text-sm font-medium text-neutral-700 mb-1">
                                 {{ form.purchase_price.label }}{% if form.purchase_price.field.required %} *{% endif %}
                             </label>
                             <div class="mt-1">
@@ -185,6 +230,7 @@
                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
                                        value="{{ form.purchase_price.value|default:'' }}"
                                        min="0"
+                                       step="0.01"
                                        {% if form.purchase_price.field.required %}required{% endif %}>
                             </div>
                             {% if form.purchase_price.help_text %}
@@ -196,7 +242,7 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="{{ form.selling_price.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                            <label for="{{ form.selling_price.id_for_label }}" id="selling_price_label" class="block text-sm font-medium text-neutral-700 mb-1">
                                 {{ form.selling_price.label }}{% if form.selling_price.field.required %} *{% endif %}
                             </label>
                             <div class="mt-1">
@@ -204,6 +250,7 @@
                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
                                        value="{{ form.selling_price.value|default:'' }}"
                                        min="0"
+                                       step="0.01"
                                        {% if form.selling_price.field.required %}required{% endif %}>
                             </div>
                             {% if form.selling_price.help_text %}
@@ -215,7 +262,7 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="{{ form.alert_threshold.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                            <label for="{{ form.alert_threshold.id_for_label }}" id="alert_threshold_label" class="block text-sm font-medium text-neutral-700 mb-1">
                                 {{ form.alert_threshold.label }}{% if form.alert_threshold.field.required %} *{% endif %}
                             </label>
                             <div class="mt-1">
@@ -223,6 +270,7 @@
                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
                                        value="{{ form.alert_threshold.value|default:'' }}"
                                        min="0"
+                                       step="0.001"
                                        {% if form.alert_threshold.field.required %}required{% endif %}>
                             </div>
                             {% if form.alert_threshold.help_text %}
@@ -234,7 +282,7 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="{{ form.quantity.id_for_label }}" class="block text-sm font-medium text-neutral-700 mb-1">
+                            <label for="{{ form.quantity.id_for_label }}" id="quantity_label" class="block text-sm font-medium text-neutral-700 mb-1">
                                 {{ form.quantity.label }}{% if form.quantity.field.required %} *{% endif %}
                             </label>
                             <div class="mt-1">
@@ -242,6 +290,7 @@
                                        class="block w-full rounded-md border-neutral-300 shadow-sm focus:border-bolibana-500 focus:ring-bolibana-500 sm:text-sm"
                                        value="{{ form.quantity.value|default:'' }}"
                                        min="0"
+                                       step="0.001"
                                        {% if form.quantity.field.required %}required{% endif %}>
                             </div>
                             {% if form.quantity.help_text %}
@@ -326,6 +375,44 @@ function generateCUG() {
     }
     document.getElementById('{{ form.cug.id_for_label }}').value = cug;
 }
+
+function updatePriceLabels() {
+    const saleUnitType = document.getElementById('{{ form.sale_unit_type.id_for_label }}').value;
+    const weightUnit = document.getElementById('{{ form.weight_unit.id_for_label }}').value;
+    const weightUnitGroup = document.getElementById('weight_unit_group');
+    const purchasePriceLabel = document.getElementById('purchase_price_label');
+    const sellingPriceLabel = document.getElementById('selling_price_label');
+    const quantityLabel = document.getElementById('quantity_label');
+    const alertThresholdLabel = document.getElementById('alert_threshold_label');
+    
+    // Afficher/masquer le champ weight_unit
+    if (saleUnitType === 'weight') {
+        weightUnitGroup.style.display = 'block';
+        document.getElementById('{{ form.weight_unit.id_for_label }}').required = true;
+    } else {
+        weightUnitGroup.style.display = 'none';
+        document.getElementById('{{ form.weight_unit.id_for_label }}').required = false;
+        document.getElementById('{{ form.weight_unit.id_for_label }}').value = '';
+    }
+    
+    // Mettre à jour les labels
+    if (saleUnitType === 'weight' && weightUnit) {
+        purchasePriceLabel.innerHTML = `Prix d'achat / ${weightUnit} (FCFA) *`;
+        sellingPriceLabel.innerHTML = `Prix de vente / ${weightUnit} (FCFA) *`;
+        quantityLabel.innerHTML = `Stock en ${weightUnit} *`;
+        alertThresholdLabel.innerHTML = `Seuil d'alerte (${weightUnit}) *`;
+    } else {
+        purchasePriceLabel.innerHTML = "Prix d'achat (FCFA) *";
+        sellingPriceLabel.innerHTML = "Prix de vente (FCFA) *";
+        quantityLabel.innerHTML = "Quantité en stock *";
+        alertThresholdLabel.innerHTML = "Seuil d'alerte *";
+    }
+}
+
+// Initialiser les labels au chargement de la page
+document.addEventListener('DOMContentLoaded', function() {
+    updatePriceLabels();
+});
 
 function openCamera() {
     // Créer un input temporaire pour l'appareil photo

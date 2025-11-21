@@ -45,6 +45,7 @@ class ProductForm(forms.ModelForm):
         model = Product
         fields = [
             'name', 'cug', 'description', 'category', 'brand',
+            'sale_unit_type', 'weight_unit',
             'purchase_price', 'selling_price', 'alert_threshold',
             'quantity', 'image', 'is_active'
         ]
@@ -54,10 +55,12 @@ class ProductForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'category': forms.Select(attrs={'class': 'form-control'}),
             'brand': forms.Select(attrs={'class': 'form-control'}),
-            'purchase_price': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
-            'selling_price': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
-            'alert_threshold': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
-            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'sale_unit_type': forms.Select(attrs={'class': 'form-control', 'id': 'id_sale_unit_type'}),
+            'weight_unit': forms.Select(attrs={'class': 'form-control', 'id': 'id_weight_unit'}),
+            'purchase_price': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': '0.01'}),
+            'selling_price': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': '0.01'}),
+            'alert_threshold': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': '0.001'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': '0.001'}),
             'image': forms.ClearableFileInput(attrs={'class': 'form-control-file'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
@@ -67,6 +70,8 @@ class ProductForm(forms.ModelForm):
             'description': 'Description',
             'category': 'Catégorie',
             'brand': 'Marque',
+            'sale_unit_type': 'Type de vente',
+            'weight_unit': 'Unité de poids',
             'purchase_price': "Prix d'achat (FCFA)",
             'selling_price': 'Prix de vente (FCFA)',
             'alert_threshold': "Seuil d'alerte",
@@ -117,6 +122,8 @@ class ProductForm(forms.ModelForm):
         self.fields['name'].label = 'Nom du produit'
         self.fields['cug'].label = 'CUG'
         self.fields['description'].label = 'Description'
+        self.fields['sale_unit_type'].label = 'Type de vente'
+        self.fields['weight_unit'].label = 'Unité de poids'
         self.fields['purchase_price'].label = 'Prix d\'achat (FCFA)'
         self.fields['selling_price'].label = 'Prix de vente (FCFA)'
         self.fields['alert_threshold'].label = 'Seuil d\'alerte'
@@ -128,6 +135,17 @@ class ProductForm(forms.ModelForm):
         # Rendre certains champs optionnels
         self.fields['description'].required = False
         self.fields['image'].required = False
+        self.fields['weight_unit'].required = False
+        
+        # Adapter les labels des prix selon le type de vente
+        if self.instance and self.instance.pk:
+            self._update_price_labels(self.instance.sale_unit_type, self.instance.weight_unit)
+        else:
+            # Par défaut, masquer weight_unit
+            self.fields['weight_unit'].widget.attrs['style'] = 'display: none;'
+        
+        # Ajouter un gestionnaire d'événement JavaScript pour mettre à jour les labels dynamiquement
+        # (sera géré côté client)
         
         # Si on édite un produit existant, pré-remplir les champs rayon/subcategory
         if self.instance and self.instance.pk and self.instance.category:
@@ -161,12 +179,40 @@ class ProductForm(forms.ModelForm):
         
         return scan_value
 
+    def _update_price_labels(self, sale_unit_type, weight_unit=None):
+        """Met à jour les labels des prix selon le type de vente"""
+        if sale_unit_type == 'weight' and weight_unit:
+            unit_label = f" / {weight_unit}"
+            self.fields['purchase_price'].label = f"Prix d'achat{unit_label} (FCFA)"
+            self.fields['selling_price'].label = f"Prix de vente{unit_label} (FCFA)"
+            self.fields['quantity'].label = f'Stock en {weight_unit}'
+            self.fields['alert_threshold'].label = f"Seuil d'alerte ({weight_unit})"
+        else:
+            self.fields['purchase_price'].label = "Prix d'achat (FCFA)"
+            self.fields['selling_price'].label = 'Prix de vente (FCFA)'
+            self.fields['quantity'].label = 'Quantité en stock'
+            self.fields['alert_threshold'].label = "Seuil d'alerte"
+
     def clean(self):
         cleaned_data = super().clean()
         purchase_price = cleaned_data.get('purchase_price')
         selling_price = cleaned_data.get('selling_price')
         quantity = cleaned_data.get('quantity')
+        sale_unit_type = cleaned_data.get('sale_unit_type', 'quantity')
+        weight_unit = cleaned_data.get('weight_unit')
         barcodes = cleaned_data.get('barcodes')
+        
+        # Validation : weight_unit requis si sale_unit_type='weight'
+        if sale_unit_type == 'weight' and not weight_unit:
+            raise forms.ValidationError({
+                'weight_unit': "L'unité de poids (kg ou g) est obligatoire pour les produits vendus au poids."
+            })
+        
+        # Validation : weight_unit doit être vide si sale_unit_type='quantity'
+        if sale_unit_type == 'quantity' and weight_unit:
+            raise forms.ValidationError({
+                'weight_unit': "L'unité de poids ne doit pas être définie pour les produits vendus en quantité."
+            })
         
         # Synchroniser les champs rayon/subcategory avec category
         rayon = cleaned_data.get('rayon')

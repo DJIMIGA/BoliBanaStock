@@ -202,13 +202,34 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'slug', 'cug', 'generated_ean', 'description', 'purchase_price', 'selling_price',
+            'id', 'name', 'slug', 'cug', 'generated_ean', 'description', 
+            'sale_unit_type', 'weight_unit',
+            'purchase_price', 'selling_price',
             'quantity', 'alert_threshold', 'stock_updated_at', 'is_active', 'created_at', 'updated_at',
             'category', 'category_name', 'brand', 'brand_name', 'barcodes', 'image_url', 'image',
             'category_id', 'brand_id'  # ✅ Retirer 'barcode' direct, garder 'barcodes' relation
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'stock_updated_at']
 
+    def validate(self, data):
+        """Valide les données du produit"""
+        sale_unit_type = data.get('sale_unit_type', 'quantity')
+        weight_unit = data.get('weight_unit')
+        
+        # Validation : weight_unit requis si sale_unit_type='weight'
+        if sale_unit_type == 'weight' and not weight_unit:
+            raise serializers.ValidationError({
+                'weight_unit': "L'unité de poids (kg ou g) est obligatoire pour les produits vendus au poids."
+            })
+        
+        # Validation : weight_unit doit être vide si sale_unit_type='quantity'
+        if sale_unit_type == 'quantity' and weight_unit:
+            raise serializers.ValidationError({
+                'weight_unit': "L'unité de poids ne doit pas être définie pour les produits vendus en quantité."
+            })
+        
+        return data
+    
     def create(self, validated_data):
         """Créer un produit avec génération automatique du CUG si nécessaire"""
         # Si aucun CUG n'est fourni, le modèle le générera automatiquement
@@ -834,11 +855,12 @@ if LOYALTY_APP_AVAILABLE:
     class LoyaltyProgramSerializer(serializers.ModelSerializer):
         """Serializer pour le programme de fidélité"""
         site_name = serializers.CharField(source='site_configuration.site_name', read_only=True)
+        currency = serializers.CharField(source='site_configuration.devise', read_only=True)
         
         class Meta:
             model = LoyaltyProgram
             fields = [
-                'id', 'site_configuration', 'site_name', 'points_per_amount', 
+                'id', 'site_configuration', 'site_name', 'currency', 'points_per_amount', 
                 'amount_for_points', 'amount_per_point', 'is_active', 
                 'created_at', 'updated_at'
             ]

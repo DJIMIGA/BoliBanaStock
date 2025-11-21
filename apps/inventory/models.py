@@ -283,9 +283,37 @@ class Product(models.Model):
     purchase_price = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Prix d'achat")
     # Prix de vente (stocké avec 2 décimales pour compatibilité internationale, formatage selon la devise)
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Prix de vente")
-    # Champs de stock
-    quantity = models.IntegerField(default=0, verbose_name="Quantité en stock")  # Permet les valeurs négatives
-    alert_threshold = models.IntegerField(default=5, verbose_name="Seuil d'alerte")
+    
+    # Type de vente : quantité ou poids
+    SALE_UNIT_TYPE_CHOICES = [
+        ('quantity', 'Quantité'),
+        ('weight', 'Poids'),
+    ]
+    sale_unit_type = models.CharField(
+        max_length=10,
+        choices=SALE_UNIT_TYPE_CHOICES,
+        default='quantity',
+        verbose_name="Type de vente",
+        help_text="Définit si le produit est vendu par quantité (unité) ou par poids (kg/g)"
+    )
+    
+    # Unité de poids (uniquement pour les produits au poids)
+    WEIGHT_UNIT_CHOICES = [
+        ('kg', 'Kilogramme'),
+        ('g', 'Gramme'),
+    ]
+    weight_unit = models.CharField(
+        max_length=2,
+        choices=WEIGHT_UNIT_CHOICES,
+        blank=True,
+        null=True,
+        verbose_name="Unité de poids",
+        help_text="Unité de poids (kg ou g) - requis uniquement pour les produits au poids"
+    )
+    
+    # Champs de stock (convertis en DecimalField pour supporter les décimales pour les produits au poids)
+    quantity = models.DecimalField(max_digits=10, decimal_places=3, default=0, verbose_name="Quantité en stock")  # Permet les valeurs négatives et décimales
+    alert_threshold = models.DecimalField(max_digits=10, decimal_places=3, default=5, verbose_name="Seuil d'alerte")
     stock_updated_at = models.DateTimeField(auto_now=True, verbose_name="Dernière mise à jour du stock")
     
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Catégorie")
@@ -315,25 +343,36 @@ class Product(models.Model):
         return f"{self.name} ({self.cug})"
 
     @property
+    def unit_display(self):
+        """Retourne l'unité d'affichage selon le type de vente"""
+        if self.sale_unit_type == 'weight':
+            return self.weight_unit or 'kg'
+        return "unité(s)"
+    
+    @property
     def stock_status(self):
         """Retourne le statut du stock"""
-        if self.quantity < 0:
+        quantity_decimal = Decimal(str(self.quantity))
+        threshold_decimal = Decimal(str(self.alert_threshold))
+        
+        if quantity_decimal < 0:
             return "Rupture de stock (backorder)"
-        elif self.quantity == 0:
+        elif quantity_decimal == 0:
             return "Rupture de stock"
-        elif self.quantity <= self.alert_threshold:
+        elif quantity_decimal <= threshold_decimal:
             return "Stock faible"
         return "En stock"
     
     @property
     def has_backorder(self):
         """Indique si le produit est en backorder (stock négatif)"""
-        return self.quantity < 0
+        return Decimal(str(self.quantity)) < 0
     
     @property
     def backorder_quantity(self):
         """Retourne la quantité en backorder (valeur absolue si négatif)"""
-        return abs(self.quantity) if self.quantity < 0 else 0
+        quantity_decimal = Decimal(str(self.quantity))
+        return abs(quantity_decimal) if quantity_decimal < 0 else Decimal('0')
 
     def format_price(self, amount):
         """
@@ -347,12 +386,18 @@ class Product(models.Model):
     @property
     def formatted_purchase_price(self):
         """Retourne le prix d'achat formaté selon la devise du site"""
-        return self.format_price(self.purchase_price)
+        price_str = self.format_price(self.purchase_price)
+        if self.sale_unit_type == 'weight' and self.weight_unit:
+            return f"{price_str} / {self.weight_unit}"
+        return price_str
 
     @property
     def formatted_selling_price(self):
         """Retourne le prix de vente formaté selon la devise du site"""
-        return self.format_price(self.selling_price)
+        price_str = self.format_price(self.selling_price)
+        if self.sale_unit_type == 'weight' and self.weight_unit:
+            return f"{price_str} / {self.weight_unit}"
+        return price_str
 
     @property
     def formatted_margin(self):
@@ -385,6 +430,18 @@ class Product(models.Model):
         
         if self.selling_price < 0:
             raise ValidationError({'selling_price': 'Le prix de vente ne peut pas être négatif.'})
+        
+        # Validation : weight_unit requis si sale_unit_type='weight'
+        if self.sale_unit_type == 'weight' and not self.weight_unit:
+            raise ValidationError({
+                'weight_unit': 'L\'unité de poids (kg ou g) est obligatoire pour les produits vendus au poids.'
+            })
+        
+        # Validation : weight_unit doit être vide si sale_unit_type='quantity'
+        if self.sale_unit_type == 'quantity' and self.weight_unit:
+            raise ValidationError({
+                'weight_unit': 'L\'unité de poids ne doit pas être définie pour les produits vendus en quantité.'
+            })
         
         # Vérifier que le code-barres principal n'est pas déjà utilisé par un autre produit
         # Utiliser la relation barcodes au lieu d'un champ barcode inexistant
@@ -822,19 +879,21 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
-    quantity = models.PositiveIntegerField(default=1)
+    quantity = models.DecimalField(max_digits=10, decimal_places=3, default=1)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
 
     def save(self, *args, **kwargs):
-        self.amount = self.quantity * self.unit_price
+        from decimal import Decimal
+        self.amount = Decimal(str(self.quantity)) * Decimal(str(self.unit_price))
         super().save(*args, **kwargs)
         # Update order total amount
         self.order.total_amount = sum(item.amount for item in self.order.items.all())
         self.order.save()
 
     def __str__(self):
-        return f"{self.product} x {self.quantity}"
+        unit = self.product.unit_display if hasattr(self.product, 'unit_display') else "unité(s)"
+        return f"{self.product} x {self.quantity} {unit}"
 
     class Meta:
         verbose_name = "Ligne de commande"
@@ -851,7 +910,7 @@ class Transaction(models.Model):
 
     type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='in')
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
-    quantity = models.IntegerField()  # Permet les valeurs négatives pour les ajustements
+    quantity = models.DecimalField(max_digits=10, decimal_places=3)  # Permet les valeurs négatives et décimales pour les ajustements
     transaction_date = models.DateTimeField(auto_now_add=True)
     notes = models.TextField(blank=True, null=True)
     
@@ -877,8 +936,9 @@ class Transaction(models.Model):
     )
 
     def save(self, *args, **kwargs):
+        from decimal import Decimal
         # Calculer le montant total
-        self.total_amount = self.quantity * self.unit_price
+        self.total_amount = Decimal(str(self.quantity)) * Decimal(str(self.unit_price))
         
         # ✅ NOUVELLE APPROCHE: Ne plus modifier le stock automatiquement
         # Le stock doit être modifié uniquement par les endpoints de gestion de stock
