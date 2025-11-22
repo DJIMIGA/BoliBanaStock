@@ -16,135 +16,77 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Tailwind CSS -->
-    <link href="{% static 'css/dist/output.css' %}" rel="stylesheet">
+    <link href="{% static 'css/dist/output.css' %}?v=2.1" rel="stylesheet">
     
     {% block extra_css %}{% endblock %}
 </head>
-<body class="h-full font-sans flex flex-col min-h-screen">
-    <div class="flex flex-col min-h-screen">
-        <!-- Navigation -->
-        <nav class="bg-bolibana-500 shadow-lg">
-            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+<body class="h-full font-sans flex flex-col min-h-screen bg-neutral-100">
+    <div class="flex flex-col min-h-screen bg-neutral-100">
+        <!-- Header simplifié -->
+        <header class="bg-bolibana-500 shadow-lg">
+            <div class="mx-auto max-w-[1920px] px-4 sm:px-6 lg:px-8">
                 <div class="flex h-16 items-center justify-between">
                     <!-- Logo -->
                     <div class="flex-shrink-0">
-                        <a href="{% url 'theme:home' %}" class="flex items-center space-x-3 group">
-                            <img class="h-12 w-12 transform group-hover:scale-105 transition-transform duration-200" src="{% static 'img/logo.svg' %}" alt="BoliBana Stock">
-                            <span class="text-xl font-semibold text-white group-hover:text-gold-300 transition-colors duration-200">BoliBana Stock</span>
+                        <a href="{% url 'home' %}" class="flex items-center space-x-3 group">
+                            <img class="h-10 w-10 sm:h-12 sm:w-12 transform group-hover:scale-105 transition-transform duration-200" src="{% static 'img/logo.svg' %}" alt="BoliBana Stock">
+                            <span class="text-lg sm:text-xl font-semibold text-white group-hover:text-gold-300 transition-colors duration-200">BoliBana Stock</span>
                         </a>
                     </div>
                     
-                    <!-- Navigation desktop -->
-                    <div class="hidden md:block">
-                        <div class="flex items-center justify-between space-x-8">
-                            <!-- Navigation links -->
-                            <div class="flex items-center space-x-2">
-                                <a href="{% url 'theme:home' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                    <i class="fas fa-home mr-1"></i>Accueil
-                                </a>
-                                {% if user.is_authenticated %}
-                                                                    <a href="{% url 'inventory:product_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                    <i class="fas fa-box mr-1"></i>Produits
-                                </a>
-                                {% if user.site_configuration and user.site_configuration != user.site_configuration.get_site_configuration %}
-                                <a href="{% url 'inventory:product_copy' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                    <i class="fas fa-copy mr-1"></i>Copier Produits
-                                </a>
-                                <a href="{% url 'inventory:product_copy_management' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                    <i class="fas fa-cogs mr-1"></i>Gérer Copies
-                                </a>
-                                {% endif %}
-                                <a href="{% url 'inventory:quick_scan' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                    <i class="fas fa-search mr-1"></i>Scan Rapide
-                                </a>
-                                <a href="{% url 'inventory:label_generator' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                    <i class="fas fa-barcode mr-1"></i>Étiquettes
-                                </a>
-                                    <a href="{% url 'inventory:order_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                        <i class="fas fa-shopping-cart mr-1"></i>Commandes
-                                    </a>
-                                    <a href="{% url 'inventory:transaction_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                        <i class="fas fa-exchange-alt mr-1"></i>Transactions
-                                    </a>
-                                    <a href="{% url 'sales:sale_list' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                        <i class="fas fa-cash-register mr-1"></i>Ventes
-                                    </a>
-                                    <a href="{% url 'sales:cash_register_scanner' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                        <i class="fas fa-barcode mr-1"></i>Caisse Scanner
-                                    </a>
-                                    <a href="{% url 'inventory:cadencier_view' %}" class="text-white hover:bg-bolibana-600 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap">
-                                        <i class="fas fa-calendar-alt mr-1"></i>Cadencier
-                                    </a>
-                                {% endif %}
-                            </div>
-                            
-                            <!-- User actions -->
-                            <div class="flex items-center space-x-4">
-                                {% if user.is_authenticated %}
-                                    <!-- Notifications -->
-                                    <button type="button" class="relative rounded-full bg-bolibana-600 p-2 text-white hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-bolibana-600 transition-colors duration-200" id="notifications-button">
-                                        <span class="sr-only">Voir les notifications</span>
-                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                                        </svg>
-                                        <!-- Notification badge -->
-                                        <span class="absolute -top-0.5 -right-0.5 h-3 w-3 bg-red-500 rounded-full border border-white"></span>
-                                    </button>
+                    <!-- Actions utilisateur -->
+                    <div class="flex items-center space-x-3 sm:space-x-4">
+                        {% if user.is_authenticated %}
+                            <!-- Notifications -->
+                            <button type="button" class="relative rounded-full bg-bolibana-600 p-2 text-white hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-bolibana-600 transition-colors duration-200" id="notifications-button">
+                                <span class="sr-only">Voir les notifications</span>
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                                </svg>
+                                <!-- Notification badge -->
+                                <span class="absolute -top-0.5 -right-0.5 h-3 w-3 bg-red-500 rounded-full border border-white"></span>
+                            </button>
 
-                                    <!-- Profile dropdown -->
-                                    <div class="relative">
-                                        <button type="button" class="flex items-center rounded-full bg-bolibana-600 text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-bolibana-600 transition-colors duration-200" id="user-menu-button">
-                                            <span class="sr-only">Ouvrir le menu utilisateur</span>
-                                            <img class="h-8 w-8 rounded-full" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="">
-                                        </button>
-                                        <!-- Dropdown menu -->
-                                        <div class="absolute right-0 z-50 mt-2 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none hidden" id="user-menu-dropdown">
-                                            <a href="{% url 'core:configuration' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
-                                                <i class="fas fa-building mr-2"></i>Configuration
-                                            </a>
-                                            {% if user.is_superuser or user.is_site_admin %}
-                                            <a href="{% url 'core:user_list' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
-                                                <i class="fas fa-users mr-2"></i>Gestion utilisateurs
-                                            </a>
-                                            {% endif %}
-                                            {% if user.is_superuser %}
-                                            <a href="{% url 'core:settings' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
-                                                <i class="fas fa-cog mr-2"></i>Paramètres avancés
-                                            </a>
-                                            {% endif %}
-                                            <div class="border-t border-gray-100 my-1"></div>
-                                            <a href="{% url 'logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150">
-                                                <i class="fas fa-sign-out-alt mr-2"></i>Déconnexion
-                                            </a>
-                                        </div>
-                                    </div>
-                                {% else %}
-                                    <!-- Login button -->
-                                    <a href="{% url 'login' %}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 transition-colors duration-200">
-                                        <i class="fas fa-sign-in-alt mr-2"></i>Connexion
+                            <!-- Profile dropdown -->
+                            <div class="relative">
+                                <button type="button" class="flex items-center rounded-full bg-bolibana-600 text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-bolibana-600 transition-colors duration-200" id="user-menu-button">
+                                    <span class="sr-only">Ouvrir le menu utilisateur</span>
+                                    <img class="h-8 w-8 rounded-full" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="">
+                                </button>
+                                <!-- Dropdown menu -->
+                                <div class="absolute right-0 z-50 mt-2 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none hidden" id="user-menu-dropdown">
+                                    <a href="{% url 'core:configuration' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
+                                        <i class="fas fa-building mr-2"></i>Configuration
                                     </a>
-                                {% endif %}
+                                    {% if user.is_superuser or user.is_site_admin %}
+                                    <a href="{% url 'core:user_list' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
+                                        <i class="fas fa-users mr-2"></i>Gestion utilisateurs
+                                    </a>
+                                    {% endif %}
+                                    {% if user.is_superuser %}
+                                    <a href="{% url 'core:settings' %}" class="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition-colors duration-150">
+                                        <i class="fas fa-cog mr-2"></i>Paramètres avancés
+                                    </a>
+                                    {% endif %}
+                                    <div class="border-t border-gray-100 my-1"></div>
+                                    <a href="{% url 'logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150">
+                                        <i class="fas fa-sign-out-alt mr-2"></i>Déconnexion
+                                    </a>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Bouton hamburger pour mobile -->
-                    <div class="flex md:hidden">
-                        <button type="button" 
-                                id="mobile-menu-button"
-                                class="inline-flex items-center justify-center p-2 rounded text-white hover:text-white hover:bg-bolibana-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white transition-transform duration-200"
-                                aria-controls="mobile-menu" 
-                                aria-expanded="false">
-                            <span class="sr-only">Ouvrir le menu</span>
-                            <i class="fas fa-bars transition-transform duration-200" id="mobile-menu-icon"></i>
-                        </button>
+                        {% else %}
+                            <!-- Login button -->
+                            <a href="{% url 'login' %}" class="inline-flex items-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-bolibana-600 hover:bg-bolibana-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolibana-500 transition-colors duration-200">
+                                <i class="fas fa-sign-in-alt mr-2"></i><span class="hidden sm:inline">Connexion</span>
+                            </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
-        </nav>
+        </header>
 
-        <!-- Main content -->
-        <main class="flex-grow">
+        <!-- Main content avec sidebar -->
+        <main class="flex-grow bg-neutral-100">
             <div class="mx-auto max-w-[1920px] py-6 sm:px-6 lg:px-8">
                 {% if messages %}
                     {% for message in messages %}
@@ -154,7 +96,15 @@
                     {% endfor %}
                 {% endif %}
 
-                {% block content %}{% endblock %}
+                <div class="flex flex-col lg:flex-row gap-6">
+                    <!-- Sidebar de navigation -->
+                    {% include 'partials/sidebar.html' %}
+                    
+                    <!-- Contenu principal -->
+                    <div class="flex-1">
+                        {% block content %}{% endblock %}
+                    </div>
+                </div>
             </div>
         </main>
 
@@ -238,16 +188,6 @@
 
     {% block extra_js %}
     <script>
-    // Animation de rotation sur l'icône lors du switch
-    (function() {
-        const btn = document.getElementById('mobile-menu-button');
-        if (!btn) return;
-        const icon = btn.querySelector('i');
-        btn.addEventListener('click', function() {
-            icon.classList.add('rotate-90');
-            setTimeout(() => icon.classList.remove('rotate-90'), 200);
-        });
-    })();
     
     // Menu déroulant du profil utilisateur
     (function() {
