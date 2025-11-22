@@ -94,14 +94,22 @@ def fix_migration_order():
                 try:
                     # Essayer d'appliquer les migrations
                     import io
-                    import sys
                     from contextlib import redirect_stdout, redirect_stderr
                     
                     # Capturer la sortie pour détecter quelle migration est en cours
                     output_buffer = io.StringIO()
-                    with redirect_stdout(output_buffer), redirect_stderr(output_buffer):
-                        call_command('migrate', '--noinput', verbosity=2)
-                    output = output_buffer.getvalue()
+                    try:
+                        with redirect_stdout(output_buffer), redirect_stderr(output_buffer):
+                            call_command('migrate', '--noinput', verbosity=2)
+                        output = output_buffer.getvalue()
+                        # Chercher "Applying app.XXXX_migration_name..." dans la sortie
+                        import re
+                        applying_match = re.search(r"Applying (\w+\.\d+_[\w_]+)", output)
+                        if applying_match:
+                            current_migration = applying_match.group(1)
+                    except:
+                        pass
+                    
                     print("   ✅ Toutes les migrations appliquées avec succès")
                     break
                 except SystemExit:
@@ -110,6 +118,17 @@ def fix_migration_order():
                     break
                 except Exception as migrate_error:
                     error_str = str(migrate_error)
+                    # Récupérer la sortie capturée même en cas d'erreur pour trouver la migration en cours
+                    try:
+                        output = output_buffer.getvalue()
+                        import re
+                        applying_match = re.search(r"Applying (\w+\.\d+_[\w_]+)", output)
+                        if applying_match:
+                            current_migration = applying_match.group(1)
+                            print(f"      Migration en cours détectée depuis la sortie: {current_migration}")
+                    except:
+                        pass
+                    
                     if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str:
                         print(f"   ⚠️ Problème d'ordre détecté: {error_str[:200]}")
                         
@@ -177,38 +196,21 @@ def fix_migration_order():
                         print("   ℹ️  Cela signifie probablement que la migration a déjà été appliquée")
                         print("   🔄 Tentative de marquage de la migration comme appliquée...")
                         
-                        # Extraire le nom de la migration depuis l'erreur
-                        import re
-                        fake_migration = None
-                        # Pattern pour trouver "Applying app.XXXX_migration_name..." dans la sortie
-                        # Chercher dans toute la chaîne d'erreur
-                        patterns = [
-                            r"Applying (\w+\.\d+_[\w_]+)",
-                            r"contenttypes\.(\d+_[\w_]+)",
-                            r"(\w+)\.0002_[\w_]+",
-                        ]
+                        # Utiliser la migration en cours capturée, ou essayer de l'extraire de l'erreur
+                        fake_migration = current_migration
                         
-                        for pattern in patterns:
-                            migration_match = re.search(pattern, error_str)
-                            if migration_match:
-                                if len(migration_match.groups()) == 1:
-                                    # Si c'est juste le nom de la migration, chercher l'app
-                                    if 'contenttypes' in pattern or 'contenttypes' in error_str:
-                                        fake_migration = f"contenttypes.{migration_match.group(1)}"
-                                    else:
-                                        # Chercher l'app dans l'erreur
-                                        app_match = re.search(r"(\w+)\.\d+_", error_str)
-                                        if app_match:
-                                            fake_migration = f"{app_match.group(1)}.{migration_match.group(1)}"
-                                else:
-                                    fake_migration = f"{migration_match.group(1)}.{migration_match.group(2)}"
-                                break
-                        
-                        # Si toujours pas trouvé, chercher n'importe quelle migration mentionnée
                         if not fake_migration:
-                            migration_match = re.search(r"(\w+)\.(\d+_[\w_]+)", error_str)
-                            if migration_match:
-                                fake_migration = f"{migration_match.group(1)}.{migration_match.group(2)}"
+                            # Extraire le nom de la migration depuis l'erreur
+                            import re
+                            # Si l'erreur mentionne "django_content_type" et "name", c'est probablement contenttypes.0002
+                            if "django_content_type" in error_str and "name" in error_str and "does not exist" in error_str:
+                                fake_migration = "contenttypes.0002_remove_content_type_name"
+                                print(f"      Migration détectée via heuristique: {fake_migration}")
+                            else:
+                                # Chercher n'importe quelle migration mentionnée dans le traceback
+                                migration_match = re.search(r"(\w+)\.(\d+_[\w_]+)", error_str)
+                                if migration_match:
+                                    fake_migration = f"{migration_match.group(1)}.{migration_match.group(2)}"
                         
                         if fake_migration:
                             app_label, migration_name = fake_migration.split('.', 1)
