@@ -439,7 +439,46 @@ def deploy_railway():
             print("✅ Migrations appliquées avec succès")
         except Exception as migrate_error:
             error_str = str(migrate_error)
-            if "does not exist" in error_str or "relation" in error_str.lower():
+            if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str:
+                print(f"⚠️ Erreur d'ordre de migration: {migrate_error}")
+                print("🔄 Tentative de correction de l'ordre des migrations...")
+                try:
+                    from django.db import connection
+                    from django.db.migrations.recorder import MigrationRecorder
+                    import re
+                    
+                    # Extraire les migrations en conflit depuis le message d'erreur
+                    # Format: "Migration inventory.0040_add_weight_support_to_products is applied before its dependency inventory.0039_alter_customer_credit_balance_and_more"
+                    match = re.search(r"Migration (\w+\.\d+_\w+) is applied before its dependency (\w+\.\d+_\w+)", error_str)
+                    if match:
+                        applied_migration = match.group(1)  # ex: inventory.0040_add_weight_support_to_products
+                        missing_dependency = match.group(2)  # ex: inventory.0039_alter_customer_credit_balance_and_more
+                        
+                        # Extraire app_label et migration_num (ex: inventory.0039)
+                        app_label, migration_full = missing_dependency.split('.', 1)
+                        migration_num = migration_full.split('_', 1)[0]  # ex: 0039
+                        
+                        print(f"📋 Migration appliquée trop tôt: {applied_migration}")
+                        print(f"📋 Dépendance manquante: {missing_dependency}")
+                        print(f"🔄 Marquage de la dépendance {missing_dependency} comme appliquée (fake)...")
+                        
+                        # Marquer la migration manquante comme appliquée avec --fake
+                        # Format: migrate inventory 0039 --fake
+                        call_command('migrate', app_label, migration_num, '--fake', '--noinput', verbosity=1)
+                        print(f"✅ Migration {missing_dependency} marquée comme appliquée")
+                        
+                        # Réappliquer les migrations normalement
+                        print("📋 Réapplication des migrations...")
+                        call_command('migrate', '--noinput', verbosity=1)
+                        print("✅ Migrations corrigées avec succès")
+                    else:
+                        raise Exception("Impossible d'extraire les migrations en conflit")
+                except Exception as e2:
+                    print(f"⚠️ Correction échouée: {e2}")
+                    import traceback
+                    traceback.print_exc()
+                    print("⚠️ Continuation du déploiement malgré l'erreur de migration...")
+            elif "does not exist" in error_str or "relation" in error_str.lower():
                 print(f"⚠️ Erreur de table manquante: {migrate_error}")
                 print("🔄 Tentative de réparation...")
                 try:
