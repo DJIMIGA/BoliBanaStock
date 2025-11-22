@@ -317,9 +317,22 @@ class SaleItem(models.Model):
             return (self.margin / Decimal(str(self.product.purchase_price))) * 100
         return 0
 
+    @property
+    def formatted_quantity(self):
+        """Retourne la quantité formatée selon le type de vente du produit"""
+        from decimal import Decimal
+        quantity_decimal = Decimal(str(self.quantity))
+        if hasattr(self.product, 'sale_unit_type') and self.product.sale_unit_type == 'quantity':
+            # Pour les produits en quantité, afficher sans décimales
+            return str(int(quantity_decimal))
+        else:
+            # Pour les produits au poids, afficher avec décimales
+            formatted = f"{quantity_decimal:.3f}".rstrip('0').rstrip('.')
+            return formatted
+    
     def __str__(self):
         unit = self.product.unit_display if hasattr(self.product, 'unit_display') else "unité(s)"
-        return f"{self.product} x {self.quantity} {unit}"
+        return f"{self.product} x {self.formatted_quantity} {unit}"
 
     class Meta:
         verbose_name = "Article vendu"

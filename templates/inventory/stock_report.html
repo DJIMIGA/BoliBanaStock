@@ -79,7 +79,7 @@
                                     {{ product.category.name|default:"Non catégorisé" }}
                                 </td>
                                 <td class="px-4 py-3 text-sm text-neutral-900">
-                                    {{ product.quantity }}
+                                    {{ product.formatted_quantity }} {{ product.unit_display }}
                                 </td>
                                 <td class="px-4 py-3 text-sm text-neutral-900">
                                     {{ product.purchase_price|format_currency }}

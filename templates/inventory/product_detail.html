@@ -70,7 +70,7 @@
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex-1">
                         <p class="text-xs sm:text-sm font-semibold text-neutral-600 uppercase">Statut du stock</p>
-                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ product.quantity }} {{ product.unit_display }}</p>
+                        <p class="text-lg sm:text-xl lg:text-2xl font-bold text-neutral-900">{{ product.formatted_quantity }} {{ product.unit_display }}</p>
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                             {% if product.quantity == 0 %}bg-red-100 text-red-800
                             {% elif product.quantity <= product.alert_threshold %}bg-gold-100 text-gold-800
@@ -135,7 +135,7 @@
                         {% for transaction in transactions %}
                         <div class="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-neutral-50 transition-colors duration-200">
                             <span class="text-neutral-900">{{ transaction.get_type_display }}</span>
-                            <span class="text-neutral-600">{{ transaction.quantity }} {{ transaction.product.unit_display }}</span>
+                            <span class="text-neutral-600">{{ transaction.formatted_quantity }} {{ transaction.product.unit_display }}</span>
                             <span class="text-neutral-500">{{ transaction.transaction_date|date:"d/m/Y H:i" }}</span>
                         </div>
                                     {% endfor %}

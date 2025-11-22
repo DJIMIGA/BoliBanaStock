@@ -245,7 +245,7 @@
                                 <div class="detail-label">Stock Local</div>
                                 <div class="detail-value">
                                     <span class="badge {% if product_copy.copied_product.quantity == 0 %}bg-danger{% elif product_copy.copied_product.quantity <= product_copy.copied_product.alert_threshold %}bg-warning{% else %}bg-success{% endif %}">
-                                        {{ product_copy.copied_product.quantity }}
+                                        {{ product_copy.copied_product.formatted_quantity }} {{ product_copy.copied_product.unit_display }}
                                     </span>
                                 </div>
                             </div>

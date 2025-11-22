@@ -350,6 +350,19 @@ class Product(models.Model):
         return "unité(s)"
     
     @property
+    def formatted_quantity(self):
+        """Retourne la quantité formatée selon le type de vente"""
+        quantity_decimal = Decimal(str(self.quantity))
+        if self.sale_unit_type == 'quantity':
+            # Pour les produits en quantité, afficher sans décimales
+            return str(int(quantity_decimal))
+        else:
+            # Pour les produits au poids, afficher avec décimales (max 3)
+            # Supprimer les zéros inutiles à la fin
+            formatted = f"{quantity_decimal:.3f}".rstrip('0').rstrip('.')
+            return formatted
+    
+    @property
     def stock_status(self):
         """Retourne le statut du stock"""
         quantity_decimal = Decimal(str(self.quantity))
@@ -891,9 +904,22 @@ class OrderItem(models.Model):
         self.order.total_amount = sum(item.amount for item in self.order.items.all())
         self.order.save()
 
+    @property
+    def formatted_quantity(self):
+        """Retourne la quantité formatée selon le type de vente du produit"""
+        quantity_decimal = Decimal(str(self.quantity))
+        if hasattr(self.product, 'sale_unit_type') and self.product.sale_unit_type == 'quantity':
+            # Pour les produits en quantité, afficher sans décimales
+            return str(int(quantity_decimal))
+        else:
+            # Pour les produits au poids, afficher avec décimales
+            formatted = f"{quantity_decimal:.3f}".rstrip('0').rstrip('.')
+            return formatted
+    
     def __str__(self):
         unit = self.product.unit_display if hasattr(self.product, 'unit_display') else "unité(s)"
-        return f"{self.product} x {self.quantity} {unit}"
+        formatted_qty = self.formatted_quantity if hasattr(self, 'formatted_quantity') else str(self.quantity)
+        return f"{self.product} x {formatted_qty} {unit}"
 
     class Meta:
         verbose_name = "Ligne de commande"
@@ -947,8 +973,20 @@ class Transaction(models.Model):
         # Sauvegarder la transaction sans modifier le stock
         super().save(*args, **kwargs)
 
+    @property
+    def formatted_quantity(self):
+        """Retourne la quantité formatée selon le type de vente du produit"""
+        quantity_decimal = Decimal(str(self.quantity))
+        if hasattr(self.product, 'sale_unit_type') and self.product.sale_unit_type == 'quantity':
+            # Pour les produits en quantité, afficher sans décimales
+            return str(int(quantity_decimal))
+        else:
+            # Pour les produits au poids, afficher avec décimales
+            formatted = f"{quantity_decimal:.3f}".rstrip('0').rstrip('.')
+            return formatted
+    
     def __str__(self):
-        return f"{self.get_type_display()} - {self.product.name} ({self.quantity})"
+        return f"{self.get_type_display()} - {self.product.name} ({self.formatted_quantity})"
 
     class Meta:
         verbose_name = "Transaction"

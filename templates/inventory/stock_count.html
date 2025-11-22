@@ -27,7 +27,7 @@
                         </div>
                         
                         <div class="flex items-center justify-between">
-                            <span class="text-sm text-gray-600">Stock: {{ product.quantity }}</span>
+                            <span class="text-sm text-gray-600">Stock: {{ product.formatted_quantity }} {{ product.unit_display }}</span>
                             <div class="flex items-center space-x-2">
                                 <input type="number" 
                                        name="product_{{ product.id }}" 

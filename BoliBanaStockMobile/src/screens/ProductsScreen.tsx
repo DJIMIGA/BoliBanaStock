@@ -29,6 +29,8 @@ interface Product {
   name: string;
   cug: string;
   quantity: number;
+  formatted_quantity?: string;
+  unit_display?: string;
   selling_price: number;
   category_name: string;
   brand_name: string;
@@ -390,11 +392,11 @@ export default function ProductsScreen({ navigation, route }: any) {
         </View>
       </View>
       
-      <View style={styles.productFooter}>
+        <View style={styles.productFooter}>
         <View style={styles.quantityContainer}>
           <Ionicons name="cube-outline" size={14} color={item.quantity < 0 ? "#E91E63" : "#666"} />
           <Text style={[styles.quantityText, { color: item.quantity < 0 ? "#E91E63" : "#666" }]}>
-            {item.quantity} unités
+            {item.formatted_quantity || item.quantity} {item.unit_display || 'unité(s)'}
           </Text>
         </View>
         <Text style={styles.priceText}>

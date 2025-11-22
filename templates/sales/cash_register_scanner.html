@@ -261,7 +261,7 @@ function displayProduct(product) {
                     <div class="col-6">
                         <strong>Stock:</strong> 
                         <span class="badge badge-${product.quantity > 0 ? 'success' : 'danger'}">
-                            ${product.quantity}
+                            ${product.formatted_quantity || product.quantity} ${product.unit_display || 'unité(s)'}
                         </span>
                         <small class="text-muted">(Seuil: ${product.alert_threshold})</small>
                     </div>

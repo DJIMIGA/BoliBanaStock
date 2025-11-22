@@ -75,6 +75,8 @@ export interface Product {
   purchase_price: number;
   selling_price: number;
   quantity: number;
+  formatted_quantity?: string;
+  unit_display?: string;
   alert_threshold: number;
   category: Category;
   brand: Brand;

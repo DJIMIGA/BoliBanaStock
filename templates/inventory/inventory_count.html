@@ -33,7 +33,7 @@
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ product.name }}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ product.category.name }}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ product.brand.name }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ product.quantity }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ product.formatted_quantity }} {{ product.unit_display }}</td>
                                 <td class="px-4 py-3 whitespace-nowrap">
                                     <input type="number" 
                                            name="product_{{ product.id }}" 

@@ -38,6 +38,8 @@ interface ProductDetail {
   cug: string;
   description?: string;
   quantity: number;
+  formatted_quantity?: string;
+  unit_display?: string;
   alert_threshold: number;
   selling_price: number;
   purchase_price: number;
@@ -480,7 +482,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             <Ionicons name="cube-outline" size={18} color={theme.colors.neutral[600]} />
             <Text style={styles.label}>Quantité</Text>
           </View>
-          <Text style={styles.value}>{product?.quantity} unités</Text>
+          <Text style={styles.value}>{product?.formatted_quantity || product?.quantity} {product?.unit_display || 'unité(s)'}</Text>
         </View>
 
         <View style={[styles.rowBetween, { marginTop: 8 }]}> 
@@ -555,7 +557,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           <View style={styles.stockInfoItem}>
             <Ionicons name="cube-outline" size={24} color={theme.colors.primary[500]} />
             <Text style={styles.stockInfoLabel}>Stock actuel</Text>
-            <Text style={styles.stockInfoValue}>{product?.quantity} unités</Text>
+            <Text style={styles.stockInfoValue}>{product?.formatted_quantity || product?.quantity} {product?.unit_display || 'unité(s)'}</Text>
           </View>
           
           <View style={styles.stockInfoItem}>

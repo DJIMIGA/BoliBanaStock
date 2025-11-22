@@ -1,0 +1,94 @@
+{% load static %}
+
+<!-- Sidebar avec onglets à gauche -->
+<aside class="w-full lg:w-64 flex-shrink-0">
+    <div class="bg-white rounded-3xl shadow-lg border border-neutral-200 sticky top-6">
+        <div class="p-4">
+            <h2 class="text-lg font-bold text-neutral-900 mb-4 px-2">Navigation</h2>
+            <nav class="space-y-1">
+                <!-- Accueil -->
+                <a href="{% url 'home' %}" 
+                   class="flex items-center px-4 py-3 rounded-xl text-neutral-700 hover:bg-bolibana-50 hover:text-bolibana-600 transition-colors duration-200 group {% if request.path == '/' or request.path == '/home/' %}bg-bolibana-50 text-bolibana-600 border-l-4 border-bolibana-600{% endif %}">
+                    <i class="fas fa-home w-5 text-center mr-3 group-hover:scale-110 transition-transform duration-200"></i>
+                    <span class="font-medium">Accueil</span>
+                </a>
+                
+                {% if user.is_authenticated %}
+                <!-- Produits -->
+                <div class="pt-2">
+                    <a href="{% url 'inventory:product_list' %}" 
+                       class="flex items-center px-4 py-3 rounded-xl text-neutral-700 hover:bg-bolibana-50 hover:text-bolibana-600 transition-colors duration-200 group {% if 'product' in request.path %}bg-bolibana-50 text-bolibana-600 border-l-4 border-bolibana-600{% endif %}">
+                        <i class="fas fa-box w-5 text-center mr-3 group-hover:scale-110 transition-transform duration-200"></i>
+                        <span class="font-medium">Produits</span>
+                    </a>
+                    <div class="ml-8 mt-1 space-y-1">
+                        <a href="{% url 'inventory:product_create' %}" 
+                           class="flex items-center px-3 py-2 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50 hover:text-bolibana-600 transition-colors duration-200">
+                            <i class="fas fa-plus w-4 text-center mr-2 text-xs"></i>
+                            <span>Nouveau</span>
+                        </a>
+                        <a href="{% url 'inventory:quick_scan' %}" 
+                           class="flex items-center px-3 py-2 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50 hover:text-bolibana-600 transition-colors duration-200">
+                            <i class="fas fa-search w-4 text-center mr-2 text-xs"></i>
+                            <span>Scan Rapide</span>
+                        </a>
+                        <a href="{% url 'inventory:label_generator' %}" 
+                           class="flex items-center px-3 py-2 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50 hover:text-bolibana-600 transition-colors duration-200">
+                            <i class="fas fa-barcode w-4 text-center mr-2 text-xs"></i>
+                            <span>Étiquettes</span>
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Ventes -->
+                <a href="{% url 'sales:sale_list' %}" 
+                   class="flex items-center px-4 py-3 rounded-xl text-neutral-700 hover:bg-bolibana-50 hover:text-bolibana-600 transition-colors duration-200 group {% if 'sale' in request.path %}bg-bolibana-50 text-bolibana-600 border-l-4 border-bolibana-600{% endif %}">
+                    <i class="fas fa-cash-register w-5 text-center mr-3 group-hover:scale-110 transition-transform duration-200"></i>
+                    <span class="font-medium">Ventes</span>
+                </a>
+                
+                <!-- Transactions -->
+                <a href="{% url 'inventory:transaction_list' %}" 
+                   class="flex items-center px-4 py-3 rounded-xl text-neutral-700 hover:bg-bolibana-50 hover:text-bolibana-600 transition-colors duration-200 group {% if 'transaction' in request.path %}bg-bolibana-50 text-bolibana-600 border-l-4 border-bolibana-600{% endif %}">
+                    <i class="fas fa-exchange-alt w-5 text-center mr-3 group-hover:scale-110 transition-transform duration-200"></i>
+                    <span class="font-medium">Transactions</span>
+                </a>
+                
+                <!-- Commandes -->
+                <a href="{% url 'inventory:order_list' %}" 
+                   class="flex items-center px-4 py-3 rounded-xl text-neutral-700 hover:bg-bolibana-50 hover:text-bolibana-600 transition-colors duration-200 group {% if 'order' in request.path %}bg-bolibana-50 text-bolibana-600 border-l-4 border-bolibana-600{% endif %}">
+                    <i class="fas fa-shopping-cart w-5 text-center mr-3 group-hover:scale-110 transition-transform duration-200"></i>
+                    <span class="font-medium">Commandes</span>
+                </a>
+                
+                <!-- Cadencier -->
+                <a href="{% url 'inventory:cadencier_view' %}" 
+                   class="flex items-center px-4 py-3 rounded-xl text-neutral-700 hover:bg-bolibana-50 hover:text-bolibana-600 transition-colors duration-200 group {% if 'cadencier' in request.path %}bg-bolibana-50 text-bolibana-600 border-l-4 border-bolibana-600{% endif %}">
+                    <i class="fas fa-calendar-alt w-5 text-center mr-3 group-hover:scale-110 transition-transform duration-200"></i>
+                    <span class="font-medium">Cadencier</span>
+                </a>
+                
+                <!-- Séparateur -->
+                <div class="border-t border-neutral-200 my-2"></div>
+                
+                <!-- Configuration -->
+                <a href="{% url 'core:configuration' %}" 
+                   class="flex items-center px-4 py-3 rounded-xl text-neutral-700 hover:bg-bolibana-50 hover:text-bolibana-600 transition-colors duration-200 group {% if 'configuration' in request.path %}bg-bolibana-50 text-bolibana-600 border-l-4 border-bolibana-600{% endif %}">
+                    <i class="fas fa-cog w-5 text-center mr-3 group-hover:scale-110 transition-transform duration-200"></i>
+                    <span class="font-medium">Configuration</span>
+                </a>
+                
+                {% if user.is_superuser or user.is_site_admin %}
+                <!-- Gestion utilisateurs -->
+                <a href="{% url 'core:user_list' %}" 
+                   class="flex items-center px-4 py-3 rounded-xl text-neutral-700 hover:bg-bolibana-50 hover:text-bolibana-600 transition-colors duration-200 group {% if 'user' in request.path %}bg-bolibana-50 text-bolibana-600 border-l-4 border-bolibana-600{% endif %}">
+                    <i class="fas fa-users w-5 text-center mr-3 group-hover:scale-110 transition-transform duration-200"></i>
+                    <span class="font-medium">Utilisateurs</span>
+                </a>
+                {% endif %}
+                {% endif %}
+            </nav>
+        </div>
+    </div>
+</aside>
+

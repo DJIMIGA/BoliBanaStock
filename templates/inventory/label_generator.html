@@ -107,7 +107,7 @@
             <h5>{{ product.name }}</h5>
             <p><strong>CUG:</strong> {{ product.cug }}</p>
             <p><strong>Prix:</strong> {{ product.selling_price|floatformat:0 }} FCFA</p>
-            <p><strong>Stock:</strong> {{ product.quantity }}</p>
+            <p><strong>Stock:</strong> {{ product.formatted_quantity }} {{ product.unit_display }}</p>
             {% if product.category %}
             <p><strong>Catégorie:</strong> {{ product.category.name }}</p>
             {% endif %}

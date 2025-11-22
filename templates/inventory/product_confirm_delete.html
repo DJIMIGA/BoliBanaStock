@@ -25,7 +25,7 @@
                     <li>Marque : {{ product.brand.name|default:"Non spécifiée" }}</li>
                     <li>Prix d'achat : {{ product.formatted_purchase_price }}</li>
                     <li>Prix de vente : {{ product.formatted_selling_price }}</li>
-                    <li>Quantité en stock : {{ product.quantity }}</li>
+                    <li>Quantité en stock : {{ product.formatted_quantity }} {{ product.unit_display }}</li>
                     <li>Seuil d'alerte : {{ product.alert_threshold }}</li>
                     <li>Historique des transactions associées</li>
                     <li>Codes-barres associés</li>

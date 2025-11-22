@@ -199,17 +199,28 @@ class ProductSerializer(serializers.ModelSerializer):
                     return None
         return None
     
+    formatted_quantity = serializers.SerializerMethodField()
+    unit_display = serializers.SerializerMethodField()
+    
+    def get_formatted_quantity(self, obj):
+        """Retourne la quantité formatée selon le type de vente"""
+        return obj.formatted_quantity
+    
+    def get_unit_display(self, obj):
+        """Retourne l'unité d'affichage"""
+        return obj.unit_display
+    
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'slug', 'cug', 'generated_ean', 'description', 
             'sale_unit_type', 'weight_unit',
             'purchase_price', 'selling_price',
-            'quantity', 'alert_threshold', 'stock_updated_at', 'is_active', 'created_at', 'updated_at',
+            'quantity', 'formatted_quantity', 'alert_threshold', 'stock_updated_at', 'is_active', 'created_at', 'updated_at',
             'category', 'category_name', 'brand', 'brand_name', 'barcodes', 'image_url', 'image',
-            'category_id', 'brand_id'  # ✅ Retirer 'barcode' direct, garder 'barcodes' relation
+            'category_id', 'brand_id', 'unit_display'  # ✅ Retirer 'barcode' direct, garder 'barcodes' relation
         ]
-        read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'stock_updated_at']
+        read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'stock_updated_at', 'formatted_quantity', 'unit_display']
 
     def validate(self, data):
         """Valide les données du produit"""
@@ -304,6 +315,16 @@ class ProductListSerializer(serializers.ModelSerializer):
     primary_barcode = serializers.SerializerMethodField()  # ✅ Champ calculé pour le barcode principal
     has_backorder = serializers.SerializerMethodField()  # ✅ Nouveau: indique si en backorder
     backorder_quantity = serializers.SerializerMethodField()  # ✅ Nouveau: quantité en backorder
+    formatted_quantity = serializers.SerializerMethodField()
+    unit_display = serializers.SerializerMethodField()
+    
+    def get_formatted_quantity(self, obj):
+        """Retourne la quantité formatée selon le type de vente"""
+        return obj.formatted_quantity
+    
+    def get_unit_display(self, obj):
+        """Retourne l'unité d'affichage"""
+        return obj.unit_display
     
     def get_stock_status(self, obj):
         """Calcule le statut du stock basé sur la quantité et le seuil d'alerte"""
@@ -423,7 +444,7 @@ class ProductListSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'cug', 'generated_ean', 'purchase_price', 'selling_price', 'quantity',
-            'alert_threshold', 'category_name', 'brand_name', 'is_active', 'stock_status', 'margin_rate', 'image_url',
+            'formatted_quantity', 'unit_display', 'alert_threshold', 'category_name', 'brand_name', 'is_active', 'stock_status', 'margin_rate', 'image_url',
             'primary_barcode', 'has_backorder', 'backorder_quantity'  # ✅ Nouveaux champs de gestion du stock
         ]
 

@@ -83,7 +83,7 @@
             {% for item in items %}
             <tr>
                 <td>{{ item.product.name }}</td>
-                <td>{{ item.quantity }}</td>
+                <td>{{ item.formatted_quantity }} {{ item.product.unit_display }}</td>
                 <td>{{ item.unit_price|format_currency }}</td>
                 <td>{{ item.amount|format_currency }}</td>
             </tr>
