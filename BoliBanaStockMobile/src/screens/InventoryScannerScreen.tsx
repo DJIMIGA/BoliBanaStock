@@ -67,8 +67,36 @@ const InventoryScannerScreen: React.FC = () => {
       
       if (product) {
         // Créer un objet produit pour la liste d'inventaire
-        const saleUnitType = (product as any).sale_unit_type || 'quantity';
+        // Utiliser sale_unit_type du produit, sinon déduire de unit_display si présent
+        let saleUnitType = (product as any).sale_unit_type;
+        if (!saleUnitType && (product as any).unit_display) {
+          const unitDisplay = (product as any).unit_display;
+          if (unitDisplay === 'kg' || unitDisplay === 'g') {
+            saleUnitType = 'weight';
+          } else {
+            saleUnitType = 'quantity';
+          }
+        }
+        saleUnitType = saleUnitType || 'quantity';
+        
+        // Déterminer l'unité de poids si nécessaire
+        let weightUnit = (product as any).weight_unit;
+        if (!weightUnit && saleUnitType === 'weight' && (product as any).unit_display) {
+          weightUnit = (product as any).unit_display === 'kg' ? 'kg' : 
+                       (product as any).unit_display === 'g' ? 'g' : 'kg';
+        }
+        
         const initialQuantity = saleUnitType === 'weight' ? 0.001 : 1;
+        
+        console.log('📦 [INVENTAIRE] Produit scanné:', {
+          id: product.id,
+          name: product.name,
+          sale_unit_type: saleUnitType,
+          weight_unit: weightUnit,
+          unit_display: (product as any).unit_display,
+          initialQuantity
+        });
+        
         const inventoryProduct = {
           productId: product.id.toString(),
           productName: product.name,
@@ -81,8 +109,15 @@ const InventoryScannerScreen: React.FC = () => {
           category: product.category_name || 'Non catégorisé',
           brand: product.brand_name || 'Non définie',
           sale_unit_type: saleUnitType,
-          weight_unit: (product as any).weight_unit || undefined
+          weight_unit: weightUnit || undefined
         };
+
+        console.log('✅ [INVENTAIRE] Ajout du produit à la liste:', {
+          name: inventoryProduct.productName,
+          sale_unit_type: inventoryProduct.sale_unit_type,
+          weight_unit: inventoryProduct.weight_unit,
+          quantity: inventoryProduct.quantity
+        });
 
         addToScanList(barcode, inventoryProduct);
         

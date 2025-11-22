@@ -113,6 +113,47 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
     }
   }, [showQuantityModal, selectedItem]);
 
+  // Référence pour suivre les items déjà traités
+  const processedItemsRef = useRef<Set<string>>(new Set());
+
+  // Détecter quand un produit au poids est ajouté et ouvrir automatiquement le modal
+  useEffect(() => {
+    if (scanList.length > 0 && !showQuantityModal) {
+      // Trouver le dernier produit ajouté qui est au poids et qui n'a pas encore été traité
+      const lastItem = scanList[scanList.length - 1];
+      console.log('🔍 [SCANNER] Vérification dernier item:', {
+        id: lastItem?.id,
+        name: lastItem?.productName,
+        sale_unit_type: lastItem?.sale_unit_type,
+        weight_unit: lastItem?.weight_unit,
+        quantity: lastItem?.quantity,
+        alreadyProcessed: lastItem ? processedItemsRef.current.has(lastItem.id) : false,
+        showQuantityModal
+      });
+      
+      if (lastItem && 
+          lastItem.sale_unit_type === 'weight' && 
+          !processedItemsRef.current.has(lastItem.id) &&
+          lastItem.quantity <= 0.001) { // Seulement si la quantité est la valeur initiale
+        console.log('✅ [SCANNER] Produit au poids détecté, ouverture du modal:', {
+          id: lastItem.id,
+          name: lastItem.productName,
+          weight_unit: lastItem.weight_unit,
+          quantity: lastItem.quantity
+        });
+        // Marquer cet item comme traité
+        processedItemsRef.current.add(lastItem.id);
+        // Attendre un court délai pour s'assurer que l'item est bien dans la liste
+        const timer = setTimeout(() => {
+          console.log('📝 [SCANNER] Ouverture du modal de quantité pour:', lastItem.productName);
+          setSelectedItem(lastItem);
+          setShowQuantityModal(true);
+        }, 300);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [scanList, showQuantityModal]);
+
   const getCameraPermissions = async () => {
     try {
       const { status } = await Camera.requestCameraPermissionsAsync();
@@ -303,7 +344,10 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
             <View style={styles.modalButtons}>
               <TouchableOpacity 
                 style={styles.modalButtonCancel}
-                onPress={() => setShowQuantityModal(false)}
+                onPress={() => {
+                  setShowQuantityModal(false);
+                  setSelectedItem(null);
+                }}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
@@ -315,11 +359,24 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
                      const newQuantity = selectedItem.sale_unit_type === 'weight' 
                        ? parseFloat(tempQuantity) 
                        : parseInt(tempQuantity);
+                     
+                     console.log('📝 [SCANNER] Mise à jour de la quantité:', {
+                       itemId: selectedItem.id,
+                       productName: selectedItem.productName,
+                       sale_unit_type: selectedItem.sale_unit_type,
+                       weight_unit: selectedItem.weight_unit,
+                       oldQuantity: selectedItem.quantity,
+                       newQuantity,
+                       tempQuantity
+                     });
+                     
                      if (newQuantity > 0) {
                        onUpdateQuantity(selectedItem.id, newQuantity);
+                       console.log('✅ [SCANNER] Quantité mise à jour avec succès');
                        setShowQuantityModal(false);
                        setSelectedItem(null);
                      } else {
+                       console.log('❌ [SCANNER] Erreur: quantité invalide', newQuantity);
                        Alert.alert('Erreur', selectedItem.sale_unit_type === 'weight' 
                          ? 'Le poids doit être supérieur à 0' 
                          : 'La quantité doit être supérieure à 0');

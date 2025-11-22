@@ -149,6 +149,8 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
         supplier: productData.supplier,
         site: productData.site,
         notes: productData.notes,
+        sale_unit_type: productData.sale_unit_type,
+        weight_unit: productData.weight_unit,
       };
       console.log('➕ SCANNER - Nouveau produit ajouté:', {
         barcode,

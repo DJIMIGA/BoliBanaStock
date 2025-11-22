@@ -43,6 +43,8 @@ interface Product {
   selling_price: number;
   category_name: string;
   brand_name: string;
+  sale_unit_type?: 'quantity' | 'weight';
+  weight_unit?: 'kg' | 'g';
 }
 
 export default function CashRegisterScreen({ navigation }: any) {
@@ -253,19 +255,80 @@ export default function CashRegisterScreen({ navigation }: any) {
     };
   }, [searchQuery, loadProducts]);
 
+  const [weightModalVisible, setWeightModalVisible] = useState(false);
+  const [selectedWeightProduct, setSelectedWeightProduct] = useState<any>(null);
+  const [weightInput, setWeightInput] = useState('');
+
   const handleProductSelect = (product: Product) => {
     const barcode = product.cug || String(product.id);
     const unitPrice = typeof product.selling_price === 'number' ? product.selling_price : parseFloat(String(product.selling_price || 0));
-    const saleUnitType = (product as any).sale_unit_type || 'quantity';
-    const initialQuantity = saleUnitType === 'weight' ? 0.001 : 1;
+    // Utiliser sale_unit_type du produit, sinon déduire de unit_display si présent
+    let saleUnitType = product.sale_unit_type;
+    if (!saleUnitType && (product as any).unit_display) {
+      // Si unit_display est "kg" ou "g", c'est un produit au poids
+      const unitDisplay = (product as any).unit_display;
+      if (unitDisplay === 'kg' || unitDisplay === 'g') {
+        saleUnitType = 'weight';
+      } else {
+        saleUnitType = 'quantity';
+      }
+    }
+    saleUnitType = saleUnitType || 'quantity';
+    
+    console.log('🛒 [CAISSE] Produit sélectionné depuis la recherche:', {
+      id: product.id,
+      name: product.name,
+      sale_unit_type: saleUnitType,
+      weight_unit: product.weight_unit || (saleUnitType === 'weight' ? ((product as any).unit_display || 'kg') : undefined),
+      unit_display: (product as any).unit_display,
+      unitPrice
+    });
+    
+    // Si c'est un produit au poids, ouvrir le modal de saisie
+    if (saleUnitType === 'weight') {
+      // Déterminer l'unité de poids
+      let weightUnit = product.weight_unit;
+      if (!weightUnit && (product as any).unit_display) {
+        weightUnit = (product as any).unit_display === 'kg' ? 'kg' : 
+                     (product as any).unit_display === 'g' ? 'g' : 'kg';
+      }
+      weightUnit = weightUnit || 'kg';
+      
+      console.log('⚖️ [CAISSE] Produit au poids détecté, ouverture du modal de poids:', {
+        name: product.name,
+        weight_unit: weightUnit,
+        unit_display: (product as any).unit_display
+      });
+      
+      setSelectedWeightProduct({
+        id: product.id.toString(),
+        productId: product.id.toString(),
+        barcode: barcode,
+        productName: product.name,
+        unitPrice: unitPrice,
+        stock: product.quantity,
+        category: product.category_name || 'Non catégorisé',
+        brand: product.brand_name || 'Non définie',
+        sale_unit_type: saleUnitType,
+        weight_unit: weightUnit,
+        cug: product.cug
+      });
+      setWeightInput('0.001');
+      setWeightModalVisible(true);
+      setSearchQuery('');
+      setProducts([]);
+      return;
+    }
+    
+    // Pour les produits en quantité, ajouter directement
     const scannedProduct = {
       id: product.id.toString(),
       productId: product.id.toString(),
       barcode: barcode,
       productName: product.name,
-      quantity: initialQuantity,
+      quantity: 1,
       unitPrice: unitPrice,
-      totalPrice: unitPrice * initialQuantity,
+      totalPrice: unitPrice,
       scannedAt: new Date(),
       customer: 'Client en cours',
       notes: `Sélectionné depuis la recherche - CUG: ${product.cug}`,
@@ -273,11 +336,67 @@ export default function CashRegisterScreen({ navigation }: any) {
       category: product.category_name || 'Non catégorisé',
       brand: product.brand_name || 'Non définie',
       sale_unit_type: saleUnitType,
-      weight_unit: (product as any).weight_unit || undefined
+      weight_unit: undefined
     };
     scanner.addToScanList(barcode, scannedProduct);
     setSearchQuery('');
     setProducts([]);
+  };
+
+  const handleConfirmWeight = () => {
+    console.log('⚖️ [CAISSE] Confirmation du poids:', {
+      product: selectedWeightProduct?.productName,
+      weightInput,
+      selectedWeightProduct: selectedWeightProduct ? {
+        id: selectedWeightProduct.id,
+        weight_unit: selectedWeightProduct.weight_unit,
+        unitPrice: selectedWeightProduct.unitPrice
+      } : null
+    });
+    
+    if (!selectedWeightProduct || !weightInput) {
+      console.log('❌ [CAISSE] Erreur: poids non saisi');
+      Alert.alert('Erreur', 'Veuillez saisir un poids');
+      return;
+    }
+
+    const weight = parseFloat(weightInput);
+    if (isNaN(weight) || weight <= 0) {
+      console.log('❌ [CAISSE] Erreur: poids invalide', weight);
+      Alert.alert('Erreur', 'Le poids doit être supérieur à 0');
+      return;
+    }
+
+    const scannedProduct = {
+      id: selectedWeightProduct.id,
+      productId: selectedWeightProduct.productId,
+      barcode: selectedWeightProduct.barcode,
+      productName: selectedWeightProduct.productName,
+      quantity: weight,
+      unitPrice: selectedWeightProduct.unitPrice,
+      totalPrice: selectedWeightProduct.unitPrice * weight,
+      scannedAt: new Date(),
+      customer: 'Client en cours',
+      notes: `Sélectionné depuis la recherche - CUG: ${selectedWeightProduct.cug}`,
+      stock: selectedWeightProduct.stock,
+      category: selectedWeightProduct.category,
+      brand: selectedWeightProduct.brand,
+      sale_unit_type: selectedWeightProduct.sale_unit_type,
+      weight_unit: selectedWeightProduct.weight_unit
+    };
+    
+    console.log('✅ [CAISSE] Ajout du produit au poids au panier:', {
+      name: scannedProduct.productName,
+      weight,
+      weight_unit: scannedProduct.weight_unit,
+      unitPrice: scannedProduct.unitPrice,
+      totalPrice: scannedProduct.totalPrice
+    });
+    
+    scanner.addToScanList(selectedWeightProduct.barcode, scannedProduct);
+    setWeightModalVisible(false);
+    setSelectedWeightProduct(null);
+    setWeightInput('');
   };
 
   const handleScan = async (rawBarcode: string) => {
@@ -371,23 +490,61 @@ export default function CashRegisterScreen({ navigation }: any) {
         lastScanByProductIdRef.current[productId] = Date.now();
         
         // Créer un objet produit pour la liste de scan
+        // Utiliser sale_unit_type du produit, sinon déduire de unit_display si présent
+        let saleUnitType = (product as any).sale_unit_type;
+        if (!saleUnitType && (product as any).unit_display) {
+          const unitDisplay = (product as any).unit_display;
+          if (unitDisplay === 'kg' || unitDisplay === 'g') {
+            saleUnitType = 'weight';
+          } else {
+            saleUnitType = 'quantity';
+          }
+        }
+        saleUnitType = saleUnitType || 'quantity';
+        
+        // Déterminer l'unité de poids si nécessaire
+        let weightUnit = (product as any).weight_unit;
+        if (!weightUnit && saleUnitType === 'weight' && (product as any).unit_display) {
+          weightUnit = (product as any).unit_display === 'kg' ? 'kg' : 
+                       (product as any).unit_display === 'g' ? 'g' : 'kg';
+        }
+        
+        const initialQuantity = saleUnitType === 'weight' ? 0.001 : 1;
+        
+        console.log('📦 [CAISSE] Produit scanné:', {
+          id: product.id,
+          name: product.name,
+          sale_unit_type: saleUnitType,
+          weight_unit: weightUnit,
+          unit_display: (product as any).unit_display,
+          initialQuantity,
+          unitPrice: parseFloat(product.selling_price)
+        });
+        
         const scannedProduct = {
           id: product.id.toString(),
           productId: product.id.toString(),
           barcode: barcode,
           productName: product.name,
-          quantity: (product as any).sale_unit_type === 'weight' ? 0.001 : 1, // Pour les produits au poids, initialiser à 0.001
+          quantity: initialQuantity, // Pour les produits au poids, initialiser à 0.001
           unitPrice: parseFloat(product.selling_price),
-          totalPrice: parseFloat(product.selling_price) * ((product as any).sale_unit_type === 'weight' ? 0.001 : 1),
+          totalPrice: parseFloat(product.selling_price) * initialQuantity,
           scannedAt: new Date(),
           customer: 'Client en cours',
           notes: `Scanné à la caisse - CUG: ${product.cug}`,
           stock: product.quantity,
           category: product.category_name || 'Non catégorisé',
           brand: product.brand_name || 'Non définie',
-          sale_unit_type: (product as any).sale_unit_type || 'quantity',
-          weight_unit: (product as any).weight_unit || undefined
+          sale_unit_type: saleUnitType,
+          weight_unit: weightUnit || undefined
         };
+        
+        console.log('✅ [CAISSE] Ajout du produit scanné à la liste:', {
+          name: scannedProduct.productName,
+          sale_unit_type: scannedProduct.sale_unit_type,
+          weight_unit: scannedProduct.weight_unit,
+          quantity: scannedProduct.quantity
+        });
         
         // Fusion directe locale via le hook (déduplication forte côté hook déjà active)
         scanner.addToScanList(barcode, scannedProduct);
@@ -1419,6 +1576,58 @@ export default function CashRegisterScreen({ navigation }: any) {
         showQuantityInput={true}
       />
 
+      {/* Modal de saisie de poids pour les produits au poids depuis la recherche */}
+      <Modal
+        visible={weightModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setWeightModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Saisir le poids</Text>
+            <Text style={styles.modalProductName}>
+              {selectedWeightProduct?.productName}
+            </Text>
+            
+            <View style={styles.quantityInputContainer}>
+              <Text style={styles.quantityLabel}>
+                Poids ({selectedWeightProduct?.weight_unit || 'kg'}):
+              </Text>
+              <TextInput
+                style={styles.quantityInput}
+                value={weightInput}
+                onChangeText={(text) => setWeightInput(text.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                placeholder="0.000"
+                placeholderTextColor="#999"
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={styles.modalButtonCancel}
+                onPress={() => {
+                  setWeightModalVisible(false);
+                  setSelectedWeightProduct(null);
+                  setWeightInput('');
+                }}
+              >
+                <Text style={styles.modalButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.modalButtonSave}
+                onPress={handleConfirmWeight}
+              >
+                <Text style={styles.modalButtonText}>Ajouter</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modales de paiement */}
       <PaymentMethodModal
         visible={paymentModalVisible}
@@ -2185,6 +2394,52 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 100,
     alignItems: 'center',
+  },
+  modalProductName: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+    color: theme.colors.text.secondary,
+    lineHeight: 22,
+  },
+  quantityInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  quantityLabel: {
+    fontSize: 16,
+    marginRight: 12,
+    color: theme.colors.text.primary,
+    fontWeight: '500',
+  },
+  quantityInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[300],
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    textAlign: 'center',
+    color: theme.colors.text.primary,
+    backgroundColor: theme.colors.background.secondary,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButtonSave: {
+    flex: 1,
+    backgroundColor: theme.colors.primary[500],
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
   },
   modalButtonCancel: {
     backgroundColor: theme.colors.neutral[100],

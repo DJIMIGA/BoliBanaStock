@@ -444,7 +444,7 @@ class ProductListSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'cug', 'generated_ean', 'purchase_price', 'selling_price', 'quantity',
-            'formatted_quantity', 'unit_display', 'alert_threshold', 'category_name', 'brand_name', 'is_active', 'stock_status', 'margin_rate', 'image_url',
+            'formatted_quantity', 'unit_display', 'sale_unit_type', 'weight_unit', 'alert_threshold', 'category_name', 'brand_name', 'is_active', 'stock_status', 'margin_rate', 'image_url',
             'primary_barcode', 'has_backorder', 'backorder_quantity'  # ✅ Nouveaux champs de gestion du stock
         ]
 

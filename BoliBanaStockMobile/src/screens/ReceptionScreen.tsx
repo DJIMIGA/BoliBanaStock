@@ -410,11 +410,34 @@ export default function ReceptionScreen({ navigation }: any) {
             // Ajouter ou incrémenter directement dans la liste scannée
             const prod = full as Product;
             const price = Number((prod as any).purchase_price || 0) || 0;
-            const saleUnitType = prod.sale_unit_type || 'quantity';
+            
+            // Utiliser sale_unit_type du produit, sinon déduire de unit_display si présent
+            let saleUnitType = prod.sale_unit_type;
+            if (!saleUnitType && (prod as any).unit_display) {
+              const unitDisplay = (prod as any).unit_display;
+              if (unitDisplay === 'kg' || unitDisplay === 'g') {
+                saleUnitType = 'weight';
+              } else {
+                saleUnitType = 'quantity';
+              }
+            }
+            saleUnitType = saleUnitType || 'quantity';
+            
             // Pour les produits au poids, permettre les décimales, sinon entier
             const inc = saleUnitType === 'weight' 
               ? Math.max(0.001, parseFloat((scanQuantity || '0.001').replace(/[^0-9.]/g, '')) || 0.001)
               : Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
+            
+            console.log('📦 [RECEPTION] Produit scanné:', {
+              id: prod.id,
+              name: prod.name,
+              sale_unit_type: saleUnitType,
+              weight_unit: prod.weight_unit,
+              unit_display: (prod as any).unit_display,
+              quantity: inc,
+              price
+            });
+            
             const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             setReceptionItems(prev => ([
               {
@@ -472,7 +495,37 @@ export default function ReceptionScreen({ navigation }: any) {
         style={styles.searchResultRow}
         onPress={() => {
           const price = Number((item as any).purchase_price || 0) || 0;
-          const inc = 1;
+          // Utiliser sale_unit_type du produit, sinon déduire de unit_display si présent
+          let saleUnitType = item.sale_unit_type;
+          if (!saleUnitType && (item as any).unit_display) {
+            const unitDisplay = (item as any).unit_display;
+            if (unitDisplay === 'kg' || unitDisplay === 'g') {
+              saleUnitType = 'weight';
+            } else {
+              saleUnitType = 'quantity';
+            }
+          }
+          saleUnitType = saleUnitType || 'quantity';
+          
+          // Déterminer l'unité de poids si nécessaire
+          let weightUnit = item.weight_unit;
+          if (!weightUnit && saleUnitType === 'weight' && (item as any).unit_display) {
+            weightUnit = (item as any).unit_display === 'kg' ? 'kg' : 
+                         (item as any).unit_display === 'g' ? 'g' : 'kg';
+          }
+          
+          const inc = saleUnitType === 'weight' ? 0.001 : 1;
+          
+          console.log('📦 [RECEPTION] Produit sélectionné depuis la recherche:', {
+            id: item.id,
+            name: item.name,
+            sale_unit_type: saleUnitType,
+            weight_unit: weightUnit,
+            unit_display: (item as any).unit_display,
+            initialQuantity: inc,
+            price
+          });
+          
           const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
           setReceptionItems(prev => ([
             {
