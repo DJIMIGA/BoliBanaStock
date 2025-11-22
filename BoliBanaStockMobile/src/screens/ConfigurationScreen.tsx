@@ -10,7 +10,10 @@ import {
   ActivityIndicator,
   Image,
   Switch,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -18,6 +21,7 @@ import { configurationService, loyaltyService } from '../services/api';
 import { useUserPermissions } from '../hooks/useUserPermissions';
 import { updateCache } from '../hooks';
 import theme from '../utils/theme';
+import { formatAmount } from '../utils/currencyFormatter';
 
 interface Configuration {
   id: number;
@@ -38,6 +42,7 @@ interface LoyaltyProgram {
   id: number;
   site_configuration: number;
   site_name: string;
+  currency?: string;
   points_per_amount: number;
   amount_for_points: number;
   amount_per_point: number;
@@ -256,7 +261,17 @@ const ConfigurationScreen: React.FC = () => {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView 
+          style={styles.scrollView} 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
       <View style={styles.header}>
         <View style={styles.headerIconContainer}>
           <Ionicons name="settings" size={24} color={theme.colors.primary[500]} />
@@ -277,9 +292,11 @@ const ConfigurationScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Informations de base */}
+          {/* Configuration générale */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Informations de base</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Configuration générale</Text>
+            </View>
             
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Nom de l'entreprise</Text>
@@ -328,12 +345,7 @@ const ConfigurationScreen: React.FC = () => {
                 keyboardType="email-address"
               />
             </View>
-          </View>
 
-          {/* Paramètres commerciaux */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Paramètres commerciaux</Text>
-            
             <View style={styles.row}>
               <View style={[styles.inputGroup, styles.halfWidth]}>
                 <Text style={styles.label}>Devise</Text>
@@ -411,112 +423,46 @@ const ConfigurationScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Actions */}
-          <View style={styles.actions}>
-            {editing ? (
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonSecondary]}
-                  onPress={() => {
-                    setFormData(configuration);
-                    setEditing(false);
-                  }}
-                  disabled={saving}
-                >
-                  <Text style={styles.buttonTextSecondary}>Annuler</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonPrimary]}
-                  onPress={handleSave}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <Text style={styles.buttonTextPrimary}>Sauvegarder</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonSecondary]}
-                  onPress={handleReset}
-                  disabled={saving}
-                >
-                  <Text style={styles.buttonTextSecondary}>Réinitialiser</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonPrimary]}
-                  onPress={() => setEditing(true)}
-                  disabled={saving}
-                >
-                  <Text style={styles.buttonTextPrimary}>Modifier</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
           {/* Programme de fidélité */}
-          <View style={styles.section}>
+          <View style={[styles.section, styles.loyaltySection]}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionHeaderLeft}>
-                <Ionicons name="star" size={24} color={theme.colors.primary[500]} />
-                <Text style={styles.sectionTitle}>Programme de fidélité</Text>
+                <Ionicons name="star" size={20} color={theme.colors.primary[500]} />
+                <Text style={styles.sectionTitle}>Fidélité</Text>
               </View>
-              {!loyaltyEditing && (
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => setLoyaltyEditing(true)}
-                >
-                  <Ionicons name="create-outline" size={20} color={theme.colors.primary[500]} />
-                </TouchableOpacity>
-              )}
             </View>
 
             {loyaltyLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={theme.colors.primary[500]} />
-                <Text style={styles.loadingText}>Chargement...</Text>
-              </View>
+              <ActivityIndicator size="small" color={theme.colors.primary[500]} />
             ) : (
               <>
-                {/* Statut du programme */}
-                <View style={styles.inputGroup}>
-                  <View style={styles.switchRow}>
-                    <View style={styles.switchLabelContainer}>
-                      <Text style={styles.label}>Programme actif</Text>
-                      <Text style={styles.helpText}>
-                        Active ou désactive le programme de fidélité
-                      </Text>
-                    </View>
-                    <Switch
-                      value={loyaltyFormData.is_active}
-                      onValueChange={(value) =>
-                        setLoyaltyFormData(prev => ({ ...prev, is_active: value }))
-                      }
-                      disabled={!loyaltyEditing}
-                      trackColor={{
-                        false: theme.colors.neutral[300],
-                        true: theme.colors.primary[200],
-                      }}
-                      thumbColor={loyaltyFormData.is_active ? theme.colors.primary[500] : theme.colors.neutral[400]}
-                    />
-                  </View>
+                {/* Statut du programme - Compact */}
+                <View style={styles.switchRowCompact}>
+                  <Text style={styles.labelCompact}>Programme actif</Text>
+                  <Switch
+                    value={loyaltyFormData.is_active}
+                    onValueChange={(value) =>
+                      setLoyaltyFormData(prev => ({ ...prev, is_active: value }))
+                    }
+                    disabled={!loyaltyEditing}
+                    trackColor={{
+                      false: theme.colors.neutral[300],
+                      true: theme.colors.primary[200],
+                    }}
+                    thumbColor={loyaltyFormData.is_active ? theme.colors.primary[500] : theme.colors.neutral[400]}
+                  />
                 </View>
 
-                {/* Configuration des points gagnés */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Configuration des points gagnés</Text>
-                  <Text style={styles.helpText}>
-                    Définissez combien de points sont gagnés pour un montant dépensé
-                  </Text>
-                  
-                  <View style={styles.loyaltyConfigRow}>
-                    <View style={styles.loyaltyConfigInput}>
-                      <Text style={styles.loyaltyConfigLabel}>Points</Text>
+                {/* Séparateur */}
+                <View style={styles.loyaltySeparator} />
+
+                {/* Configuration compacte */}
+                <View style={styles.loyaltyCompactGrid}>
+                  <View style={styles.loyaltyCompactItem}>
+                    <Text style={styles.loyaltyCompactLabel}>Points gagnés</Text>
+                    <View style={styles.loyaltyInlineRow}>
                       <TextInput
-                        style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
+                        style={[styles.inputCompact, !loyaltyEditing && styles.inputDisabled]}
                         value={Math.round(parseFloat(loyaltyFormData.points_per_amount) || 1).toString()}
                         onChangeText={(text) =>
                           setLoyaltyFormData(prev => ({ ...prev, points_per_amount: text.replace(/[^0-9]/g, '') }))
@@ -525,45 +471,35 @@ const ConfigurationScreen: React.FC = () => {
                         placeholder="1"
                         keyboardType="numeric"
                       />
-                    </View>
-                    
-                    <Text style={styles.loyaltyConfigEquals}>pour</Text>
-                    
-                    <View style={styles.loyaltyConfigInput}>
-                      <Text style={styles.loyaltyConfigLabel}>dépensés</Text>
-                      <TextInput
-                        style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
-                        value={loyaltyFormData.amount_for_points}
-                        onChangeText={(text) =>
-                          setLoyaltyFormData(prev => ({ ...prev, amount_for_points: text }))
-                        }
-                        editable={loyaltyEditing}
-                        placeholder="1000"
-                        keyboardType="numeric"
-                      />
+                      <Text style={styles.loyaltyInlineText}>pt pour</Text>
+                      {loyaltyEditing ? (
+                        <TextInput
+                          style={[styles.inputCompact, !loyaltyEditing && styles.inputDisabled]}
+                          value={loyaltyFormData.amount_for_points}
+                          onChangeText={(text) =>
+                            setLoyaltyFormData(prev => ({ ...prev, amount_for_points: text.replace(/[^0-9.,]/g, '').replace(',', '.') }))
+                          }
+                          editable={loyaltyEditing}
+                          placeholder="1000"
+                          keyboardType="numeric"
+                        />
+                      ) : (
+                        <>
+                          <Text style={styles.loyaltyFormattedAmount}>
+                            {formatAmount(parseFloat(loyaltyFormData.amount_for_points) || 0, configuration?.devise || 'FCFA')}
+                          </Text>
+                          <Text style={styles.loyaltyCurrencyText}>{configuration?.devise || 'FCFA'}</Text>
+                        </>
+                      )}
                     </View>
                   </View>
-                  
-                  <View style={styles.exampleBox}>
-                    <Ionicons name="information-circle" size={16} color={theme.colors.primary[500]} />
-                    <Text style={styles.exampleText}>
-                      Exemple: {Math.round(parseFloat(loyaltyFormData.points_per_amount) || 1)} point(s) pour {Math.round(parseFloat(loyaltyFormData.amount_for_points) || 1000)} dépensés
-                    </Text>
-                  </View>
-                </View>
 
-                {/* Configuration de la valeur des points */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Valeur d'un point</Text>
-                  <Text style={styles.helpText}>
-                    Définissez la valeur d'un point de fidélité
-                  </Text>
-                  
-                  <View style={styles.loyaltyConfigRow}>
-                    <View style={styles.loyaltyConfigInput}>
-                      <Text style={styles.loyaltyConfigLabel}>1 point =</Text>
+                  <View style={styles.loyaltyCompactItem}>
+                    <Text style={styles.loyaltyCompactLabel}>Valeur d'un point</Text>
+                    <View style={styles.loyaltyInlineRow}>
+                      <Text style={styles.loyaltyInlineText}>1 pt =</Text>
                       <TextInput
-                        style={[styles.input, !loyaltyEditing && styles.inputDisabled]}
+                        style={[styles.inputCompact, !loyaltyEditing && styles.inputDisabled]}
                         value={Math.round(parseFloat(loyaltyFormData.amount_per_point) || 100).toString()}
                         onChangeText={(text) =>
                           setLoyaltyFormData(prev => ({ ...prev, amount_per_point: text.replace(/[^0-9]/g, '') }))
@@ -572,67 +508,82 @@ const ConfigurationScreen: React.FC = () => {
                         placeholder="100"
                         keyboardType="numeric"
                       />
+                      <Text style={styles.loyaltyCurrencyText}>{configuration?.devise || 'FCFA'}</Text>
                     </View>
-                    <Text style={styles.loyaltyConfigEquals}>de réduction</Text>
-                  </View>
-                  
-                  <View style={styles.exampleBox}>
-                    <Ionicons name="information-circle" size={16} color={theme.colors.primary[500]} />
-                    <Text style={styles.exampleText}>
-                      Exemple: 1 point = {Math.round(parseFloat(loyaltyFormData.amount_per_point) || 100)} de réduction
-                    </Text>
                   </View>
                 </View>
 
-                {/* Actions pour la fidélité */}
-                {loyaltyEditing && (
-                  <View style={styles.buttonRow}>
-                    <TouchableOpacity
-                      style={[styles.button, styles.buttonSecondary]}
-                      onPress={() => {
-                        if (loyaltyProgram) {
-                          setLoyaltyFormData({
-                            points_per_amount: loyaltyProgram.points_per_amount?.toString() || '1',
-                            amount_for_points: loyaltyProgram.amount_for_points?.toString() || '1000',
-                            amount_per_point: loyaltyProgram.amount_per_point?.toString() || '100',
-                            is_active: loyaltyProgram.is_active ?? true,
-                          });
-                        }
-                        setLoyaltyEditing(false);
-                      }}
-                      disabled={saving}
-                    >
-                      <Text style={styles.buttonTextSecondary}>Annuler</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.button, styles.buttonPrimary]}
-                      onPress={handleSaveLoyaltyProgram}
-                      disabled={saving}
-                    >
-                      {saving ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Text style={styles.buttonTextPrimary}>Sauvegarder</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
               </>
             )}
           </View>
-
-          {/* Informations de version */}
-          <View style={styles.infoSection}>
-            <Text style={styles.infoText}>
-              Créé le: {new Date(configuration.created_at).toLocaleDateString()}
-            </Text>
-            <Text style={styles.infoText}>
-              Modifié le: {new Date(configuration.updated_at).toLocaleDateString()}
-            </Text>
-          </View>
         </View>
       )}
-    </ScrollView>
+        </ScrollView>
+        
+        {/* Actions communes - Collées en bas */}
+        <SafeAreaView edges={['bottom']} style={styles.commonActionsContainer}>
+        {editing ? (
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.button, styles.buttonSecondary]}
+              onPress={() => {
+                setFormData(configuration);
+                setEditing(false);
+                setLoyaltyEditing(false);
+                if (loyaltyProgram) {
+                  setLoyaltyFormData({
+                    points_per_amount: loyaltyProgram.points_per_amount?.toString() || '1',
+                    amount_for_points: loyaltyProgram.amount_for_points?.toString() || '1000',
+                    amount_per_point: loyaltyProgram.amount_per_point?.toString() || '100',
+                    is_active: loyaltyProgram.is_active ?? true,
+                  });
+                }
+              }}
+              disabled={saving}
+            >
+              <Text style={styles.buttonTextSecondary}>Annuler</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.buttonPrimary]}
+              onPress={async () => {
+                await handleSave();
+                if (loyaltyEditing) {
+                  await handleSaveLoyaltyProgram();
+                }
+              }}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.buttonTextPrimary}>Sauvegarder</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.button, styles.buttonSecondary]}
+              onPress={handleReset}
+              disabled={saving}
+            >
+              <Text style={styles.buttonTextSecondary}>Réinitialiser</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.buttonPrimary]}
+              onPress={() => {
+                setEditing(true);
+                setLoyaltyEditing(true);
+              }}
+              disabled={saving}
+            >
+              <Text style={styles.buttonTextPrimary}>Modifier</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        </SafeAreaView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
@@ -656,8 +607,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingHorizontal: 16,
+    paddingTop: 28,
+    paddingBottom: 16,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
@@ -679,22 +631,22 @@ const styles = StyleSheet.create({
     width: 40,
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 2,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666',
     fontWeight: '400',
   },
   content: {
-    padding: 20,
+    padding: 16,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   logo: {
     width: 100,
@@ -705,49 +657,75 @@ const styles = StyleSheet.create({
   section: {
     backgroundColor: 'white',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    padding: 14,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  loyaltySection: {
+    padding: 18,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.neutral[200],
+  },
+  sectionSeparator: {
+    height: 1,
+    backgroundColor: theme.colors.neutral[200],
+    marginVertical: 12,
   },
   sectionHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   editButton: {
     padding: 4,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '600',
     color: '#1e293b',
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#374151',
-    marginBottom: 8,
+    marginBottom: 6,
+  },
+  labelCompact: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
   },
   input: {
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    padding: 10,
+    fontSize: 15,
     backgroundColor: 'white',
+  },
+  inputCompact: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    padding: 8,
+    fontSize: 14,
+    backgroundColor: 'white',
+    minWidth: 60,
+    textAlign: 'center',
   },
   inputDisabled: {
     backgroundColor: '#f9fafb',
@@ -776,17 +754,47 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   actions: {
-    marginTop: 20,
-    marginBottom: 24,
+    marginTop: 0,
+    marginBottom: 0,
+  },
+  commonActions: {
+    marginTop: 4,
+    marginBottom: 0,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 16,
+  },
+  commonActionsContainer: {
+    paddingTop: 16,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.neutral[200],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
   },
+  loyaltyButtonRow: {
+    marginTop: 16,
+  },
   button: {
     flex: 1,
-    padding: 16,
+    padding: 12,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -810,29 +818,76 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   infoSection: {
-    marginTop: 20,
-    padding: 16,
+    marginTop: 12,
+    padding: 12,
     backgroundColor: '#f8fafc',
     borderRadius: 8,
   },
   infoText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#64748b',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  switchRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 0,
+    paddingBottom: 0,
+  },
+  loyaltySeparator: {
+    height: 1,
+    backgroundColor: theme.colors.neutral[200],
+    marginVertical: 14,
+  },
   switchLabelContainer: {
     flex: 1,
     marginRight: 12,
   },
   helpText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748b',
-    marginTop: 4,
+    marginTop: 2,
+  },
+  loyaltyCompactGrid: {
+    gap: 12,
+  },
+  loyaltyCompactItem: {
+    gap: 6,
+  },
+  loyaltyCompactLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  loyaltyInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  loyaltyInlineText: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  loyaltyCurrencyText: {
+    fontSize: 13,
+    color: theme.colors.primary[600],
+    fontWeight: '600',
+  },
+  loyaltyFormattedAmount: {
+    fontSize: 14,
+    color: theme.colors.text.primary,
+    fontWeight: '600',
+    minWidth: 80,
+    textAlign: 'right',
   },
   loyaltyConfigRow: {
     flexDirection: 'row',

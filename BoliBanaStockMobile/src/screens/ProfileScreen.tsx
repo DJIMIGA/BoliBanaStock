@@ -527,25 +527,6 @@ const ProfileScreen: React.FC = () => {
               {new Date(user.date_joined).toLocaleDateString()}
             </Text>
           </View>
-
-          <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Dernière connexion</Text>
-            <Text style={styles.infoValue}>
-              {user.last_login
-                ? new Date(user.last_login).toLocaleString()
-                : 'Jamais'}
-            </Text>
-          </View>
-
-          <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Statut</Text>
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusDot, user.is_active && styles.statusActive]} />
-              <Text style={styles.statusText}>
-                {user.is_active ? 'Actif' : 'Inactif'}
-              </Text>
-            </View>
-          </View>
         </View>
       </View>
       </ScrollView>

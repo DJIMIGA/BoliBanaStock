@@ -67,17 +67,21 @@ const InventoryScannerScreen: React.FC = () => {
       
       if (product) {
         // Créer un objet produit pour la liste d'inventaire
+        const saleUnitType = (product as any).sale_unit_type || 'quantity';
+        const initialQuantity = saleUnitType === 'weight' ? 0.001 : 1;
         const inventoryProduct = {
           productId: product.id.toString(),
           productName: product.name,
-          quantity: 1,
+          quantity: initialQuantity,
           unitPrice: parseFloat(product.selling_price),
           supplier: 'Fournisseur principal',
           site: product.site_configuration?.site_name || 'Site principal',
           currentStock: product.quantity,
           cug: product.cug,
           category: product.category_name || 'Non catégorisé',
-          brand: product.brand_name || 'Non définie'
+          brand: product.brand_name || 'Non définie',
+          sale_unit_type: saleUnitType,
+          weight_unit: (product as any).weight_unit || undefined
         };
 
         addToScanList(barcode, inventoryProduct);

@@ -16,7 +16,52 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Tailwind CSS -->
-    <link href="{% static 'css/dist/output.css' %}?v=2.1" rel="stylesheet">
+    <link href="{% static 'css/dist/output.css' %}?v=2.3" rel="stylesheet" id="tailwind-css">
+    <!-- Fallback inline styles si le CSS ne charge pas -->
+    <style id="fallback-styles">
+        /* Styles de base pour éviter l'affichage sans style */
+        body { font-family: 'Montserrat', system-ui, sans-serif; background-color: #F5F5F5 !important; }
+        .bg-neutral-100 { background-color: #F5F5F5 !important; }
+        .bg-white { background-color: #FFFFFF !important; }
+        .rounded-xl { border-radius: 0.75rem !important; }
+        .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1) !important; }
+        .border-l-4 { border-left-width: 4px !important; }
+        .border-bolibana-500 { border-left-color: #2B3A67 !important; }
+        .border-gold-500 { border-left-color: #FFD700 !important; }
+        .border-red-500 { border-left-color: #EF4444 !important; }
+        .border-forest-500 { border-left-color: #2E8B57 !important; }
+    </style>
+    <script>
+        // Vérifier si le CSS Tailwind est chargé
+        document.addEventListener('DOMContentLoaded', function() {
+            const tailwindLink = document.getElementById('tailwind-css');
+            const fallbackStyles = document.getElementById('fallback-styles');
+            
+            // Vérifier après 1 seconde si le CSS est chargé
+            setTimeout(function() {
+                const testEl = document.createElement('div');
+                testEl.className = 'bg-neutral-100';
+                testEl.style.position = 'absolute';
+                testEl.style.visibility = 'hidden';
+                document.body.appendChild(testEl);
+                
+                const computedStyle = window.getComputedStyle(testEl);
+                const bgColor = computedStyle.backgroundColor;
+                
+                // Si le background n'est pas #F5F5F5, le CSS Tailwind n'est pas chargé
+                if (bgColor !== 'rgb(245, 245, 245)') {
+                    console.warn('Tailwind CSS non chargé, utilisation des styles de fallback');
+                    // Les styles inline sont déjà actifs
+                } else {
+                    console.log('Tailwind CSS chargé correctement');
+                    // Masquer les styles de fallback si Tailwind est chargé
+                    fallbackStyles.disabled = true;
+                }
+                
+                document.body.removeChild(testEl);
+            }, 1000);
+        });
+    </script>
     
     {% block extra_css %}{% endblock %}
 </head>

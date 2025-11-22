@@ -22,13 +22,27 @@ from django.conf.urls.static import static
 from apps.core.views import PublicSignUpView
 from . import views
 
+# Import HomeView avec gestion d'erreur pour Railway
+try:
+    from theme.views import HomeView
+    # Vérifier que HomeView peut être instancié
+    home_view = HomeView.as_view()
+except (ImportError, AttributeError, Exception) as e:
+    # Fallback si l'import échoue (par exemple sur Railway si theme n'est pas disponible)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(f"Impossible d'importer HomeView: {e}. Utilisation de simple_home comme fallback.")
+    # Utiliser simple_home qui essaiera d'utiliser HomeView si possible
+    home_view = views.simple_home
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     # Health check en premier pour éviter les erreurs
     path('health/', views.health_check, name='health_check'),
-    # Page d'accueil simplifiée pour Railway
-    path('', views.simple_home, name='simple_home'),
-    path('home/', include('theme.urls')),
+    # Page d'accueil principale (remplace /home/)
+    path('', home_view, name='home'),
+    # Alias pour compatibilité avec les anciennes références
+    path('home/', home_view, name='home_redirect'),
     path('inventory/', include('apps.inventory.urls')),
     path('sales/', include('apps.sales.urls')),
     path('core/', include('apps.core.urls')),

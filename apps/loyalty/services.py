@@ -16,15 +16,33 @@ class LoyaltyService:
         """
         Récupère le programme de fidélité pour un site donné
         Crée un programme par défaut si aucun n'existe
+        Les valeurs par défaut sont adaptées selon la devise du site
         """
-        program, created = LoyaltyProgram.objects.get_or_create(
-            site_configuration=site_configuration,
-            defaults={
+        # Déterminer les valeurs par défaut selon la devise
+        currency = site_configuration.devise if site_configuration else 'FCFA'
+        
+        # Valeurs par défaut adaptées selon la devise
+        # Pour FCFA/XOF/XAF: 1000 pour 1 point, 1 point = 100
+        # Pour EUR/USD: 10 pour 1 point, 1 point = 1
+        if currency in ['FCFA', 'XOF', 'XAF', 'JPY', 'MGA']:
+            defaults = {
                 'points_per_amount': Decimal('1.00'),
-                'amount_for_points': Decimal('1000'),
+                'amount_for_points': Decimal('1000.00'),
                 'amount_per_point': Decimal('100.00'),
                 'is_active': True,
             }
+        else:
+            # Pour les autres devises (EUR, USD, etc.), valeurs plus adaptées
+            defaults = {
+                'points_per_amount': Decimal('1.00'),
+                'amount_for_points': Decimal('10.00'),  # 10 EUR/USD pour 1 point
+                'amount_per_point': Decimal('1.00'),    # 1 point = 1 EUR/USD
+                'is_active': True,
+            }
+        
+        program, created = LoyaltyProgram.objects.get_or_create(
+            site_configuration=site_configuration,
+            defaults=defaults
         )
         return program
     
@@ -42,7 +60,7 @@ class LoyaltyService:
     @staticmethod
     def calculate_points_value(points, site_configuration):
         """
-        Calcule la valeur en FCFA de points donnés
+        Calcule la valeur monétaire de points donnés selon la devise du site
         """
         program = LoyaltyService.get_program(site_configuration)
         if not program.is_active:
@@ -97,7 +115,7 @@ class LoyaltyService:
         if points <= 0:
             return False
         
-        # Calculer la valeur en FCFA
+        # Calculer la valeur monétaire des points selon la devise du site
         discount_amount = LoyaltyService.calculate_points_value(points, site_configuration)
         
         # Mettre à jour le solde du client (soustraire les points)

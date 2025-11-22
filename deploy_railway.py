@@ -242,8 +242,25 @@ def deploy_railway():
         # 2. Collecter les fichiers statiques
         print("\n📦 Collecte des fichiers statiques...")
         try:
-            # Utiliser --ignore pour éviter les erreurs sur les fichiers manquants
+            # Utiliser --clear pour forcer la régénération du manifest WhiteNoise
+            # Cela garantit que output.css sera dans le manifest
             call_command('collectstatic', '--noinput', '--clear', verbosity=2)
+            
+            # Vérifier que output.css est dans le manifest
+            import json
+            manifest_path = Path(settings.STATIC_ROOT) / 'staticfiles.json'
+            if manifest_path.exists():
+                with open(manifest_path, 'r', encoding='utf-8') as f:
+                    manifest = json.load(f)
+                if 'paths' in manifest:
+                    css_found = any('output.css' in path for path in manifest['paths'].keys())
+                    if css_found:
+                        print(f"✅ output.css trouvé dans le manifest WhiteNoise")
+                    else:
+                        print(f"⚠️ output.css non trouvé dans le manifest WhiteNoise")
+                        print(f"   Chemins dans le manifest: {list(manifest['paths'].keys())[:10]}...")
+                else:
+                    print(f"⚠️ Manifest ne contient pas de clé 'paths'")
         except Exception as collect_error:
             print(f"❌ Erreur lors de collectstatic: {collect_error}")
             import traceback

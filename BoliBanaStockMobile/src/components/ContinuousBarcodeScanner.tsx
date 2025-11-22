@@ -54,6 +54,9 @@ export interface ScannedItem {
   supplier?: string;
   site?: string;
   notes?: string;
+  // Champs pour les produits au poids
+  sale_unit_type?: 'quantity' | 'weight';
+  weight_unit?: 'kg' | 'g';
 }
 
 interface ContinuousBarcodeScannerProps {
@@ -97,6 +100,18 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
       getCameraPermissions();
     }
   }, [visible]);
+
+  // Initialiser tempQuantity quand le modal s'ouvre
+  useEffect(() => {
+    if (showQuantityModal && selectedItem) {
+      // Formater la quantité selon le type de produit
+      if (selectedItem.sale_unit_type === 'weight') {
+        setTempQuantity(selectedItem.quantity.toFixed(3).replace(/\.?0+$/, ''));
+      } else {
+        setTempQuantity(String(Math.floor(selectedItem.quantity)));
+      }
+    }
+  }, [showQuantityModal, selectedItem]);
 
   const getCameraPermissions = async () => {
     try {
@@ -270,13 +285,17 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
             </Text>
             
             <View style={styles.quantityInputContainer}>
-              <Text style={styles.quantityLabel}>Quantité:</Text>
+              <Text style={styles.quantityLabel}>
+                {selectedItem?.sale_unit_type === 'weight' 
+                  ? `Poids (${selectedItem?.weight_unit || 'kg'}):` 
+                  : 'Quantité:'}
+              </Text>
               <TextInput
                 style={styles.quantityInput}
                 value={tempQuantity}
                 onChangeText={setTempQuantity}
-                keyboardType="numeric"
-                placeholder="1"
+                keyboardType={selectedItem?.sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
+                placeholder={selectedItem?.sale_unit_type === 'weight' ? '0.000' : '1'}
                 placeholderTextColor="#999"
               />
             </View>
@@ -293,13 +312,17 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
                  style={styles.modalButtonSave}
                  onPress={() => {
                    if (selectedItem && tempQuantity) {
-                     const newQuantity = parseInt(tempQuantity);
+                     const newQuantity = selectedItem.sale_unit_type === 'weight' 
+                       ? parseFloat(tempQuantity) 
+                       : parseInt(tempQuantity);
                      if (newQuantity > 0) {
                        onUpdateQuantity(selectedItem.id, newQuantity);
                        setShowQuantityModal(false);
                        setSelectedItem(null);
                      } else {
-                       Alert.alert('Erreur', 'La quantité doit être supérieure à 0');
+                       Alert.alert('Erreur', selectedItem.sale_unit_type === 'weight' 
+                         ? 'Le poids doit être supérieur à 0' 
+                         : 'La quantité doit être supérieure à 0');
                      }
                    }
                  }}

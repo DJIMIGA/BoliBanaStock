@@ -79,7 +79,7 @@ class ManagerRequiredMixin(UserPassesTestMixin):
 
     def handle_no_permission(self):
         messages.error(self.request, "Vous n'avez pas les permissions pour accéder à cette page.")
-        return redirect('theme:home')
+        return redirect('home')
 
 class SiteAdminRequiredMixin(UserPassesTestMixin):
     """Mixin pour vérifier que l'utilisateur est administrateur du site"""
@@ -88,14 +88,14 @@ class SiteAdminRequiredMixin(UserPassesTestMixin):
 
     def handle_no_permission(self):
         messages.error(self.request, "Seuls les administrateurs du site peuvent accéder à cette page.")
-        return redirect('theme:home')
+        return redirect('home')
 
 class CustomLoginView(LoginView):
     template_name = 'registration/login.html'
     redirect_authenticated_user = True
 
     def get_success_url(self):
-        return reverse_lazy('theme:home')
+        return reverse_lazy('home')
 
 class CustomLogoutView(LogoutView):
     next_page = 'login'
@@ -106,7 +106,7 @@ class PublicSignUpView(CreateView):
     """
     form_class = PublicSignUpForm
     template_name = 'registration/signup.html'
-    success_url = reverse_lazy('theme:home')
+    success_url = reverse_lazy('home')
 
     def form_valid(self, form):
         # Créer l'utilisateur d'abord
@@ -183,7 +183,7 @@ class PublicSignUpView(CreateView):
         self.request.session.save()
         
         # Rediriger vers la page d'accueil normale
-        return redirect('theme:home')
+        return redirect('home')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -437,28 +437,32 @@ class ConfigurationUpdateView(LoginRequiredMixin, SiteAdminRequiredMixin, Update
     def get_object(self, queryset=None):
         """Récupère la configuration du site de l'utilisateur connecté"""
         if self.request.user.is_superuser:
-            # Les superusers peuvent modifier n'importe quelle configuration
-            # ou créer une nouvelle si aucune n'existe
-            config, created = Configuration.objects.get_or_create(
-                defaults={
-                    'site_name': 'Site Principal',
-                    'nom_societe': 'BoliBana Stock',
-                    'adresse': 'Adresse de votre entreprise',
-                    'telephone': '+226 XX XX XX XX',
-                    'email': 'contact@votreentreprise.com',
-                    'devise': 'FCFA',
-                    'tva': 0.00,
-                    'description': 'Système de gestion de stock',
-                    'site_owner': self.request.user,
-                    'created_by': self.request.user,
-                    'updated_by': self.request.user
-                }
-            )
-            if created:
-                # Si une nouvelle configuration a été créée, l'assigner au superuser
-                self.request.user.site_configuration = config
-                self.request.user.is_site_admin = True
-                self.request.user.save()
+            # Les superusers peuvent modifier leur configuration ou la première disponible
+            # Utiliser la configuration assignée à l'utilisateur si elle existe
+            if self.request.user.site_configuration:
+                config = self.request.user.site_configuration
+            else:
+                # Sinon, utiliser la première configuration disponible
+                config = Configuration.objects.first()
+                if not config:
+                    # Créer une nouvelle configuration si aucune n'existe
+                    config = Configuration.objects.create(
+                        site_name='Site Principal',
+                        nom_societe='BoliBana Stock',
+                        adresse='Adresse de votre entreprise',
+                        telephone='+226 XX XX XX XX',
+                        email='contact@votreentreprise.com',
+                        devise='FCFA',
+                        tva=0.00,
+                        description='Système de gestion de stock',
+                        site_owner=self.request.user,
+                        created_by=self.request.user,
+                        updated_by=self.request.user
+                    )
+                    # Assigner la configuration au superuser
+                    self.request.user.site_configuration = config
+                    self.request.user.is_site_admin = True
+                    self.request.user.save()
         else:
             # Les utilisateurs normaux ne peuvent modifier que leur propre configuration
             if not self.request.user.site_configuration:
@@ -526,7 +530,7 @@ def settings(request):
         config = get_user_site_configuration(request.user)
     except Http404:
         messages.error(request, "Aucun site configuré pour votre compte.")
-        return redirect('theme:home')
+        return redirect('home')
     
     # Paramètres système importants
     parametres_importants = Parametre.objects.filter(
@@ -583,7 +587,7 @@ def configuration_quick_edit(request):
         config = get_user_site_configuration(request.user)
     except Http404:
         messages.error(request, "Aucun site configuré pour votre compte.")
-        return redirect('theme:home')
+        return redirect('home')
     
     context = {
         'config': config,
@@ -598,7 +602,7 @@ def configuration_reset_defaults(request):
             config = get_user_site_configuration(request.user)
         except Http404:
             messages.error(request, "Aucun site configuré pour votre compte.")
-            return redirect('theme:home')
+            return redirect('home')
         
         # Valeurs par défaut
         config.nom_societe = 'BoliBana Stock'
@@ -653,7 +657,7 @@ def configuration_history(request):
     from .services import PermissionService
     if not PermissionService.can_user_perform_action(request.user, 'manage_site_settings'):
         messages.error(request, "Seuls les administrateurs du site peuvent accéder à cette page.")
-        return redirect('theme:home')
+        return redirect('home')
     
     try:
         config = get_user_site_configuration(request.user)

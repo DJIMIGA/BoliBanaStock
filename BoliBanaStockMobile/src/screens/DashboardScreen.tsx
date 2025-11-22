@@ -23,6 +23,7 @@ import errorService from '../services/errorService';
 import { AppError } from '../types/errors';
 import theme, { stockColors, actionColors } from '../utils/theme';
 import { formatCurrency } from '../utils/currencyFormatter';
+import Logo from '../components/Logo';
 
 interface DashboardStats {
   total_products: number;
@@ -330,13 +331,11 @@ export default function DashboardScreen({ navigation }: any) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerIconContainer}>
-            <Ionicons name="home" size={24} color={theme.colors.primary[500]} />
+          <View style={styles.headerLogoContainer}>
+            <Logo size={40} showBackground={true} />
           </View>
           <View style={styles.headerCenter}>
-            <Text style={styles.title}>
-              {configuration?.nom_societe || 'Tableau de bord'}
-            </Text>
+            <Text style={styles.title}>BoliBana Stock</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity 
@@ -480,13 +479,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  headerIconContainer: {
+  headerLogoContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.colors.primary[100],
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   headerCenter: {
     flex: 1,

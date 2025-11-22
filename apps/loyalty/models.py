@@ -77,7 +77,7 @@ class LoyaltyProgram(models.Model):
     
     def calculate_points_value(self, points):
         """
-        Calcule la valeur en FCFA de points donnés
+        Calcule la valeur monétaire de points donnés selon la devise du site
         """
         if points <= 0:
             return Decimal('0')

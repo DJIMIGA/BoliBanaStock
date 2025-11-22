@@ -31,6 +31,8 @@ interface Product {
   brand_name: string;
   image_url?: string;
   purchase_price: number;
+  sale_unit_type?: 'quantity' | 'weight';
+  weight_unit?: 'kg' | 'g';
 }
 
 interface ReceptionItem {
@@ -68,8 +70,14 @@ export default function ReceptionScreen({ navigation }: any) {
   const rowPositionsRef = useRef<Record<string, number>>({});
   const qtyInputRefs = useRef<Record<string, any>>({});
 
-  const setDraftQuantity = (lineId: string, text: string) => {
-    setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9]/g, '') }));
+  const setDraftQuantity = (lineId: string, text: string, isWeight: boolean = false) => {
+    if (isWeight) {
+      // Pour les produits au poids, permettre les décimales
+      setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9.]/g, '') }));
+    } else {
+      // Pour les produits en quantité, seulement les entiers
+      setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9]/g, '') }));
+    }
   };
 
   const commitReceptionQuantity = (lineId: string) => {
@@ -80,7 +88,10 @@ export default function ReceptionScreen({ navigation }: any) {
       const updated = [...prev];
       const existing = updated[idx];
       const raw = qtyDraft[lineId];
-      const newQty = raw ? parseInt(raw, 10) : existing.received_quantity;
+      const isWeight = existing.product.sale_unit_type === 'weight';
+      const newQty = raw 
+        ? (isWeight ? parseFloat(raw) : parseInt(raw, 10))
+        : existing.received_quantity;
       if (!isNaN(newQty) && newQty > 0) {
         updated[idx] = {
           ...existing,
@@ -399,7 +410,11 @@ export default function ReceptionScreen({ navigation }: any) {
             // Ajouter ou incrémenter directement dans la liste scannée
             const prod = full as Product;
             const price = Number((prod as any).purchase_price || 0) || 0;
-            const inc = Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
+            const saleUnitType = prod.sale_unit_type || 'quantity';
+            // Pour les produits au poids, permettre les décimales, sinon entier
+            const inc = saleUnitType === 'weight' 
+              ? Math.max(0.001, parseFloat((scanQuantity || '0.001').replace(/[^0-9.]/g, '')) || 0.001)
+              : Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
             const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             setReceptionItems(prev => ([
               {
@@ -652,9 +667,9 @@ export default function ReceptionScreen({ navigation }: any) {
                           }}
                           style={styles.scannedQtyInput}
                           value={qtyDraft[item.line_id] ?? String(item.received_quantity)}
-                          onChangeText={(t) => setDraftQuantity(item.line_id, t)}
-                          keyboardType="numeric"
-                          placeholder="Qté"
+                          onChangeText={(t) => setDraftQuantity(item.line_id, t, item.product.sale_unit_type === 'weight')}
+                          keyboardType={item.product.sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
+                          placeholder={item.product.sale_unit_type === 'weight' ? `Poids (${item.product.weight_unit || 'kg'})` : 'Qté'}
                           autoFocus={focusedLineId === item.line_id}
                           selectTextOnFocus={focusedLineId === item.line_id}
                           onFocus={() => {

@@ -28,6 +28,8 @@ interface Product {
   category_name: string;
   brand_name: string;
   image_url?: string;
+  sale_unit_type?: 'quantity' | 'weight';
+  weight_unit?: 'kg' | 'g';
 }
 
 interface InventoryItem {
@@ -64,8 +66,14 @@ export default function InventoryScreen({ navigation }: any) {
   const [unknownModalVisible, setUnknownModalVisible] = useState(false);
   const [unknownCode, setUnknownCode] = useState<string>('');
 
-  const setDraftQuantity = (productId: number, text: string) => {
-    setQtyDraft(prev => ({ ...prev, [productId]: text.replace(/[^0-9]/g, '') }));
+  const setDraftQuantity = (productId: number, text: string, isWeight: boolean = false) => {
+    if (isWeight) {
+      // Pour les produits au poids, permettre les décimales
+      setQtyDraft(prev => ({ ...prev, [productId]: text.replace(/[^0-9.]/g, '') }));
+    } else {
+      // Pour les produits en quantité, seulement les entiers
+      setQtyDraft(prev => ({ ...prev, [productId]: text.replace(/[^0-9]/g, '') }));
+    }
   };
 
   const commitInventoryQuantity = (productId: number) => {
@@ -73,7 +81,10 @@ export default function InventoryScreen({ navigation }: any) {
     setInventoryItems(prev => prev.map(it => {
       if (it.product.id !== productId) return it;
       const raw = qtyDraft[productId];
-      const newQty = raw ? parseInt(raw, 10) : it.counted_quantity;
+      const isWeight = (it.product as any).sale_unit_type === 'weight';
+      const newQty = raw 
+        ? (isWeight ? parseFloat(raw) : parseInt(raw, 10))
+        : it.counted_quantity;
       if (isNaN(newQty) || newQty < 0) return it;
       return {
         ...it,
@@ -202,7 +213,8 @@ export default function InventoryScreen({ navigation }: any) {
       return;
     }
 
-    const counted = parseInt(countedQuantity);
+    const isWeight = (selectedProduct as any)?.sale_unit_type === 'weight';
+    const counted = isWeight ? parseFloat(countedQuantity) : parseInt(countedQuantity);
     if (isNaN(counted) || counted < 0) {
       Alert.alert('Erreur', 'Veuillez saisir une quantité valide');
       return;
@@ -513,9 +525,11 @@ export default function InventoryScreen({ navigation }: any) {
                   <TextInput
                       style={styles.scannedQtyInput}
                     value={qtyDraft[item.product.id] ?? String(item.counted_quantity)}
-                    onChangeText={(t) => setDraftQuantity(item.product.id, t)}
-                      keyboardType="numeric"
-                    placeholder="Qté"
+                    onChangeText={(t) => setDraftQuantity(item.product.id, t, (item.product as any).sale_unit_type === 'weight')}
+                      keyboardType={(item.product as any).sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
+                    placeholder={(item.product as any).sale_unit_type === 'weight' 
+                      ? `Poids (${(item.product as any).weight_unit || 'kg'})` 
+                      : 'Qté'}
                     autoFocus={focusedProductId === item.product.id}
                     selectTextOnFocus={focusedProductId === item.product.id}
                       onSubmitEditing={() => { commitInventoryQuantity(item.product.id); setFocusedProductId(null); }}
@@ -616,13 +630,22 @@ export default function InventoryScreen({ navigation }: any) {
               </Text>
             </View>
             
-            <Text style={styles.modalLabel}>Quantité comptée</Text>
+            <Text style={styles.modalLabel}>
+              {(selectedProduct as any)?.sale_unit_type === 'weight' 
+                ? `Poids compté (${(selectedProduct as any)?.weight_unit || 'kg'})` 
+                : 'Quantité comptée'}
+            </Text>
             <TextInput
               style={styles.modalInput}
               value={countedQuantity}
-              onChangeText={setCountedQuantity}
-              placeholder="Quantité réelle comptée"
-              keyboardType="numeric"
+              onChangeText={(text) => {
+                const isWeight = (selectedProduct as any)?.sale_unit_type === 'weight';
+                setCountedQuantity(isWeight ? text.replace(/[^0-9.]/g, '') : text.replace(/[^0-9]/g, ''));
+              }}
+              placeholder={(selectedProduct as any)?.sale_unit_type === 'weight' 
+                ? `Poids réel (${(selectedProduct as any)?.weight_unit || 'kg'})` 
+                : 'Quantité réelle comptée'}
+              keyboardType={(selectedProduct as any)?.sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
               autoFocus
             />
             

@@ -2226,18 +2226,19 @@ class SaleViewSet(viewsets.ModelViewSet):
                 logger.info(f"Sale #{sale.id}: Points utilisés convertis: {loyalty_points_used}")
                 
                 if loyalty_points_used > 0:
-                    # Calculer d'abord la valeur en FCFA des points
+                    # Calculer d'abord la valeur monétaire des points selon la devise du site
                     program = LoyaltyService.get_program(user_site)
+                    currency = user_site.devise if user_site else 'FCFA'
                     logger.info(f"Sale #{sale.id}: Programme fidélité récupéré: {program}")
                     
                     if program:
                         calculated_discount = LoyaltyService.calculate_points_value(loyalty_points_used, user_site)
-                        logger.info(f"Sale #{sale.id}: Réduction calculée: {calculated_discount} FCFA pour {loyalty_points_used} points")
+                        logger.info(f"Sale #{sale.id}: Réduction calculée: {calculated_discount} {currency} pour {loyalty_points_used} points")
                         
                         # Limiter la réduction au total (ne pas permettre un total négatif)
                         max_discount = sale.total_amount
                         actual_discount = min(calculated_discount, max_discount)
-                        logger.info(f"Sale #{sale.id}: Réduction limitée: {actual_discount} FCFA (max: {max_discount} FCFA)")
+                        logger.info(f"Sale #{sale.id}: Réduction limitée: {actual_discount} {currency} (max: {max_discount} {currency})")
                         
                         # Si la réduction est limitée, ajuster le nombre de points utilisés
                         if calculated_discount > max_discount:
@@ -2246,7 +2247,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                                 adjusted_points = actual_discount / program.amount_per_point
                                 original_points = loyalty_points_used
                                 loyalty_points_used = adjusted_points
-                                logger.info(f"Sale #{sale.id}: Réduction limitée de {calculated_discount} à {actual_discount} FCFA. Points ajustés de {original_points} à {adjusted_points}")
+                                logger.info(f"Sale #{sale.id}: Réduction limitée de {calculated_discount} à {actual_discount} {currency}. Points ajustés de {original_points} à {adjusted_points}")
                         
                         # Utiliser les points ajustés comme réduction
                         if loyalty_points_used > 0:
@@ -2274,7 +2275,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                                     # Ajuster le montant payé si nécessaire
                                     if sale.amount_paid > sale.total_amount:
                                         sale.amount_paid = sale.total_amount
-                                    logger.info(f"Sale #{sale.id}: Points utilisés sauvegardés: {sale.loyalty_points_used}, Réduction: {sale.loyalty_discount_amount} FCFA, Total: {sale.total_amount} FCFA")
+                                    logger.info(f"Sale #{sale.id}: Points utilisés sauvegardés: {sale.loyalty_points_used}, Réduction: {sale.loyalty_discount_amount} {currency}, Total: {sale.total_amount} {currency}")
                                 else:
                                     logger.warning(f"Sale #{sale.id}: redeem_points a retourné False (client non membre ou points insuffisants), points non sauvegardés")
                             except Exception as e:
@@ -6508,23 +6509,31 @@ class LoyaltyPointsAPIView(APIView):
             amount = serializer.validated_data.get('amount')
             points = serializer.validated_data.get('points')
             
+            # Récupérer la devise du site pour les messages
+            currency = user_site.devise if user_site else 'FCFA'
+            
             if amount:
                 # Calculer les points gagnés pour un montant
                 points_earned = LoyaltyService.calculate_points_earned(amount, user_site)
+                from apps.core.utils import format_currency_amount
+                formatted_amount = format_currency_amount(amount, currency_code=currency)
                 return Response({
                     'success': True,
                     'amount': float(amount),
                     'points_earned': float(points_earned),
-                    'message': f'Pour {amount} FCFA, vous gagnez {points_earned} points'
+                    'message': f'Pour {formatted_amount}, vous gagnez {points_earned} points'
                 })
             elif points:
-                # Calculer la valeur en FCFA de points
+                # Calculer la valeur monétaire de points selon la devise du site
                 value = LoyaltyService.calculate_points_value(points, user_site)
+                from apps.core.utils import format_currency_amount
+                formatted_value = format_currency_amount(value, currency_code=currency)
                 return Response({
                     'success': True,
                     'points': float(points),
-                    'value_fcfa': float(value),
-                    'message': f'{points} points équivalent à {value} FCFA'
+                    'value': float(value),
+                    'value_formatted': formatted_value,
+                    'message': f'{points} points équivalent à {formatted_value}'
                 })
             else:
                 return Response({

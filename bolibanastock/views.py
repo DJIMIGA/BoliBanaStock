@@ -8,6 +8,17 @@ def health_check(request):
 
 def simple_home(request):
     """Page d'accueil simplifiée pour Railway qui ne dépend pas des modèles"""
+    # Essayer d'importer et utiliser HomeView si possible
+    try:
+        from theme.views import HomeView
+        # Si l'utilisateur est authentifié, utiliser HomeView
+        if request.user.is_authenticated:
+            return HomeView.as_view()(request)
+    except Exception as e:
+        # Si l'import ou l'exécution échoue, retourner le JSON
+        pass
+    
+    # Si l'utilisateur n'est pas authentifié ou si HomeView échoue, retourner le JSON
     return JsonResponse({
         'message': 'BoliBana Stock - API Mobile',
         'status': 'running',
@@ -16,9 +27,10 @@ def simple_home(request):
             'admin': '/admin/',
             'api': '/api/v1/',
             'health': '/health/',
-            'home': '/home/',
+            'home': '/',
+            'login': '/accounts/login/',
         },
-        'note': 'Cette page d\'accueil simplifiée évite les erreurs de modèles sur Railway'
+        'note': 'Cette page d\'accueil simplifiée évite les erreurs de modèles sur Railway. Connectez-vous pour accéder à l\'interface complète.'
     })
 
 def custom_404(request, exception=None):

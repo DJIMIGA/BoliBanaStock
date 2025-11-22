@@ -256,20 +256,24 @@ export default function CashRegisterScreen({ navigation }: any) {
   const handleProductSelect = (product: Product) => {
     const barcode = product.cug || String(product.id);
     const unitPrice = typeof product.selling_price === 'number' ? product.selling_price : parseFloat(String(product.selling_price || 0));
+    const saleUnitType = (product as any).sale_unit_type || 'quantity';
+    const initialQuantity = saleUnitType === 'weight' ? 0.001 : 1;
     const scannedProduct = {
       id: product.id.toString(),
       productId: product.id.toString(),
       barcode: barcode,
       productName: product.name,
-      quantity: 1,
+      quantity: initialQuantity,
       unitPrice: unitPrice,
-      totalPrice: unitPrice,
+      totalPrice: unitPrice * initialQuantity,
       scannedAt: new Date(),
       customer: 'Client en cours',
       notes: `Sélectionné depuis la recherche - CUG: ${product.cug}`,
       stock: product.quantity,
       category: product.category_name || 'Non catégorisé',
-      brand: product.brand_name || 'Non définie'
+      brand: product.brand_name || 'Non définie',
+      sale_unit_type: saleUnitType,
+      weight_unit: (product as any).weight_unit || undefined
     };
     scanner.addToScanList(barcode, scannedProduct);
     setSearchQuery('');
@@ -372,15 +376,17 @@ export default function CashRegisterScreen({ navigation }: any) {
           productId: product.id.toString(),
           barcode: barcode,
           productName: product.name,
-          quantity: 1,
+          quantity: (product as any).sale_unit_type === 'weight' ? 0.001 : 1, // Pour les produits au poids, initialiser à 0.001
           unitPrice: parseFloat(product.selling_price),
-          totalPrice: parseFloat(product.selling_price),
+          totalPrice: parseFloat(product.selling_price) * ((product as any).sale_unit_type === 'weight' ? 0.001 : 1),
           scannedAt: new Date(),
           customer: 'Client en cours',
           notes: `Scanné à la caisse - CUG: ${product.cug}`,
           stock: product.quantity,
           category: product.category_name || 'Non catégorisé',
-          brand: product.brand_name || 'Non définie'
+          brand: product.brand_name || 'Non définie',
+          sale_unit_type: (product as any).sale_unit_type || 'quantity',
+          weight_unit: (product as any).weight_unit || undefined
         };
         
         // Fusion directe locale via le hook (déduplication forte côté hook déjà active)

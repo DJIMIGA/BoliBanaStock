@@ -41,8 +41,9 @@ cmds = [
     "echo '📁 Contenu de static/css/dist après build:' && ls -la static/css/dist/ || echo '⚠️ Impossible de lister dist/'",
     "test -f static/css/dist/output.css && echo '✅ Tailwind CSS généré avec succès: static/css/dist/output.css' && ls -lh static/css/dist/output.css || (echo '❌ Erreur: output.css non généré après npm run build' && echo '📋 Vérification du répertoire theme:' && ls -la theme/ && echo '📋 Vérification du répertoire static/css/dist:' && ls -la static/css/dist/ 2>/dev/null || echo 'Répertoire dist n'existe pas' && exit 1)",
     "echo '📦 Collecte des fichiers statiques avec collectstatic...'",
-    "DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway python manage.py collectstatic --noinput",
-    "echo '📁 Vérification de la collecte de output.css:' && test -f staticfiles/css/dist/output.css && echo '✅ output.css collecté dans staticfiles/' && ls -lh staticfiles/css/dist/output.css || echo '⚠️ output.css non trouvé dans staticfiles/'"
+    "DJANGO_SETTINGS_MODULE=bolibanastock.settings_railway python manage.py collectstatic --noinput --clear",
+    "echo '📁 Vérification de la collecte de output.css:' && test -f staticfiles/css/dist/output.css && echo '✅ output.css collecté dans staticfiles/' && ls -lh staticfiles/css/dist/output.css || echo '⚠️ output.css non trouvé dans staticfiles/'",
+    "echo '📋 Vérification du manifest WhiteNoise:' && test -f staticfiles/staticfiles.json && echo '✅ Manifest créé' && grep -q 'output.css' staticfiles/staticfiles.json && echo '✅ output.css trouvé dans le manifest' || echo '⚠️ output.css non trouvé dans le manifest'"
 ]
 
 [start]

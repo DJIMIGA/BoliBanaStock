@@ -19,11 +19,11 @@ class LoyaltyProgramAdmin(admin.ModelAdmin):
         }),
         (_('Configuration des points gagnés'), {
             'fields': ('points_per_amount', 'amount_for_points'),
-            'description': _('Exemple: 1 point pour 1000 FCFA dépensés signifie points_per_amount=1 et amount_for_points=1000')
+            'description': _('Exemple: 1 point pour 1000 dépensés (dans la devise du site) signifie points_per_amount=1 et amount_for_points=1000. Les montants sont exprimés dans la devise configurée pour le site.')
         }),
         (_('Configuration de la valeur des points'), {
             'fields': ('amount_per_point',),
-            'description': _('Exemple: 1 point = 100 FCFA de réduction signifie amount_per_point=100')
+            'description': _('Exemple: 1 point = 100 de réduction (dans la devise du site) signifie amount_per_point=100. Les montants sont exprimés dans la devise configurée pour le site.')
         }),
         (_('Statut'), {
             'fields': ('is_active',)
