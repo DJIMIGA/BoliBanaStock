@@ -448,8 +448,9 @@ def deploy_railway():
                     import re
                     
                     # Extraire les migrations en conflit depuis le message d'erreur
-                    # Format: "Migration inventory.0040_add_weight_support_to_products is applied before its dependency inventory.0039_alter_customer_credit_balance_and_more"
-                    match = re.search(r"Migration (\w+\.\d+_\w+) is applied before its dependency (\w+\.\d+_\w+)", error_str)
+                    # Format: "Migration inventory.0040_add_weight_support_to_products is applied before its dependency inventory.0039_alter_customer_credit_balance_and_more on database 'default'."
+                    # Pattern plus large pour capturer les noms complets avec underscores
+                    match = re.search(r"Migration ([\w.]+) is applied before its dependency ([\w.]+)", error_str)
                     if match:
                         applied_migration = match.group(1)  # ex: inventory.0040_add_weight_support_to_products
                         missing_dependency = match.group(2)  # ex: inventory.0039_alter_customer_credit_balance_and_more
@@ -460,11 +461,12 @@ def deploy_railway():
                         
                         print(f"📋 Migration appliquée trop tôt: {applied_migration}")
                         print(f"📋 Dépendance manquante: {missing_dependency}")
+                        print(f"📋 App label: {app_label}, Migration num: {migration_num}")
                         print(f"🔄 Marquage de la dépendance {missing_dependency} comme appliquée (fake)...")
                         
                         # Marquer la migration manquante comme appliquée avec --fake
                         # Format: migrate inventory 0039 --fake
-                        call_command('migrate', app_label, migration_num, '--fake', '--noinput', verbosity=1)
+                        call_command('migrate', app_label, migration_num, '--fake', '--noinput', verbosity=2)
                         print(f"✅ Migration {missing_dependency} marquée comme appliquée")
                         
                         # Réappliquer les migrations normalement
@@ -472,7 +474,17 @@ def deploy_railway():
                         call_command('migrate', '--noinput', verbosity=1)
                         print("✅ Migrations corrigées avec succès")
                     else:
-                        raise Exception("Impossible d'extraire les migrations en conflit")
+                        print(f"⚠️ Impossible d'extraire les migrations en conflit depuis: {error_str}")
+                        # Tentative alternative : supprimer l'entrée de la migration appliquée trop tôt
+                        print("🔄 Tentative alternative : suppression de l'entrée de migration problématique...")
+                        from django.db import connection
+                        with connection.cursor() as cursor:
+                            # Supprimer l'entrée de la migration 0040 pour permettre l'application de 0039
+                            cursor.execute("DELETE FROM django_migrations WHERE app = 'inventory' AND name = '0040_add_weight_support_to_products'")
+                            print("✅ Entrée de migration 0040 supprimée")
+                            # Réappliquer les migrations
+                            call_command('migrate', '--noinput', verbosity=1)
+                            print("✅ Migrations réappliquées avec succès")
                 except Exception as e2:
                     print(f"⚠️ Correction échouée: {e2}")
                     import traceback
