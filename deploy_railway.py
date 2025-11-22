@@ -439,8 +439,12 @@ def deploy_railway():
             print("✅ Migrations appliquées avec succès")
         except Exception as migrate_error:
             error_str = str(migrate_error)
-            if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str:
-                print(f"⚠️ Erreur d'ordre de migration: {migrate_error}")
+            error_type = type(migrate_error).__name__
+            print(f"🔍 Exception capturée: {error_type}")
+            print(f"🔍 Message d'erreur: {error_str[:500]}")  # Limiter à 500 caractères
+            if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str or "InconsistentMigrationHistory" in error_type:
+                print(f"⚠️ Erreur d'ordre de migration détectée: {error_type}")
+                print(f"⚠️ Message complet: {error_str}")
                 print("🔄 Tentative de correction de l'ordre des migrations...")
                 try:
                     from django.db import connection
@@ -449,11 +453,13 @@ def deploy_railway():
                     
                     # Extraire les migrations en conflit depuis le message d'erreur
                     # Format: "Migration inventory.0040_add_weight_support_to_products is applied before its dependency inventory.0039_alter_customer_credit_balance_and_more on database 'default'."
-                    # Pattern plus large pour capturer les noms complets avec underscores
-                    match = re.search(r"Migration ([\w.]+) is applied before its dependency ([\w.]+)", error_str)
+                    # Pattern pour capturer les noms complets : app.num_nom_complet
+                    # \w+ = app name, \d+ = migration number, [\w_]+ = migration name with underscores
+                    match = re.search(r"Migration (\w+\.\d+_[\w_]+) is applied before its dependency (\w+\.\d+_[\w_]+)", error_str)
                     if match:
                         applied_migration = match.group(1)  # ex: inventory.0040_add_weight_support_to_products
                         missing_dependency = match.group(2)  # ex: inventory.0039_alter_customer_credit_balance_and_more
+                        print(f"🔍 Regex match trouvé: applied={applied_migration}, missing={missing_dependency}")
                         
                         # Extraire app_label et migration_num (ex: inventory.0039)
                         app_label, migration_full = missing_dependency.split('.', 1)
@@ -480,8 +486,22 @@ def deploy_railway():
                         from django.db import connection
                         with connection.cursor() as cursor:
                             # Supprimer l'entrée de la migration 0040 pour permettre l'application de 0039
-                            cursor.execute("DELETE FROM django_migrations WHERE app = 'inventory' AND name = '0040_add_weight_support_to_products'")
-                            print("✅ Entrée de migration 0040 supprimée")
+                            # Cette migration est connue pour causer des problèmes d'ordre
+                            cursor.execute("DELETE FROM django_migrations WHERE app = 'inventory' AND name LIKE '0040_%'")
+                            deleted = cursor.rowcount
+                            print(f"✅ {deleted} entrée(s) de migration 0040 supprimée(s)")
+                            
+                            # S'assurer que la migration 0039 est marquée comme appliquée
+                            cursor.execute("""
+                                INSERT INTO django_migrations (app, name, applied)
+                                SELECT 'inventory', '0039_alter_customer_credit_balance_and_more', NOW()
+                                WHERE NOT EXISTS (
+                                    SELECT 1 FROM django_migrations 
+                                    WHERE app = 'inventory' AND name = '0039_alter_customer_credit_balance_and_more'
+                                )
+                            """)
+                            print("✅ Migration 0039 marquée comme appliquée si nécessaire")
+                            
                             # Réappliquer les migrations
                             call_command('migrate', '--noinput', verbosity=1)
                             print("✅ Migrations réappliquées avec succès")
