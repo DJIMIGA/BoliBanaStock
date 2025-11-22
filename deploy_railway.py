@@ -472,29 +472,43 @@ def deploy_railway():
                         missing_dependency = match.group(2)  # ex: inventory.0039_alter_customer_credit_balance_and_more
                         print(f"🔍 Regex match trouvé: applied={applied_migration}, missing={missing_dependency}")
                         
-                        # Extraire app_label et migration_num (ex: inventory.0039)
+                        # Extraire app_label et migration_full (ex: inventory.0039_alter_customer_credit_balance_and_more)
                         app_label, migration_full = missing_dependency.split('.', 1)
-                        migration_num = migration_full.split('_', 1)[0]  # ex: 0039
                         
                         print(f"📋 Migration appliquée trop tôt: {applied_migration}")
                         print(f"📋 Dépendance manquante: {missing_dependency}")
-                        print(f"📋 App label: {app_label}, Migration num: {migration_num}")
+                        print(f"📋 App label: {app_label}, Migration: {migration_full}")
                         
-                        # Supprimer la migration appliquée trop tôt
-                        print(f"🔄 Suppression de la migration appliquée trop tôt: {applied_migration}...")
+                        # Corriger directement dans la base de données via SQL
+                        print(f"🔄 Correction directe dans la base de données...")
                         with connection.cursor() as cursor:
+                            # 1. Supprimer la migration appliquée trop tôt
                             app_label_applied, migration_full_applied = applied_migration.split('.', 1)
+                            print(f"   Suppression de {applied_migration}...")
                             cursor.execute(
                                 "DELETE FROM django_migrations WHERE app = %s AND name = %s",
                                 [app_label_applied, migration_full_applied]
                             )
                             deleted = cursor.rowcount
-                            print(f"✅ {deleted} entrée(s) de migration {applied_migration} supprimée(s)")
-                        
-                        # Marquer la migration manquante comme appliquée avec --fake
-                        print(f"🔄 Marquage de la dépendance {missing_dependency} comme appliquée (fake)...")
-                        call_command('migrate', app_label, migration_num, '--fake', '--noinput', verbosity=2)
-                        print(f"✅ Migration {missing_dependency} marquée comme appliquée")
+                            print(f"   ✅ {deleted} entrée(s) de migration {applied_migration} supprimée(s)")
+                            
+                            # 2. Vérifier si la migration manquante existe déjà
+                            cursor.execute(
+                                "SELECT COUNT(*) FROM django_migrations WHERE app = %s AND name = %s",
+                                [app_label, migration_full]
+                            )
+                            exists = cursor.fetchone()[0] > 0
+                            
+                            if not exists:
+                                # 3. Insérer directement la migration manquante dans django_migrations
+                                print(f"   Ajout de {missing_dependency} dans django_migrations...")
+                                cursor.execute(
+                                    "INSERT INTO django_migrations (app, name, applied) VALUES (%s, %s, NOW())",
+                                    [app_label, migration_full]
+                                )
+                                print(f"   ✅ Migration {missing_dependency} ajoutée dans l'historique")
+                            else:
+                                print(f"   ⏭️  Migration {missing_dependency} existe déjà dans l'historique")
                         
                         # Réappliquer les migrations normalement
                         print("📋 Réapplication des migrations...")
@@ -502,28 +516,35 @@ def deploy_railway():
                         print("✅ Migrations corrigées avec succès")
                     else:
                         print(f"⚠️ Impossible d'extraire les migrations en conflit depuis: {error_str}")
-                        # Tentative alternative : supprimer l'entrée de la migration appliquée trop tôt
-                        print("🔄 Tentative alternative : suppression de l'entrée de migration problématique...")
+                        # Tentative alternative : corriger directement les migrations connues pour causer des problèmes
+                        print("🔄 Tentative alternative : correction directe des migrations problématiques...")
                         from django.db import connection
                         with connection.cursor() as cursor:
                             # Supprimer l'entrée de la migration 0040 pour permettre l'application de 0039
                             # Cette migration est connue pour causer des problèmes d'ordre
+                            print("   Suppression de inventory.0040_add_weight_support_to_products...")
                             cursor.execute("DELETE FROM django_migrations WHERE app = 'inventory' AND name LIKE '0040_%'")
                             deleted = cursor.rowcount
-                            print(f"✅ {deleted} entrée(s) de migration 0040 supprimée(s)")
+                            print(f"   ✅ {deleted} entrée(s) de migration 0040 supprimée(s)")
                             
-                            # S'assurer que la migration 0039 est marquée comme appliquée
-                            cursor.execute("""
-                                INSERT INTO django_migrations (app, name, applied)
-                                SELECT 'inventory', '0039_alter_customer_credit_balance_and_more', NOW()
-                                WHERE NOT EXISTS (
-                                    SELECT 1 FROM django_migrations 
-                                    WHERE app = 'inventory' AND name = '0039_alter_customer_credit_balance_and_more'
+                            # Vérifier si la migration 0039 existe
+                            cursor.execute(
+                                "SELECT COUNT(*) FROM django_migrations WHERE app = 'inventory' AND name = '0039_alter_customer_credit_balance_and_more'"
+                            )
+                            exists = cursor.fetchone()[0] > 0
+                            
+                            if not exists:
+                                # S'assurer que la migration 0039 est marquée comme appliquée
+                                print("   Ajout de inventory.0039_alter_customer_credit_balance_and_more...")
+                                cursor.execute(
+                                    "INSERT INTO django_migrations (app, name, applied) VALUES ('inventory', '0039_alter_customer_credit_balance_and_more', NOW())"
                                 )
-                            """)
-                            print("✅ Migration 0039 marquée comme appliquée si nécessaire")
+                                print("   ✅ Migration 0039 ajoutée dans l'historique")
+                            else:
+                                print("   ⏭️  Migration 0039 existe déjà dans l'historique")
                             
                             # Réappliquer les migrations
+                            print("📋 Réapplication des migrations...")
                             call_command('migrate', '--noinput', verbosity=1)
                             print("✅ Migrations réappliquées avec succès")
                 except Exception as e2:
