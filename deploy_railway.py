@@ -433,6 +433,41 @@ def deploy_railway():
                 call_command('migrate', '--noinput', verbosity=1)
             else:
                 print("📋 Vérification des migrations...")
+                # Vérifier et corriger l'ordre des migrations AVANT d'appliquer
+                print("🔍 Vérification préventive de l'ordre des migrations...")
+                try:
+                    with connection.cursor() as cursor:
+                        # Vérifier si la migration 0040 existe avant 0039
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM django_migrations 
+                            WHERE app = 'inventory' AND name LIKE '0040_%'
+                        """)
+                        has_0040 = cursor.fetchone()[0] > 0
+                        
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM django_migrations 
+                            WHERE app = 'inventory' AND name = '0039_alter_customer_credit_balance_and_more'
+                        """)
+                        has_0039 = cursor.fetchone()[0] > 0
+                        
+                        if has_0040 and not has_0039:
+                            print("⚠️ Problème d'ordre détecté : 0040 existe mais pas 0039")
+                            print("🔄 Correction préventive...")
+                            # Supprimer 0040
+                            cursor.execute("DELETE FROM django_migrations WHERE app = 'inventory' AND name LIKE '0040_%'")
+                            deleted = cursor.rowcount
+                            print(f"   ✅ {deleted} entrée(s) de migration 0040 supprimée(s)")
+                            # Ajouter 0039
+                            cursor.execute("""
+                                INSERT INTO django_migrations (app, name, applied) 
+                                VALUES ('inventory', '0039_alter_customer_credit_balance_and_more', NOW())
+                            """)
+                            print("   ✅ Migration 0039 ajoutée dans l'historique")
+                            print("✅ Correction préventive terminée")
+                except Exception as prevent_error:
+                    print(f"⚠️ Erreur lors de la vérification préventive: {prevent_error}")
+                    print("   Continuation avec l'application normale des migrations...")
+                
                 # Appliquer les migrations normalement
                 call_command('migrate', '--noinput', verbosity=1)
             
