@@ -7,6 +7,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+!static/css/dist/
+!static/css/dist/output.css
 downloads/
 eggs/
 .eggs/
@@ -48,4 +50,7 @@ yarn-error.log*
 .DS_Store
 
 # Tailwind
-theme/static/css/dist/ 
+# Ne pas ignorer output.css - il doit être commité pour Railway
+# theme/static/css/dist/  # Ancien chemin, commenté
+# Forcer l'inclusion de output.css
+!static/css/dist/output.css 
