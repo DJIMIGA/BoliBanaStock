@@ -333,27 +333,30 @@ class TolerantManifestStaticFilesStorage(whitenoise.storage.CompressedManifestSt
                         import traceback
                         logger.error(traceback.format_exc())
                 
-                # 6. Si le fichier n'existe toujours pas, créer un fichier CSS minimal
+                # 6. Vérifier si le fichier existe déjà (peut-être collecté mais pas dans le manifest)
+                # Ne PAS créer de fichier CSS minimal - le CSS doit être généré pendant le build
                 if 'output.css' in name:
-                    logger.warning(f"⚠️ Création d'un fichier CSS minimal pour éviter les erreurs 404...")
-                    try:
-                        # Créer le répertoire si nécessaire
-                        target_dir = os.path.join(self.location, os.path.dirname(name))
-                        os.makedirs(target_dir, exist_ok=True)
-                        target_path = os.path.join(self.location, name)
-                        
-                        # Créer un fichier CSS minimal
-                        minimal_css = """/* Fichier CSS minimal - Tailwind CSS non généré */
-/* Ce fichier est créé automatiquement car output.css n'a pas été généré */
-/* Veuillez vérifier les logs du build pour voir pourquoi Tailwind CSS n'a pas été généré */
-body { margin: 0; padding: 0; }
-"""
-                        with open(target_path, 'w', encoding='utf-8') as f:
-                            f.write(minimal_css)
-                        logger.warning(f"⚠️ Fichier CSS minimal créé: {target_path}")
-                        return name
-                    except Exception as create_error:
-                        logger.error(f"❌ Erreur lors de la création du fichier CSS minimal: {create_error}")
+                    # Vérifier si le fichier existe déjà dans staticfiles (peut-être collecté mais pas dans le manifest)
+                    possible_paths = [
+                        os.path.join(self.location, name),
+                        os.path.join(self.location, 'css', 'dist', 'output.css'),
+                    ]
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            file_size = os.path.getsize(path)
+                            # Si le fichier fait plus de 1000 octets, c'est probablement le vrai CSS
+                            if file_size > 1000:
+                                logger.info(f"✅ output.css trouvé (taille: {file_size} octets): {path}")
+                                return name
+                            else:
+                                logger.warning(f"⚠️ output.css existe mais est trop petit ({file_size} octets): {path}")
+                                logger.warning(f"   Ce fichier sera ignoré - le CSS doit être généré pendant le build")
+                    
+                    logger.error(f"❌ output.css n'a pas été généré pendant le build!")
+                    logger.error(f"   Le fichier devrait être généré dans nixpacks.toml pendant la phase BUILD")
+                    logger.error(f"   Vérifiez les logs de build pour voir pourquoi npm run build a échoué")
+                    # Ne pas créer de fichier minimal - laisser WhiteNoise gérer l'erreur 404
+                    # Cela forcera le navigateur à utiliser les styles inline de fallback dans base.html
                 
                 # 7. Logs d'erreur détaillés
                 logger.error(f"❌ Fichier {name} non trouvé dans le storage")
