@@ -441,8 +441,10 @@ def deploy_railway():
             error_str = str(migrate_error)
             error_type = type(migrate_error).__name__
             print(f"🔍 Exception capturée: {error_type}")
-            print(f"🔍 Message d'erreur: {error_str[:500]}")  # Limiter à 500 caractères
+            print(f"🔍 Message d'erreur complet: {error_str}")
+            print(f"🔍 Type d'erreur: {error_type}")
             if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str or "InconsistentMigrationHistory" in error_type:
+                print(f"✅ Condition de correction détectée!")
                 print(f"⚠️ Erreur d'ordre de migration détectée: {error_type}")
                 print(f"⚠️ Message complet: {error_str}")
                 print("🔄 Tentative de correction de l'ordre des migrations...")
@@ -516,9 +518,12 @@ def deploy_railway():
                         print("✅ Migrations corrigées avec succès")
                     else:
                         print(f"⚠️ Impossible d'extraire les migrations en conflit depuis: {error_str}")
-                        # Tentative alternative : corriger directement les migrations connues pour causer des problèmes
-                        print("🔄 Tentative alternative : correction directe des migrations problématiques...")
-                        from django.db import connection
+                        print("🔄 Utilisation de la correction directe pour les migrations connues...")
+                    
+                    # Correction directe (exécutée même si la regex a fonctionné, pour être sûr)
+                    print("🔄 Correction directe des migrations problématiques...")
+                    from django.db import connection
+                    try:
                         with connection.cursor() as cursor:
                             # Supprimer l'entrée de la migration 0040 pour permettre l'application de 0039
                             # Cette migration est connue pour causer des problèmes d'ordre
@@ -547,6 +552,11 @@ def deploy_railway():
                             print("📋 Réapplication des migrations...")
                             call_command('migrate', '--noinput', verbosity=1)
                             print("✅ Migrations réappliquées avec succès")
+                    except Exception as sql_error:
+                        print(f"❌ Erreur lors de la correction SQL: {sql_error}")
+                        import traceback
+                        traceback.print_exc()
+                        raise
                 except Exception as e2:
                     print(f"⚠️ Correction échouée: {e2}")
                     import traceback
