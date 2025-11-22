@@ -453,9 +453,20 @@ def deploy_railway():
                     
                     # Extraire les migrations en conflit depuis le message d'erreur
                     # Format: "Migration inventory.0040_add_weight_support_to_products is applied before its dependency inventory.0039_alter_customer_credit_balance_and_more on database 'default'."
-                    # Pattern pour capturer les noms complets : app.num_nom_complet
+                    # Pattern amélioré pour capturer les noms complets : app.num_nom_complet
                     # \w+ = app name, \d+ = migration number, [\w_]+ = migration name with underscores
-                    match = re.search(r"Migration (\w+\.\d+_[\w_]+) is applied before its dependency (\w+\.\d+_[\w_]+)", error_str)
+                    patterns = [
+                        r"Migration (\w+\.\d+_[\w_]+) is applied before its dependency (\w+\.\d+_[\w_]+)",
+                        r"Migration '(\w+\.\d+_[\w_]+)' is applied before its dependency '(\w+\.\d+_[\w_]+)'",
+                        r"(\w+\.\d+_[\w_]+).*?is applied before.*?(\w+\.\d+_[\w_]+)",
+                    ]
+                    
+                    match = None
+                    for pattern in patterns:
+                        match = re.search(pattern, error_str)
+                        if match:
+                            break
+                    
                     if match:
                         applied_migration = match.group(1)  # ex: inventory.0040_add_weight_support_to_products
                         missing_dependency = match.group(2)  # ex: inventory.0039_alter_customer_credit_balance_and_more
@@ -468,10 +479,20 @@ def deploy_railway():
                         print(f"📋 Migration appliquée trop tôt: {applied_migration}")
                         print(f"📋 Dépendance manquante: {missing_dependency}")
                         print(f"📋 App label: {app_label}, Migration num: {migration_num}")
-                        print(f"🔄 Marquage de la dépendance {missing_dependency} comme appliquée (fake)...")
+                        
+                        # Supprimer la migration appliquée trop tôt
+                        print(f"🔄 Suppression de la migration appliquée trop tôt: {applied_migration}...")
+                        with connection.cursor() as cursor:
+                            app_label_applied, migration_full_applied = applied_migration.split('.', 1)
+                            cursor.execute(
+                                "DELETE FROM django_migrations WHERE app = %s AND name = %s",
+                                [app_label_applied, migration_full_applied]
+                            )
+                            deleted = cursor.rowcount
+                            print(f"✅ {deleted} entrée(s) de migration {applied_migration} supprimée(s)")
                         
                         # Marquer la migration manquante comme appliquée avec --fake
-                        # Format: migrate inventory 0039 --fake
+                        print(f"🔄 Marquage de la dépendance {missing_dependency} comme appliquée (fake)...")
                         call_command('migrate', app_label, migration_num, '--fake', '--noinput', verbosity=2)
                         print(f"✅ Migration {missing_dependency} marquée comme appliquée")
                         
