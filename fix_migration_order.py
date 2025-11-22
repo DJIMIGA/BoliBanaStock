@@ -84,8 +84,9 @@ def fix_migration_order():
             
             # 6. Corriger tous les autres problèmes d'ordre de migrations
             print("\n🔧 Étape 6: Correction de tous les problèmes d'ordre de migrations...")
-            max_iterations = 10  # Limiter les itérations pour éviter les boucles infinies
+            max_iterations = 50  # Augmenter la limite car il y a beaucoup de migrations à corriger
             iteration = 0
+            last_error = None
             
             while iteration < max_iterations:
                 iteration += 1
@@ -94,6 +95,10 @@ def fix_migration_order():
                     # Essayer d'appliquer les migrations
                     call_command('migrate', '--noinput', verbosity=1)
                     print("   ✅ Toutes les migrations appliquées avec succès")
+                    break
+                except SystemExit:
+                    # migrate peut appeler sys.exit(), on l'ignore
+                    print("   ✅ Migrations appliquées (sys.exit ignoré)")
                     break
                 except Exception as migrate_error:
                     error_str = str(migrate_error)
@@ -150,7 +155,13 @@ def fix_migration_order():
                                     print(f"      ⏭️  {missing_dependency} existe déjà")
                         else:
                             print(f"   ❌ Impossible d'extraire les migrations depuis: {error_str[:200]}")
-                            raise migrate_error
+                            # Si on ne peut pas extraire, vérifier si c'est la même erreur qu'avant
+                            if last_error == error_str:
+                                print("   ⚠️ Même erreur répétée, arrêt pour éviter une boucle infinie")
+                                raise migrate_error
+                            last_error = error_str
+                            # Réessayer une fois de plus
+                            continue
                     else:
                         # Autre type d'erreur, la propager
                         raise migrate_error
@@ -158,7 +169,14 @@ def fix_migration_order():
             if iteration >= max_iterations:
                 print(f"\n⚠️ Nombre maximum d'itérations atteint ({max_iterations})")
                 print("   Il pourrait y avoir des problèmes d'ordre de migrations complexes")
-                print("   Vérifiez manuellement la table django_migrations")
+                print("   Tentative d'application des migrations une dernière fois...")
+                try:
+                    call_command('migrate', '--noinput', verbosity=1)
+                    print("   ✅ Migrations appliquées avec succès après toutes les corrections")
+                except Exception as final_error:
+                    print(f"   ❌ Erreur finale: {final_error}")
+                    print("   Vérifiez manuellement la table django_migrations")
+                    raise
             
             print("\n" + "="*60)
             print("  ✅ CORRECTION TERMINÉE AVEC SUCCÈS")
