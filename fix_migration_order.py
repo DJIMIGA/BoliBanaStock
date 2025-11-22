@@ -82,10 +82,83 @@ def fix_migration_order():
             for app, name, applied in final:
                 print(f"      - {app}.{name} (appliquée: {applied})")
             
-            # 6. Appliquer les migrations normalement
-            print("\n📦 Étape 6: Application des migrations...")
-            call_command('migrate', '--noinput', verbosity=2)
-            print("   ✅ Migrations appliquées avec succès")
+            # 6. Corriger tous les autres problèmes d'ordre de migrations
+            print("\n🔧 Étape 6: Correction de tous les problèmes d'ordre de migrations...")
+            max_iterations = 10  # Limiter les itérations pour éviter les boucles infinies
+            iteration = 0
+            
+            while iteration < max_iterations:
+                iteration += 1
+                print(f"\n   Itération {iteration}/{max_iterations}...")
+                try:
+                    # Essayer d'appliquer les migrations
+                    call_command('migrate', '--noinput', verbosity=1)
+                    print("   ✅ Toutes les migrations appliquées avec succès")
+                    break
+                except Exception as migrate_error:
+                    error_str = str(migrate_error)
+                    if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str:
+                        print(f"   ⚠️ Problème d'ordre détecté: {error_str[:200]}")
+                        
+                        # Extraire les migrations en conflit
+                        import re
+                        patterns = [
+                            r"Migration (\w+\.\d+_[\w_]+) is applied before its dependency (\w+\.\d+_[\w_]+)",
+                            r"Migration '(\w+\.\d+_[\w_]+)' is applied before its dependency '(\w+\.\d+_[\w_]+)'",
+                            r"(\w+\.\d+_[\w_]+).*?is applied before.*?(\w+\.\d+_[\w_]+)",
+                        ]
+                        
+                        match = None
+                        for pattern in patterns:
+                            match = re.search(pattern, error_str)
+                            if match:
+                                break
+                        
+                        if match:
+                            applied_migration = match.group(1)
+                            missing_dependency = match.group(2)
+                            print(f"      Migration appliquée trop tôt: {applied_migration}")
+                            print(f"      Dépendance manquante: {missing_dependency}")
+                            
+                            # Corriger
+                            app_label_applied, migration_full_applied = applied_migration.split('.', 1)
+                            app_label_dep, migration_full_dep = missing_dependency.split('.', 1)
+                            
+                            with connection.cursor() as cursor:
+                                # Supprimer la migration appliquée trop tôt
+                                cursor.execute(
+                                    "DELETE FROM django_migrations WHERE app = %s AND name = %s",
+                                    [app_label_applied, migration_full_applied]
+                                )
+                                deleted = cursor.rowcount
+                                print(f"      ✅ {deleted} entrée(s) de {applied_migration} supprimée(s)")
+                                
+                                # Ajouter la dépendance si elle n'existe pas
+                                cursor.execute(
+                                    "SELECT COUNT(*) FROM django_migrations WHERE app = %s AND name = %s",
+                                    [app_label_dep, migration_full_dep]
+                                )
+                                exists = cursor.fetchone()[0] > 0
+                                
+                                if not exists:
+                                    cursor.execute(
+                                        "INSERT INTO django_migrations (app, name, applied) VALUES (%s, %s, NOW())",
+                                        [app_label_dep, migration_full_dep]
+                                    )
+                                    print(f"      ✅ {missing_dependency} ajoutée dans l'historique")
+                                else:
+                                    print(f"      ⏭️  {missing_dependency} existe déjà")
+                        else:
+                            print(f"   ❌ Impossible d'extraire les migrations depuis: {error_str[:200]}")
+                            raise migrate_error
+                    else:
+                        # Autre type d'erreur, la propager
+                        raise migrate_error
+            
+            if iteration >= max_iterations:
+                print(f"\n⚠️ Nombre maximum d'itérations atteint ({max_iterations})")
+                print("   Il pourrait y avoir des problèmes d'ordre de migrations complexes")
+                print("   Vérifiez manuellement la table django_migrations")
             
             print("\n" + "="*60)
             print("  ✅ CORRECTION TERMINÉE AVEC SUCCÈS")
