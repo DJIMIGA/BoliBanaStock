@@ -63,13 +63,26 @@ export default function InventoryScreen({ navigation }: any) {
   const qtyInputRefs = useRef<Record<number, any>>({});
   const scrollRef = useRef<ScrollView>(null);
   const rowPositionsRef = useRef<Record<number, number>>({});
+  const autoFocusRef = useRef<Record<number, boolean>>({});
   const [unknownModalVisible, setUnknownModalVisible] = useState(false);
   const [unknownCode, setUnknownCode] = useState<string>('');
 
   const setDraftQuantity = (productId: number, text: string, isWeight: boolean = false) => {
+    // Si c'était l'item focusé automatiquement, on retire le focus automatique pour éviter la ré-sélection (doublure) au prochain rendu
+    if (focusedProductId === productId) {
+      setFocusedProductId(null);
+    }
+    
     if (isWeight) {
       // Pour les produits au poids, permettre les décimales
-      setQtyDraft(prev => ({ ...prev, [productId]: text.replace(/[^0-9.]/g, '') }));
+      // Convertir les virgules en points pour la compatibilité
+      let cleaned = text.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+      // S'assurer qu'il n'y a qu'un seul point
+      const parts = cleaned.split('.');
+      if (parts.length > 2) {
+        cleaned = parts[0] + '.' + parts.slice(1).join('');
+      }
+      setQtyDraft(prev => ({ ...prev, [productId]: cleaned }));
     } else {
       // Pour les produits en quantité, seulement les entiers
       setQtyDraft(prev => ({ ...prev, [productId]: text.replace(/[^0-9]/g, '') }));
@@ -105,14 +118,20 @@ export default function InventoryScreen({ navigation }: any) {
   // Focus programmatique sur le champ quantité ciblé
   useEffect(() => {
     if (focusedProductId) {
-      const ref = qtyInputRefs.current[focusedProductId];
-      if (ref && typeof ref.focus === 'function') {
-        setTimeout(() => {
-          try { ref.focus(); } catch {}
-        }, 50);
-      }
+      const timer = setTimeout(() => {
+        const ref = qtyInputRefs.current[focusedProductId];
+        if (ref && typeof ref.focus === 'function') {
+          try {
+            ref.focus();
+          } catch (e) {
+            console.error('Erreur focus:', e);
+          }
+        }
+      }, 200);
+      return () => clearTimeout(timer);
     }
   }, [focusedProductId]);
+  
   
 
   const loadProducts = useCallback(async (query?: string, page: number = 1, append: boolean = false) => {
@@ -348,7 +367,13 @@ export default function InventoryScreen({ navigation }: any) {
         style={styles.searchResultRow}
         onPress={() => {
           if (existing) {
-            setFocusedProductId(existing.product.id);
+            // Forcer le re-focus même si c'est déjà le même produit (reset temporaire)
+            if (focusedProductId === existing.product.id) {
+              setFocusedProductId(null);
+              setTimeout(() => setFocusedProductId(existing.product.id), 50);
+            } else {
+              setFocusedProductId(existing.product.id);
+            }
           } else {
             setInventoryItems(prev => ([
               {
@@ -507,7 +532,20 @@ export default function InventoryScreen({ navigation }: any) {
           <View style={styles.scannedSection}>
             <View style={styles.scannedHeader}>
               <Text style={styles.scannedTitle}>Produits scannés</Text>
-              <Text style={styles.scannedMeta}>{inventoryItems.length} produit(s)</Text>
+              <Text style={styles.scannedMeta}>
+                {(() => {
+                  // Pour les produits au poids, compter le nombre de lignes, pas le poids total
+                  // Pour les produits en quantité, additionner les quantités
+                  const totalItems = inventoryItems.reduce((total, item) => {
+                    if ((item.product as any).sale_unit_type === 'weight') {
+                      return total + 1;
+                    } else {
+                      return total + item.counted_quantity;
+                    }
+                  }, 0);
+                  return `${totalItems} produit(s)`;
+                })()}
+              </Text>
             </View>
             <FlatList
               data={inventoryItems}
@@ -522,34 +560,34 @@ export default function InventoryScreen({ navigation }: any) {
                     <Text style={styles.scannedItemCug}>{item.product.cug}</Text>
                   </View>
                   <View style={styles.scannedItemRight}>
-                  <TextInput
-                      style={styles.scannedQtyInput}
-                    value={qtyDraft[item.product.id] ?? String(item.counted_quantity)}
-                    onChangeText={(t) => setDraftQuantity(item.product.id, t, (item.product as any).sale_unit_type === 'weight')}
-                      keyboardType={(item.product as any).sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
-                    placeholder={(item.product as any).sale_unit_type === 'weight' 
-                      ? `Poids (${(item.product as any).weight_unit || 'kg'})` 
-                      : 'Qté'}
-                    autoFocus={focusedProductId === item.product.id}
-                    selectTextOnFocus={focusedProductId === item.product.id}
-                      onSubmitEditing={() => { commitInventoryQuantity(item.product.id); setFocusedProductId(null); }}
-                      onEndEditing={() => { commitInventoryQuantity(item.product.id); setFocusedProductId(null); }}
-                    ref={(r) => { qtyInputRefs.current[item.product.id] = r; }}
-                      onFocus={() => {
-                        const y = rowPositionsRef.current[item.product.id] ?? 0;
-                        scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
-                        // Sélectionner tout le texte au focus
-                        setTimeout(() => {
-                          const ref = qtyInputRefs.current[item.product.id];
-                          if (ref) {
-                            const value = qtyDraft[item.product.id] ?? String(item.counted_quantity);
-                            ref.setNativeProps({ 
-                              selection: { start: 0, end: value.length } 
-                            });
+                    <View style={styles.quantityInputWrapper}>
+                      <TextInput
+                        style={styles.scannedQtyInput}
+                        value={qtyDraft[item.product.id] ?? String(Number(item.counted_quantity))}
+                        onChangeText={(t) => setDraftQuantity(item.product.id, t, (item.product as any).sale_unit_type === 'weight')}
+                        keyboardType={(item.product as any).sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
+                        placeholder={(item.product as any).sale_unit_type === 'weight' ? 'Poids' : 'Qté'}
+                        autoFocus={focusedProductId === item.product.id}
+                        selectTextOnFocus={focusedProductId === item.product.id}
+                        onSubmitEditing={() => { commitInventoryQuantity(item.product.id); setFocusedProductId(null); }}
+                        onEndEditing={() => { commitInventoryQuantity(item.product.id); setFocusedProductId(null); }}
+                        ref={(r) => { qtyInputRefs.current[item.product.id] = r; }}
+                        onFocus={() => {
+                          const y = rowPositionsRef.current[item.product.id] ?? 0;
+                          scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+                          
+                          // Désactiver selectTextOnFocus après le focus initial
+                          if (focusedProductId === item.product.id) {
+                            setTimeout(() => {
+                              setFocusedProductId(null);
+                            }, 500);
                           }
-                        }, 150);
-                      }}
-                    />
+                        }}
+                      />
+                      {(item.product as any).sale_unit_type === 'weight' && (
+                        <Text style={styles.quantityUnitLabel}>{(item.product as any).weight_unit || 'kg'}</Text>
+                      )}
+                    </View>
                   </View>
                   <TouchableOpacity style={styles.removeBtn} onPress={() => removeFromInventory(item.product.id)}>
                     <Ionicons name="trash-outline" size={20} color={theme.colors.error[500]} />
@@ -683,77 +721,58 @@ export default function InventoryScreen({ navigation }: any) {
             visible={scannerVisible}
             onScan={async (code: string) => {
               try {
-                // Fermer pour permettre la saisie de quantité puis relancer après
+                // Fermer le scanner d'abord
                 setScannerVisible(false);
+                
                 const data = await productService.scanProduct(code);
                 const raw = (data as any)?.product || data;
                 const id = raw?.id || raw?.product_id || raw?.product?.id;
+                
                 if (id) {
+                  let prod: Product | null = null;
                   try {
                     const full = await productService.getProduct(id);
-                    if (full?.id) {
-                      const prod = full as Product;
-                      setInventoryItems(prev => {
-                        const idx = prev.findIndex(it => it.product.id === prod.id);
-                        if (idx !== -1) {
-                          // Ne pas incrémenter: juste focus sur la ligne existante
-                          return prev;
-                        }
-                        return [
-                          {
-                            product: prod,
-                            counted_quantity: prod.quantity,
-                            difference: 0,
-                            notes: '',
-                          },
-                          ...prev,
-                        ];
-                      });
-                      setFocusedProductId(prod.id);
-                    } else if (raw?.name) {
-                      const prod = raw as Product;
-                      setInventoryItems(prev => {
-                        const idx = prev.findIndex(it => it.product.id === prod.id);
-                        if (idx !== -1) {
-                          return prev;
-                        }
-                        return [
-                          {
-                            product: prod,
-                            counted_quantity: prod.quantity,
-                            difference: 0,
-                            notes: '',
-                          },
-                          ...prev,
-                        ];
-                      });
-                      setFocusedProductId(prod.id);
-                    }
-                  } catch {
-                    if (raw?.name) {
-                      const prod = raw as Product;
-                      setInventoryItems(prev => {
-                        const idx = prev.findIndex(it => it.product.id === prod.id);
-                        if (idx !== -1) {
-                          return prev;
-                        }
-                        return [
-                          {
-                            product: prod,
-                            counted_quantity: prod.quantity,
-                            difference: 0,
-                            notes: '',
-                          },
-                          ...prev,
-                        ];
-                      });
-                      setFocusedProductId(prod.id);
-                    }
+                    if (full?.id) prod = full as Product;
+                  } catch {}
+                  
+                  if (!prod && raw?.name) prod = raw as Product;
+                  
+                  if (prod) {
+                    const productId = prod.id;
+                    const alreadyExists = inventoryItems.some(it => it.product.id === productId);
+                    
+                    // Mise à jour de la liste
+                    setInventoryItems(prev => {
+                      const idx = prev.findIndex(it => it.product.id === productId);
+                      if (idx !== -1) return prev; // Existe déjà, on ne fait rien
+                      
+                      return [
+                        {
+                          product: prod!,
+                          counted_quantity: prod!.quantity, // Par défaut stock théorique
+                          difference: 0,
+                          notes: '',
+                        },
+                        ...prev,
+                      ];
+                    });
+                    
+                    // Mettre le focus après un court délai pour laisser le modal se fermer
+                    setTimeout(() => {
+                      // Si le produit existe déjà, forcer le re-focus avec un reset temporaire
+                      if (alreadyExists) {
+                        setFocusedProductId(null);
+                        setTimeout(() => setFocusedProductId(productId), 50);
+                      } else {
+                        setFocusedProductId(productId);
+                      }
+                    }, 300);
+                    return;
                   }
-                } else {
-                  setUnknownCode(String(code));
-                  setUnknownModalVisible(true);
                 }
+                
+                setUnknownCode(String(code));
+                setUnknownModalVisible(true);
               } catch {
                 setUnknownCode(String(code));
                 setUnknownModalVisible(true);
@@ -957,6 +976,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 2,
   },
+  quantityInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   scannedQtyInput: {
     minWidth: 52,
     paddingVertical: 6,
@@ -968,6 +991,12 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.text.primary,
     backgroundColor: theme.colors.background.secondary,
+  },
+  quantityUnitLabel: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginLeft: 4,
+    fontWeight: '500',
   },
   removeBtn: {
     padding: 6,

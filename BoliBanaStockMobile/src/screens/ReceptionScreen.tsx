@@ -69,11 +69,31 @@ export default function ReceptionScreen({ navigation }: any) {
   const scrollRef = useRef<ScrollView>(null);
   const rowPositionsRef = useRef<Record<string, number>>({});
   const qtyInputRefs = useRef<Record<string, any>>({});
+  const autoFocusRef = useRef<Record<string, boolean>>({});
+  const selectionTimersRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   const setDraftQuantity = (lineId: string, text: string, isWeight: boolean = false) => {
+    // Dès que l'utilisateur tape, annuler la future sélection automatique pour éviter de re-sélectionner le 1er chiffre
+    if (selectionTimersRef.current[lineId]) {
+      clearTimeout(selectionTimersRef.current[lineId]);
+      delete selectionTimersRef.current[lineId];
+    }
+    
+    // Si c'était l'item focusé automatiquement, on retire le focus automatique pour éviter la ré-sélection (doublure) au prochain rendu
+    if (focusedLineId === lineId) {
+      setFocusedLineId(null);
+    }
+
     if (isWeight) {
       // Pour les produits au poids, permettre les décimales
-      setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9.]/g, '') }));
+      // Convertir les virgules en points pour la compatibilité
+      let cleaned = text.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+      // S'assurer qu'il n'y a qu'un seul point
+      const parts = cleaned.split('.');
+      if (parts.length > 2) {
+        cleaned = parts[0] + '.' + parts.slice(1).join('');
+      }
+      setQtyDraft(prev => ({ ...prev, [lineId]: cleaned }));
     } else {
       // Pour les produits en quantité, seulement les entiers
       setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9]/g, '') }));
@@ -337,7 +357,24 @@ export default function ReceptionScreen({ navigation }: any) {
       }
 
       if (successCount > 0) {
-        const totalValue = receptionItems.reduce((sum, item) => sum + (item.total_price || 0), 0);
+        // Calculer le total en prenant en compte les valeurs en cours de saisie (qtyDraft)
+        const totalValue = receptionItems.reduce((sum, item) => {
+          // Si une valeur est en cours de saisie dans qtyDraft, l'utiliser pour calculer le total
+          const draftValue = qtyDraft[item.line_id];
+          let quantity = item.received_quantity;
+          
+          if (draftValue !== undefined && draftValue !== '') {
+            const parsedQty = item.product.sale_unit_type === 'weight' 
+              ? parseFloat(draftValue) 
+              : parseInt(draftValue, 10);
+            if (!isNaN(parsedQty) && parsedQty > 0) {
+              quantity = parsedQty;
+            }
+          }
+          
+          const itemTotal = (item.unit_price || 0) * quantity;
+          return sum + itemTotal;
+        }, 0);
         
         Alert.alert(
           'Réception validée',
@@ -439,6 +476,8 @@ export default function ReceptionScreen({ navigation }: any) {
             });
             
             const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            // Initialiser la valeur dans qtyDraft pour qu'elle soit présélectionnée
+            setQtyDraft(prev => ({ ...prev, [newLineId]: String(inc) }));
             setReceptionItems(prev => ([
               {
                 product: prod,
@@ -451,6 +490,8 @@ export default function ReceptionScreen({ navigation }: any) {
               },
               ...prev,
             ]));
+            // Marquer pour auto-focus et sélection du texte
+            autoFocusRef.current[newLineId] = true;
             setFocusedLineId(newLineId);
             return;
           }
@@ -461,6 +502,8 @@ export default function ReceptionScreen({ navigation }: any) {
           const price = Number((prod as any).purchase_price || 0) || 0;
           const inc = Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
           const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          // Initialiser la valeur dans qtyDraft pour qu'elle soit présélectionnée
+          setQtyDraft(prev => ({ ...prev, [newLineId]: String(inc) }));
           setReceptionItems(prev => ([
             {
               product: prod,
@@ -473,6 +516,8 @@ export default function ReceptionScreen({ navigation }: any) {
             },
             ...prev,
           ]));
+          // Marquer pour auto-focus et sélection du texte
+          autoFocusRef.current[newLineId] = true;
           setFocusedLineId(newLineId);
           return;
         }
@@ -527,6 +572,8 @@ export default function ReceptionScreen({ navigation }: any) {
           });
           
           const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          // Initialiser la valeur dans qtyDraft pour qu'elle soit présélectionnée
+          setQtyDraft(prev => ({ ...prev, [newLineId]: String(inc) }));
           setReceptionItems(prev => ([
             {
               product: item,
@@ -539,6 +586,8 @@ export default function ReceptionScreen({ navigation }: any) {
             },
             ...prev,
           ]));
+          // Marquer pour auto-focus et sélection du texte
+          autoFocusRef.current[newLineId] = true;
           setFocusedLineId(newLineId);
           setSearchQuery('');
           setProducts([]);
@@ -696,7 +745,34 @@ export default function ReceptionScreen({ navigation }: any) {
                 <View style={styles.scannedHeader}>
                   <Text style={styles.scannedTitle}>Produits scannés</Text>
                   <Text style={styles.scannedMeta}>
-                    {receptionItems.length} produit(s) • {formatFCFA(receptionItems.reduce((s, it) => s + (it.total_price || 0), 0))}
+                    {(() => {
+                      // Pour les produits au poids, compter le nombre de lignes, pas le poids total
+                      // Pour les produits en quantité, additionner les quantités
+                      const totalItems = receptionItems.reduce((total, item) => {
+                        if (item.product.sale_unit_type === 'weight') {
+                          return total + 1;
+                        } else {
+                          return total + item.received_quantity;
+                        }
+                      }, 0);
+                      return totalItems;
+                    })()} produit(s) • {formatFCFA(receptionItems.reduce((sum, item) => {
+                      // Si une valeur est en cours de saisie dans qtyDraft, l'utiliser pour calculer le total
+                      const draftValue = qtyDraft[item.line_id];
+                      let quantity = item.received_quantity;
+                      
+                      if (draftValue !== undefined && draftValue !== '') {
+                        const parsedQty = item.product.sale_unit_type === 'weight' 
+                          ? parseFloat(draftValue) 
+                          : parseInt(draftValue, 10);
+                        if (!isNaN(parsedQty) && parsedQty > 0) {
+                          quantity = parsedQty;
+                        }
+                      }
+                      
+                      const itemTotal = (item.unit_price || 0) * quantity;
+                      return sum + itemTotal;
+                    }, 0))}
                   </Text>
                 </View>
                 <FlatList
@@ -714,34 +790,45 @@ export default function ReceptionScreen({ navigation }: any) {
                         <Text style={styles.scannedItemCug}>{item.product.cug}</Text>
                       </View>
                       <View style={styles.scannedItemRight}>
-                        <TextInput
-                          ref={(ref) => {
-                            qtyInputRefs.current[item.line_id] = ref;
-                          }}
-                          style={styles.scannedQtyInput}
-                          value={qtyDraft[item.line_id] ?? String(item.received_quantity)}
-                          onChangeText={(t) => setDraftQuantity(item.line_id, t, item.product.sale_unit_type === 'weight')}
-                          keyboardType={item.product.sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
-                          placeholder={item.product.sale_unit_type === 'weight' ? `Poids (${item.product.weight_unit || 'kg'})` : 'Qté'}
-                          autoFocus={focusedLineId === item.line_id}
-                          selectTextOnFocus={focusedLineId === item.line_id}
-                          onFocus={() => {
-                            const y = rowPositionsRef.current[item.line_id] ?? 0;
-                            scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
-                            // Sélectionner tout le texte au focus
-                            setTimeout(() => {
-                              const ref = qtyInputRefs.current[item.line_id];
-                              if (ref) {
-                                const value = qtyDraft[item.line_id] ?? String(item.received_quantity);
-                                ref.setNativeProps({ 
-                                  selection: { start: 0, end: value.length } 
-                                });
+                        <View style={styles.quantityInputWrapper}>
+                          <TextInput
+                            ref={(ref) => {
+                              qtyInputRefs.current[item.line_id] = ref;
+                            }}
+                            style={styles.scannedQtyInput}
+                            value={qtyDraft[item.line_id] ?? String(Number(item.received_quantity))}
+                            onChangeText={(t) => setDraftQuantity(item.line_id, t, item.product.sale_unit_type === 'weight')}
+                            keyboardType={item.product.sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
+                            placeholder={item.product.sale_unit_type === 'weight' ? 'Poids' : 'Qté'}
+                            autoFocus={focusedLineId === item.line_id}
+                            // On utilise la prop native pour la sélection (règle Problème 1)
+                            selectTextOnFocus={focusedLineId === item.line_id}
+                            onFocus={() => {
+                              const y = rowPositionsRef.current[item.line_id] ?? 0;
+                              scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+                              
+                              // Dès que le focus est pris, on désactive le flag "focus demandé"
+                              // Cela permet de passer selectTextOnFocus à false pour la suite
+                              // et d'éviter la ré-sélection à la frappe (règle Problème 2)
+                              if (focusedLineId === item.line_id) {
+                                // On attend un tout petit peu que la sélection native se fasse
+                                setTimeout(() => {
+                                  setFocusedLineId(null);
+                                }, 500);
                               }
-                            }, 150);
-                          }}
-                          onSubmitEditing={() => { commitReceptionQuantity(item.line_id); setFocusedLineId(null); }}
-                          onEndEditing={() => { commitReceptionQuantity(item.line_id); setFocusedLineId(null); }}
-                        />
+
+                              // Réinitialiser le flag autoFocus après le focus
+                              if (autoFocusRef.current[item.line_id]) {
+                                delete autoFocusRef.current[item.line_id];
+                              }
+                            }}
+                            onSubmitEditing={() => { commitReceptionQuantity(item.line_id); setFocusedLineId(null); }}
+                            onEndEditing={() => { commitReceptionQuantity(item.line_id); setFocusedLineId(null); }}
+                          />
+                          {item.product.sale_unit_type === 'weight' && (
+                            <Text style={styles.quantityUnitLabel}>{item.product.weight_unit || 'kg'}</Text>
+                          )}
+                        </View>
                       </View>
                       <TouchableOpacity style={styles.removeBtn} onPress={() => removeReceptionLine(item.line_id)}>
                         <Ionicons name="trash-outline" size={20} color={theme.colors.error[500]} />
@@ -1030,6 +1117,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 2,
   },
+  quantityInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   scannedQtyInput: {
     minWidth: 52,
     paddingVertical: 6,
@@ -1041,6 +1132,12 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.text.primary,
     backgroundColor: theme.colors.background.secondary,
+  },
+  quantityUnitLabel: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginLeft: 4,
+    fontWeight: '500',
   },
   scanQtyInput: {
     width: 70,

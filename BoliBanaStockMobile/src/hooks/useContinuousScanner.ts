@@ -111,7 +111,13 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
 
     setScanList(prev => {
       // Déduplication par barcode OU productId si présent
-      const existingIndex = prev.findIndex(item => item.barcode === barcode || (!!productData.productId && item.productId === productData.productId));
+      // Pour les produits au poids, on force une nouvelle ligne à chaque scan (multi-lignes)
+      const isWeightProduct = productData.sale_unit_type === 'weight';
+      
+      const existingIndex = isWeightProduct 
+        ? -1 
+        : prev.findIndex(item => item.barcode === barcode || (!!productData.productId && item.productId === productData.productId));
+
       if (existingIndex !== -1) {
         const updated = [...prev];
         const item = updated[existingIndex];

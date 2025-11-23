@@ -30,6 +30,8 @@ interface Product {
   category_name: string;
   brand_name: string;
   image_url?: string;
+  sale_unit_type?: 'quantity' | 'weight';
+  weight_unit?: 'kg' | 'g';
 }
 
 interface LossItem {
@@ -58,9 +60,23 @@ export default function LossScreen({ navigation }: any) {
   const scrollRef = useRef<ScrollView>(null);
   const rowPositionsRef = useRef<Record<string, number>>({});
   const qtyInputRefs = useRef<Record<string, any>>({});
+  const autoFocusRef = useRef<Record<string, boolean>>({});
 
   const setDraftQuantity = (lineId: string, text: string) => {
-    setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9]/g, '') }));
+    // Si c'était l'item focusé automatiquement, on retire le focus automatique pour éviter la ré-sélection (doublure) au prochain rendu
+    if (focusedLineId === lineId) {
+      setFocusedLineId(null);
+    }
+
+    const item = lossItems.find(it => it.line_id === lineId);
+    const isWeight = (item?.product as any)?.sale_unit_type === 'weight';
+    if (isWeight) {
+      // Pour les produits au poids, permettre les décimales et convertir les virgules en points
+      setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/,/g, '.').replace(/[^0-9.]/g, '') }));
+    } else {
+      // Pour les produits à quantité, seulement des entiers
+      setQtyDraft(prev => ({ ...prev, [lineId]: text.replace(/[^0-9]/g, '') }));
+    }
   };
 
   const commitLossQuantity = (lineId: string) => {
@@ -71,7 +87,10 @@ export default function LossScreen({ navigation }: any) {
       const updated = [...prev];
       const existing = updated[idx];
       const raw = qtyDraft[lineId];
-      const newQty = raw ? parseInt(raw, 10) : existing.loss_quantity;
+      const isWeight = (existing.product as any)?.sale_unit_type === 'weight';
+      const newQty = raw 
+        ? (isWeight ? parseFloat(raw) : parseInt(raw, 10))
+        : existing.loss_quantity;
       if (!isNaN(newQty) && newQty > 0) {
         updated[idx] = {
           ...existing,
@@ -269,7 +288,10 @@ export default function LossScreen({ navigation }: any) {
           const full = await productService.getProduct(productId);
           if (full?.id) {
             const prod = full as Product;
-            const inc = Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
+            const saleUnitType = (prod as any)?.sale_unit_type || 'quantity';
+            const inc = saleUnitType === 'weight' 
+              ? Math.max(0.001, parseFloat((scanQuantity || '0.001').replace(/[^0-9.]/g, '')) || 0.001)
+              : Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
             const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             setLossItems(prev => ([
               {
@@ -287,7 +309,10 @@ export default function LossScreen({ navigation }: any) {
         } catch {}
         if (raw?.name) {
           const prod = raw as Product;
-          const inc = Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
+          const saleUnitType = (prod as any)?.sale_unit_type || 'quantity';
+          const inc = saleUnitType === 'weight' 
+            ? Math.max(0.001, parseFloat((scanQuantity || '0.001').replace(/[^0-9.]/g, '')) || 0.001)
+            : Math.max(1, parseInt((scanQuantity || '1').replace(/[^0-9]/g, '')) || 1);
           const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
           setLossItems(prev => ([
             {
@@ -317,7 +342,8 @@ export default function LossScreen({ navigation }: any) {
       <TouchableOpacity
         style={styles.searchResultRow}
         onPress={() => {
-          const inc = 1;
+          const saleUnitType = (item as any)?.sale_unit_type || 'quantity';
+          const inc = saleUnitType === 'weight' ? 0.001 : 1;
           const newLineId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
           setLossItems(prev => ([
             {
@@ -507,6 +533,8 @@ export default function LossScreen({ navigation }: any) {
                   keyExtractor={(item) => item.line_id || `loss-${item.product.id}-${Math.random()}`}
                   renderItem={({ item }) => {
                     const lineId = item.line_id || `loss-${item.product.id}`;
+                    const isWeight = (item.product as any)?.sale_unit_type === 'weight';
+                    const weightUnit = (item.product as any)?.weight_unit || 'kg';
                     return (
                       <View
                         style={styles.scannedItemRow}
@@ -519,33 +547,62 @@ export default function LossScreen({ navigation }: any) {
                           <Text style={styles.scannedItemCug}>{item.product.cug}</Text>
                         </View>
                         <View style={styles.scannedItemRight}>
-                          <TextInput
-                            ref={(ref) => {
-                              qtyInputRefs.current[lineId] = ref;
-                            }}
-                            style={styles.scannedQtyInput}
-                            value={qtyDraft[lineId] ?? String(item.loss_quantity)}
-                            onChangeText={(t) => setDraftQuantity(lineId, t)}
-                            keyboardType="numeric"
-                            placeholder="Qté"
-                            autoFocus={focusedLineId === lineId}
-                            selectTextOnFocus={focusedLineId === lineId}
-                            onFocus={() => {
-                              const y = rowPositionsRef.current[lineId] ?? 0;
-                              scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
-                              setTimeout(() => {
-                                const ref = qtyInputRefs.current[lineId];
-                                if (ref) {
-                                  const value = qtyDraft[lineId] ?? String(item.loss_quantity);
-                                  ref.setNativeProps({ 
-                                    selection: { start: 0, end: value.length } 
-                                  });
+                          {isWeight ? (
+                            <View style={styles.quantityInputWrapper}>
+                              <TextInput
+                                ref={(ref) => {
+                                  qtyInputRefs.current[lineId] = ref;
+                                }}
+                                style={styles.scannedQtyInput}
+                                value={qtyDraft[lineId] ?? String(Number(item.loss_quantity))}
+                                onChangeText={(t) => setDraftQuantity(lineId, t)}
+                                keyboardType="decimal-pad"
+                                placeholder="Poids"
+                                autoFocus={focusedLineId === lineId}
+                                selectTextOnFocus={focusedLineId === lineId}
+                                onFocus={() => {
+                                  const y = rowPositionsRef.current[lineId] ?? 0;
+                                  scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+                                  
+                                  // Désactiver selectTextOnFocus après le focus initial
+                                  if (focusedLineId === lineId) {
+                                    setTimeout(() => {
+                                      setFocusedLineId(null);
+                                    }, 500);
+                                  }
+                                }}
+                                onSubmitEditing={() => { commitLossQuantity(lineId); setFocusedLineId(null); }}
+                                onEndEditing={() => { commitLossQuantity(lineId); setFocusedLineId(null); }}
+                              />
+                              <Text style={styles.quantityUnitLabel}>{weightUnit}</Text>
+                            </View>
+                          ) : (
+                            <TextInput
+                              ref={(ref) => {
+                                qtyInputRefs.current[lineId] = ref;
+                              }}
+                              style={styles.scannedQtyInput}
+                              value={qtyDraft[lineId] ?? String(Number(item.loss_quantity))}
+                              onChangeText={(t) => setDraftQuantity(lineId, t)}
+                              keyboardType="numeric"
+                              placeholder="Qté"
+                              autoFocus={focusedLineId === lineId}
+                              selectTextOnFocus={focusedLineId === lineId}
+                              onFocus={() => {
+                                const y = rowPositionsRef.current[lineId] ?? 0;
+                                scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+                                
+                                // Désactiver selectTextOnFocus après le focus initial
+                                if (focusedLineId === lineId) {
+                                  setTimeout(() => {
+                                    setFocusedLineId(null);
+                                  }, 500);
                                 }
-                              }, 150);
-                            }}
-                            onSubmitEditing={() => { commitLossQuantity(lineId); setFocusedLineId(null); }}
-                            onEndEditing={() => { commitLossQuantity(lineId); setFocusedLineId(null); }}
-                          />
+                              }}
+                              onSubmitEditing={() => { commitLossQuantity(lineId); setFocusedLineId(null); }}
+                              onEndEditing={() => { commitLossQuantity(lineId); setFocusedLineId(null); }}
+                            />
+                          )}
                         </View>
                         <TouchableOpacity style={styles.removeBtn} onPress={() => removeLossLine(lineId)}>
                           <Ionicons name="trash-outline" size={20} color={theme.colors.error[500]} />
@@ -847,6 +904,16 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.text.primary,
     backgroundColor: theme.colors.background.secondary,
+  },
+  quantityInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quantityUnitLabel: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginLeft: 4,
+    fontWeight: '500',
   },
   scanQtyInput: {
     width: 70,

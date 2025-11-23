@@ -1108,12 +1108,12 @@ class ProductViewSet(viewsets.ModelViewSet):
     def add_stock(self, request, pk=None):
         """Ajouter du stock à un produit avec contexte métier"""
         product = self.get_object()
-        quantity = request.data.get('quantity')
+        quantity_raw = request.data.get('quantity')
         notes = request.data.get('notes', 'Ajout de stock')
         
         # Log des données brutes reçues
         logger.info(f"🔍 [BACKEND] add_stock - Requête complète: {request.data}")
-        logger.info(f"🔍 [BACKEND] add_stock - Product ID: {product.id}, Quantity: {quantity}")
+        logger.info(f"🔍 [BACKEND] add_stock - Product ID: {product.id}, Quantity: {quantity_raw}")
         logger.info(f"🔍 [BACKEND] add_stock - Notes brutes (request.data.get): '{notes}'")
         logger.info(f"🔍 [BACKEND] add_stock - Notes type: {type(notes)}, Notes repr: {repr(notes)}")
         
@@ -1172,7 +1172,16 @@ class ProductViewSet(viewsets.ModelViewSet):
             else:
                 context_notes = 'Écart inventaire - Ajout manuel'
         
-        if not quantity or quantity <= 0:
+        # Convertir la quantité en Decimal pour gérer correctement les produits au poids (décimales)
+        try:
+            quantity = Decimal(str(quantity_raw)) if quantity_raw is not None else None
+        except (ValueError, TypeError, Exception):
+            return Response(
+                {'error': 'Quantité invalide. Doit être un nombre (ex: 5 ou 5.2)'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if quantity is None or quantity <= 0:
             return Response(
                 {'error': 'La quantité doit être positive'}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -1218,10 +1227,19 @@ class ProductViewSet(viewsets.ModelViewSet):
     def remove_stock(self, request, pk=None):
         """Retirer du stock d'un produit - Permet les stocks négatifs (backorder)"""
         product = self.get_object()
-        quantity = request.data.get('quantity')
+        quantity_raw = request.data.get('quantity')
         notes = request.data.get('notes', 'Retrait de stock')
         
-        if not quantity or quantity <= 0:
+        # Convertir la quantité en Decimal pour gérer correctement les produits au poids (décimales)
+        try:
+            quantity = Decimal(str(quantity_raw)) if quantity_raw is not None else None
+        except (ValueError, TypeError, Exception):
+            return Response(
+                {'error': 'Quantité invalide. Doit être un nombre (ex: 5 ou 5.2)'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if quantity is None or quantity <= 0:
             return Response(
                 {'error': 'La quantité doit être positive'}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -1351,11 +1369,17 @@ class ProductViewSet(viewsets.ModelViewSet):
     def adjust_stock(self, request, pk=None):
         """Ajuster le stock d'un produit avec contexte métier (correction)"""
         product = self.get_object()
-        try:
-            new_quantity = int(request.data.get('quantity'))
-        except (TypeError, ValueError):
-            return Response({'error': 'Quantité invalide'}, status=status.HTTP_400_BAD_REQUEST)
+        quantity_raw = request.data.get('quantity')
         notes = request.data.get('notes', 'Ajustement de stock')
+        
+        # Convertir la quantité en Decimal pour gérer correctement les produits au poids (décimales)
+        try:
+            new_quantity = Decimal(str(quantity_raw)) if quantity_raw is not None else None
+        except (ValueError, TypeError, Exception):
+            return Response({'error': 'Quantité invalide. Doit être un nombre (ex: 5 ou 5.2)'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if new_quantity is None or new_quantity < 0:
+            return Response({'error': 'La quantité doit être positive ou nulle'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Nouveaux paramètres de contexte métier
         context = request.data.get('context', 'manual')  # 'inventory', 'correction', 'manual'
@@ -1394,12 +1418,6 @@ class ProductViewSet(viewsets.ModelViewSet):
                     context_notes = f'Écart inventaire - {notes.strip()}'
             else:
                 context_notes = 'Écart inventaire'
-        
-        if new_quantity is None or new_quantity < 0:
-            return Response(
-                {'error': 'La quantité doit être positive ou nulle'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
         
         # Mettre à jour le stock
         old_quantity = product.quantity
