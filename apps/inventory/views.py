@@ -2,6 +2,7 @@ from django.views.generic import ListView, DetailView, CreateView, UpdateView, D
 from django.urls import reverse_lazy, reverse
 from django.db.models import Q, Sum, F
 from django.contrib.auth.mixins import LoginRequiredMixin
+from decimal import Decimal
 from .models import Product, Barcode, Transaction, Category, Brand, Supplier, OrderItem, Order
 from .forms import ProductForm, CategoryForm, BrandForm, TransactionForm, OrderForm, OrderItemFormSet
 from .mixins import SiteFilterMixin, SiteRequiredMixin
@@ -187,8 +188,11 @@ class ProductUpdateView(SiteFilterMixin, UpdateView):
         return form
 
     def form_valid(self, form):
-        # Sauvegarder l'ancienne quantité pour la comparaison
-        old_quantity = self.object.quantity if self.object.quantity else 0
+        # Sauvegarder l'ancienne quantité AVANT la mise à jour
+        old_quantity = Decimal(str(self.object.quantity)) if self.object.quantity else Decimal('0')
+        
+        # Récupérer la nouvelle quantité depuis le formulaire
+        new_quantity = Decimal(str(form.cleaned_data.get('quantity', 0)))
         
         # Gérer l'image avec le stockage du modèle (multisite)
         if 'image' in self.request.FILES:
@@ -198,7 +202,7 @@ class ProductUpdateView(SiteFilterMixin, UpdateView):
             # L'image sera sauvegardée automatiquement par le modèle
             # avec le bon storage (LocalProductImageStorage)
         
-        # Sauvegarder le formulaire
+        # Sauvegarder le formulaire (met à jour self.object.quantity)
         response = super().form_valid(form)
         
         # Gérer le champ de scan pour les codes-barres EAN
@@ -216,26 +220,18 @@ class ProductUpdateView(SiteFilterMixin, UpdateView):
                 )
         
         # Créer une transaction uniquement si la quantité a changé
-        new_quantity = form.cleaned_data.get('quantity', 0)
         if new_quantity != old_quantity:
             quantity_diff = new_quantity - old_quantity
-            transaction_type = 'in' if quantity_diff > 0 else 'loss'
             
-            # Mettre à jour ou créer le stock
-            if self.object.quantity:
-                self.object.quantity = new_quantity
-                self.object.save()
-            else:
-                self.object.quantity = new_quantity
-                self.object.save()
-            
+            # Utiliser 'adjustment' avec notes "Écart inventaire" pour que ça aille dans démarque inconnue
             Transaction.objects.create(
                 product=self.object,
-                type=transaction_type,
-                quantity=abs(quantity_diff),
+                type='adjustment',
+                quantity=quantity_diff,  # Peut être négatif ou positif
                 unit_price=self.object.purchase_price,
-                notes=f'Régularisation après mise à jour: {old_quantity} -> {new_quantity}',
-                user=self.request.user
+                notes=f'Écart inventaire - Modification quantité produit: {old_quantity} -> {new_quantity}',
+                user=self.request.user,
+                site_configuration=getattr(self.request.user, 'site_configuration', None)
             )
         
         messages.success(self.request, 'Le produit a été mis à jour avec succès.')

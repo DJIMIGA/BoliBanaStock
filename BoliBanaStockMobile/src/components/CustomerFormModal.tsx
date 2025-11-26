@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import theme from '../utils/theme';
 import { customerService, loyaltyService } from '../services/api';
 import { getCachedCurrency } from '../hooks/useConfiguration';
@@ -34,6 +35,7 @@ export default function CustomerFormModal({
   onCustomerCreated,
   editingCustomer,
 }: CustomerFormModalProps) {
+  const insets = useSafeAreaInsets();
   const [formData, setFormData] = useState({
     name: '',
     first_name: '',
@@ -406,7 +408,7 @@ export default function CustomerFormModal({
           ]}
         >
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { paddingTop: Math.max(20, insets.top + 10) }]}>
             <View style={styles.headerContent}>
               <View style={styles.headerIcon}>
                 <Ionicons 
@@ -420,7 +422,7 @@ export default function CustomerFormModal({
                   {isEditing ? 'Modifier le Client' : 'Ajouter un Client'}
                 </Text>
                 <Text style={styles.subtitle}>
-                  {isEditing ? 'Modifiez les informations du client' : 'Créez un nouveau client ou recherchez un client existant'}
+                  {isEditing ? 'Informations du client' : 'Nouveau client ou recherche'}
                 </Text>
               </View>
             </View>
@@ -782,9 +784,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: theme.colors.text.secondary,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   closeButton: {
     padding: 4,

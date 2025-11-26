@@ -4,6 +4,7 @@ from apps.sales.models import Sale, SaleItem, Customer, CreditTransaction
 from apps.core.models import Configuration
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from decimal import Decimal
 import os
 import re
 from bolibanastock.local_storage import get_current_local_site_storage
@@ -251,10 +252,16 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         """Supporte PATCH/PUT avec image et mise à jour des FK même si le client envoie 'category'/'brand' comme IDs"""
+        # Sauvegarder l'ancienne quantité AVANT la mise à jour pour créer une transaction si nécessaire
+        old_quantity = instance.quantity if instance.quantity else Decimal('0')
+        
         # Extraire champs spéciaux
         image = validated_data.pop('image', None)
         category_obj = validated_data.pop('category', None)
         brand_obj = validated_data.pop('brand', None)
+        
+        # Récupérer la nouvelle quantité si elle est dans les données validées
+        new_quantity = validated_data.get('quantity', None)
 
         # Mettre à jour les champs simples
         for attr, value in validated_data.items():
@@ -301,7 +308,32 @@ class ProductSerializer(serializers.ModelSerializer):
         except Exception:
             pass
 
+        # Sauvegarder l'instance
         instance.save()
+        
+        # Créer une transaction si la quantité a changé
+        if new_quantity is not None:
+            new_quantity_decimal = Decimal(str(new_quantity))
+            old_quantity_decimal = Decimal(str(old_quantity))
+            
+            if new_quantity_decimal != old_quantity_decimal:
+                quantity_diff = new_quantity_decimal - old_quantity_decimal
+                
+                request = self.context.get('request')
+                user = request.user if request and hasattr(request, 'user') else None
+                site_config = getattr(user, 'site_configuration', None) if user else None
+                
+                # Utiliser 'adjustment' avec notes "Écart inventaire" pour que ça aille dans démarque inconnue
+                Transaction.objects.create(
+                    product=instance,
+                    type='adjustment',
+                    quantity=quantity_diff,  # Peut être négatif ou positif
+                    unit_price=instance.purchase_price,
+                    notes=f'Écart inventaire - Modification quantité produit: {old_quantity} -> {new_quantity}',
+                    user=user,
+                    site_configuration=site_config
+                )
+        
         return instance
 
 
@@ -610,6 +642,17 @@ class TransactionSerializer(serializers.ModelSerializer):
     sale_reference = serializers.SerializerMethodField()
     is_sale_transaction = serializers.SerializerMethodField()
     context = serializers.SerializerMethodField()
+    formatted_quantity = serializers.CharField(read_only=True)
+    unit_display = serializers.SerializerMethodField()
+    
+    def get_unit_display(self, obj):
+        """Retourne l'unité d'affichage du produit (kg/g pour poids, unité(s) pour quantité)"""
+        if hasattr(obj, 'unit_display'):
+            return obj.unit_display
+        # Fallback : récupérer depuis le produit
+        if obj.product and hasattr(obj.product, 'unit_display'):
+            return obj.product.unit_display
+        return "unité(s)"
     
     def get_sale_reference(self, obj):
         """Retourne la référence de la vente, ou l'ID si la référence n'existe pas"""
@@ -652,8 +695,8 @@ class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction
         fields = [
-            'id', 'type', 'type_display', 'product', 'product_name', 'quantity', 'transaction_date',
-            'notes', 'unit_price', 'total_amount', 'user',
+            'id', 'type', 'type_display', 'product', 'product_name', 'quantity', 'formatted_quantity', 
+            'unit_display', 'transaction_date', 'notes', 'unit_price', 'total_amount', 'user',
             'sale_id', 'sale_reference', 'is_sale_transaction', 'context'
         ]
         read_only_fields = ['id', 'transaction_date']

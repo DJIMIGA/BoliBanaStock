@@ -23,6 +23,8 @@ interface ShrinkageTransaction {
   product_name?: string;
   product_cug?: string;
   quantity: number;
+  formatted_quantity?: string;
+  unit_display?: string;
   unit_price: number;
   total_amount: number;
   transaction_date?: string;
@@ -223,7 +225,8 @@ export default function UnknownShrinkageReportScreen({ navigation }: any) {
           return false;
         }
 
-        const quantity = parseInt(tx.quantity || 0);
+        // Utiliser parseFloat pour gérer les produits au poids (décimales)
+        const quantity = parseFloat(tx.quantity || 0);
 
         // Inclure les écarts d'inventaire NÉGATIFS uniquement
         if (tx.type === 'adjustment' && quantity < 0 && (tx.context === 'inventory' || (tx.notes && tx.notes.toLowerCase().includes('écart inventaire')))) {
@@ -303,7 +306,7 @@ export default function UnknownShrinkageReportScreen({ navigation }: any) {
   const calculateStats = (transactionsList: ShrinkageTransaction[], previousYearShrinkages: ShrinkageTransaction[] = [], totalStockValue: number) => {
     const totalTransactions = transactionsList.length;
     const totalQuantity = transactionsList.reduce((sum, tx) => {
-      return sum + (Math.abs(parseInt(String(tx.quantity || 0))) || 0);
+      return sum + (Math.abs(parseFloat(String(tx.quantity || 0))) || 0);
     }, 0);
     const totalValue = transactionsList.reduce((sum, tx) => {
       return sum + (Math.abs(parseFloat(String(tx.total_amount || 0))) || 0);
@@ -315,7 +318,7 @@ export default function UnknownShrinkageReportScreen({ navigation }: any) {
     let previousYearStats = undefined;
     if (previousYearShrinkages.length > 0) {
       const prevQuantity = previousYearShrinkages.reduce((sum, tx) => {
-        return sum + (Math.abs(parseInt(String(tx.quantity || 0))) || 0);
+        return sum + (Math.abs(parseFloat(String(tx.quantity || 0))) || 0);
       }, 0);
       const prevValue = previousYearShrinkages.reduce((sum, tx) => {
         return sum + (Math.abs(parseFloat(String(tx.total_amount || 0))) || 0);
@@ -365,7 +368,7 @@ export default function UnknownShrinkageReportScreen({ navigation }: any) {
         };
       }
 
-      productMap[key].total_quantity += Math.abs(parseInt(String(tx.quantity || 0)));
+      productMap[key].total_quantity += Math.abs(parseFloat(String(tx.quantity || 0)));
       productMap[key].total_value += Math.abs(parseFloat(String(tx.total_amount || 0)));
       productMap[key].shrinkage_count += 1;
     });
@@ -514,7 +517,7 @@ export default function UnknownShrinkageReportScreen({ navigation }: any) {
           </View>
           <View style={styles.transactionAmounts}>
             <Text style={styles.transactionQuantity}>
-              {Math.abs(parseInt(String(item.quantity || 0)))} unité(s)
+              {item.formatted_quantity ? Math.abs(parseFloat(item.formatted_quantity)) : Math.abs(parseInt(String(item.quantity || 0)))} {item.unit_display || 'unité(s)'}
             </Text>
             <Text style={styles.transactionAmount}>
               {formatCurrency(Math.abs(parseFloat(String(item.total_amount || 0))))}
