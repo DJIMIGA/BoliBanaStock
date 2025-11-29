@@ -19,15 +19,9 @@ print("============================================")
 
 loader = MigrationLoader(connection, load=True)
 
-# Collect inventory migration names in topological order
-inventory_nodes = [node for node in loader.graph.forwards_plan(("inventory", "__latest__")) if node[0] == "inventory"]
-# Deduplicate while preserving order
-seen = set()
-ordered = []
-for app, name in inventory_nodes:
-    if name not in seen:
-        seen.add(name)
-        ordered.append(name)
+# Collect inventory migration names from disk and sort by name
+inventory_names = [name for (app, name) in loader.disk_migrations.keys() if app == "inventory"]
+ordered = sorted(inventory_names)
 
 print(f"Found {len(ordered)} inventory migrations on disk")
 
