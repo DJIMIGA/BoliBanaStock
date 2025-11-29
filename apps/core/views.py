@@ -39,6 +39,7 @@ def get_user_site_configuration(user):
         # Les superusers voient la première configuration ou peuvent en créer une
         config = Configuration.objects.first()
         if not config:
+            # Le plan gratuit sera assigné automatiquement par Configuration.save()
             config = Configuration.objects.create(
                 site_name='Site Principal',
                 nom_societe='BoliBana Stock',
@@ -129,6 +130,7 @@ class PublicSignUpView(CreateView):
         user.save()  # Sauvegarder l'utilisateur d'abord
         
         # Créer la configuration du nouveau site après avoir sauvegardé l'utilisateur
+        # Le plan gratuit sera assigné automatiquement par Configuration.save()
         site_config = Configuration.objects.create(
             site_name=site_name,
             site_owner=user,
@@ -446,6 +448,7 @@ class ConfigurationUpdateView(LoginRequiredMixin, SiteAdminRequiredMixin, Update
                 config = Configuration.objects.first()
                 if not config:
                     # Créer une nouvelle configuration si aucune n'existe
+                    # Le plan gratuit sera assigné automatiquement par Configuration.save()
                     config = Configuration.objects.create(
                         site_name='Site Principal',
                         nom_societe='BoliBana Stock',
@@ -460,9 +463,9 @@ class ConfigurationUpdateView(LoginRequiredMixin, SiteAdminRequiredMixin, Update
                         updated_by=self.request.user
                     )
                     # Assigner la configuration au superuser
-                    self.request.user.site_configuration = config
-                    self.request.user.is_site_admin = True
-                    self.request.user.save()
+                self.request.user.site_configuration = config
+                self.request.user.is_site_admin = True
+                self.request.user.save()
         else:
             # Les utilisateurs normaux ne peuvent modifier que leur propre configuration
             if not self.request.user.site_configuration:

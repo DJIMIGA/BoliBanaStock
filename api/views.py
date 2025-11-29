@@ -717,6 +717,21 @@ class ProductViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"⚠️  Erreur lors du logging de création: {e}")
         
+        # Vérifier la limite de produits (sauf pour les superusers)
+        if not request.user.is_superuser:
+            user_site = getattr(request.user, 'site_configuration', None)
+            if user_site:
+                from apps.subscription.services import SubscriptionService
+                can_add, message = SubscriptionService.can_add_product(user_site, raise_exception=False)
+                if not can_add:
+                    return Response(
+                        {
+                            'error': message,
+                            'limit_info': SubscriptionService.check_product_limit(user_site)
+                        },
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+        
         # Appeler le create par défaut qui va appeler Product.save()
         # Product.save() appelle _auto_process_background() après super().save()
         response = super().create(request, *args, **kwargs)
@@ -3268,6 +3283,7 @@ class PublicSignUpAPIView(APIView):
                     user.save()
                     
                     # Maintenant créer la configuration du nouveau site
+                    # Le plan gratuit sera assigné automatiquement par Configuration.save()
                     site_config = Configuration(
                         site_name=site_name,
                         site_owner=user,
@@ -5152,6 +5168,26 @@ class ProductCopyAPIView(APIView):
             
             if not current_site:
                 return Response({'error': 'Configuration de site invalide'}, status=400)
+            
+            # Vérifier la limite de produits avant de copier (sauf pour les superusers)
+            if not request.user.is_superuser:
+                from apps.subscription.services import SubscriptionService
+                # Vérifier si on peut ajouter tous les produits demandés
+                current_count = SubscriptionService.get_site_product_count(current_site)
+                plan = SubscriptionService.get_site_plan(current_site)
+                if plan and plan.max_products is not None:
+                    if current_count + len(product_ids) > plan.max_products:
+                        limit_info = SubscriptionService.check_product_limit(current_site)
+                        return Response(
+                            {
+                                'error': f'Impossible de copier {len(product_ids)} produit(s). Limite de {plan.max_products} produits atteinte ou dépassée.',
+                                'limit_info': limit_info,
+                                'requested_count': len(product_ids),
+                                'current_count': current_count,
+                                'max_products': plan.max_products
+                            },
+                            status=status.HTTP_403_FORBIDDEN
+                        )
             
             from apps.inventory.models import ProductCopy
             copied_count = 0

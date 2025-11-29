@@ -263,6 +263,18 @@ class Configuration(BaseModel):
         choices=CURRENCY_CHOICES
     )
     tva = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name=_('TVA (%)'))
+    
+    # Plan d'abonnement du site
+    subscription_plan = models.ForeignKey(
+        'subscription.Plan',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sites',
+        verbose_name=_('Plan d\'abonnement'),
+        help_text=_('Plan d\'abonnement actif pour ce site'),
+        default=None  # Sera assigné automatiquement dans save() si None
+    )
     logo = models.ImageField(
         upload_to='assets/logos/site-default/',  # ✅ NOUVELLE STRUCTURE S3
         storage=LocalSiteLogoStorage(),  # Stockage local multisite
@@ -280,6 +292,16 @@ class Configuration(BaseModel):
         return f"{self.site_name} - {self.nom_societe}"
 
     def save(self, *args, **kwargs):
+        # Assigner le plan gratuit par défaut si aucun plan n'est spécifié
+        if not self.subscription_plan:
+            from apps.subscription.models import Plan
+            try:
+                free_plan = Plan.objects.get(slug='gratuit')
+                self.subscription_plan = free_plan
+            except Plan.DoesNotExist:
+                # Si le plan gratuit n'existe pas encore, on laisse None
+                pass
+        
         # Pour la première configuration, on garde la logique singleton
         if not Configuration.objects.exists():
             super().save(*args, **kwargs)
@@ -300,6 +322,37 @@ class Configuration(BaseModel):
         if self.updated_by:
             return f"Modifié par {self.get_updated_by_display()} le {self.updated_at.strftime('%d/%m/%Y à %H:%M')}"
         return f"Créé le {self.created_at.strftime('%d/%m/%Y à %H:%M')}"
+
+    def get_subscription_plan(self):
+        """
+        Retourne le plan d'abonnement du site, ou le plan gratuit par défaut
+        """
+        if self.subscription_plan:
+            return self.subscription_plan
+        # Retourner le plan gratuit par défaut
+        from apps.subscription.models import Plan
+        try:
+            return Plan.objects.get(slug='gratuit')
+        except Plan.DoesNotExist:
+            return None
+    
+    def get_plan_limits(self):
+        """
+        Retourne les limites du plan actuel du site
+        """
+        plan = self.get_subscription_plan()
+        if plan:
+            return {
+                'max_sites': plan.max_sites,
+                'max_products': plan.max_products,
+                'max_users': plan.max_users,
+                'max_transactions_per_month': plan.max_transactions_per_month,
+                'has_loyalty_program': plan.has_loyalty_program,
+                'has_advanced_reports': plan.has_advanced_reports,
+                'has_api_access': plan.has_api_access,
+                'has_priority_support': plan.has_priority_support,
+            }
+        return None
 
     @classmethod
     def get_site_configuration(cls, user=None):

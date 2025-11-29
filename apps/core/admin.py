@@ -53,8 +53,29 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Configuration)
 class ConfigurationAdmin(admin.ModelAdmin):
-    list_display = ('nom_societe', 'email', 'telephone', 'devise', 'tva')
+    list_display = ('nom_societe', 'email', 'telephone', 'devise', 'tva', 'subscription_plan')
+    list_filter = ('devise', 'subscription_plan', 'created_at')
+    search_fields = ('nom_societe', 'site_name', 'email', 'telephone')
     readonly_fields = ('created_at', 'updated_at', 'created_by', 'updated_by')
+    
+    fieldsets = (
+        (_('Informations du site'), {
+            'fields': ('site_name', 'site_owner', 'nom_societe', 'description')
+        }),
+        (_('Coordonnées'), {
+            'fields': ('adresse', 'telephone', 'email')
+        }),
+        (_('Configuration'), {
+            'fields': ('devise', 'tva', 'logo')
+        }),
+        (_('Abonnement'), {
+            'fields': ('subscription_plan',)
+        }),
+        (_('Dates'), {
+            'fields': ('created_at', 'updated_at', 'created_by', 'updated_by'),
+            'classes': ('collapse',)
+        }),
+    )
     
     def save_model(self, request, obj, form, change):
         if not change:

@@ -138,13 +138,23 @@ class ProductCreateView(SiteRequiredMixin, CreateView):
     def form_valid(self, form):
         # Assigner automatiquement le site de l'utilisateur
         if not self.request.user.is_superuser:
-            form.instance.site_configuration = self.request.user.site_configuration
+            site_config = self.request.user.site_configuration
+            form.instance.site_configuration = site_config
         else:
             # Les superusers créent des produits pour le site principal
             from apps.core.models import Configuration
             main_site = Configuration.objects.order_by('id').first()
             if main_site:
                 form.instance.site_configuration = main_site
+            site_config = main_site
+        
+        # Vérifier la limite de produits (sauf pour les superusers)
+        if not self.request.user.is_superuser and site_config:
+            from apps.subscription.services import SubscriptionService
+            can_add, message = SubscriptionService.can_add_product(site_config, raise_exception=False)
+            if not can_add:
+                messages.error(self.request, message)
+                return self.form_invalid(form)
         
         # Générer un CUG unique si nécessaire
         if not form.instance.cug:

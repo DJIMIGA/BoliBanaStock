@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'apps.inventory',
     'apps.sales',
     'apps.loyalty',
+    'apps.subscription',
     'crispy_forms',
     'crispy_tailwind',
     'import_export',
@@ -225,13 +226,13 @@ LOGOUT_REDIRECT_URL = '/core/login/'
 
 # Session settings
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-SESSION_COOKIE_AGE = 1209600  # 2 semaines en secondes
+SESSION_COOKIE_AGE = 43200  # 12 heures (au lieu de 2 semaines)
 SESSION_COOKIE_NAME = 'sessionid'
 SESSION_COOKIE_SECURE = False  # Mettre True en production avec HTTPS
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_SAVE_EVERY_REQUEST = True
-SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 # Test runner configuration
 TEST_RUNNER = 'apps.inventory.tests.test_runner.CustomTestRunner'

@@ -20,6 +20,7 @@ import { Picker } from '@react-native-picker/picker';
 import { productService, categoryService, brandService } from '../services/api';
 import { useImageManager } from '../hooks';
 import theme from '../utils/theme';
+import { formatPriceInput, formatWeightInput, cleanFormattedValue, getCurrency } from '../utils/currencyFormatter';
 import BarcodeModal from '../components/BarcodeModal';
 import HierarchicalCategorySelector from '../components/HierarchicalCategorySelector';
 import AddBrandModal from '../components/AddBrandModal';
@@ -183,16 +184,42 @@ export default function AddProductScreen({ navigation, route }: any) {
         console.log(`   Image field: ${p?.image || 'Aucune'}`);
         console.log(`   Barcodes: ${p?.barcodes?.length || 0} codes-barres`);
         
+        // Formater les valeurs initiales avec les utilitaires
+        const initialPurchasePrice = p?.purchase_price ? String(p.purchase_price) : '';
+        const initialSellingPrice = p?.selling_price ? String(p.selling_price) : '';
+        const initialQuantity = p?.quantity ? String(p.quantity) : '';
+        const initialAlertThreshold = p?.alert_threshold ? String(p.alert_threshold) : '5';
+        
+        console.log(`📥 [LOAD] Valeurs initiales du produit:`);
+        console.log(`   purchase_price: "${initialPurchasePrice}"`);
+        console.log(`   selling_price: "${initialSellingPrice}"`);
+        console.log(`   quantity: "${initialQuantity}"`);
+        console.log(`   alert_threshold: "${initialAlertThreshold}"`);
+        console.log(`   sale_unit_type: "${p?.sale_unit_type}"`);
+        
+        const formattedPurchasePrice = formatPriceInput(initialPurchasePrice, getCurrency());
+        const formattedSellingPrice = formatPriceInput(initialSellingPrice, getCurrency());
+        const formattedQuantity = p?.sale_unit_type === 'weight' ? formatWeightInput(initialQuantity) : initialQuantity;
+        const formattedAlertThreshold = p?.sale_unit_type === 'weight' ? formatWeightInput(initialAlertThreshold) : initialAlertThreshold;
+        
+        console.log(`📤 [LOAD] Valeurs formatées:`);
+        console.log(`   purchase_price: "${formattedPurchasePrice}"`);
+        console.log(`   selling_price: "${formattedSellingPrice}"`);
+        console.log(`   quantity: "${formattedQuantity}"`);
+        console.log(`   alert_threshold: "${formattedAlertThreshold}"`);
+        
         setForm({
           name: p?.name || '',
           cug: p?.cug || '',
           description: p?.description || '',
           sale_unit_type: p?.sale_unit_type || 'quantity',
           weight_unit: p?.weight_unit || undefined,
-          purchase_price: p?.purchase_price ? String(p.purchase_price) : '',
-          selling_price: p?.selling_price ? String(p.selling_price) : '',
-          quantity: p?.quantity ? String(p.quantity) : '',
-          alert_threshold: p?.alert_threshold ? String(p.alert_threshold) : '5',
+          // Formater les prix avec séparateurs de milliers (utiliser l'utilitaire)
+          purchase_price: formattedPurchasePrice,
+          selling_price: formattedSellingPrice,
+          // Formater les quantités selon le type
+          quantity: formattedQuantity,
+          alert_threshold: formattedAlertThreshold,
           category_id: p?.category?.id ? String(p.category.id) : '',
           brand_id: p?.brand?.id ? String(p.brand.id) : '',
           // Ne pas pré-remplir l'image existante pour éviter un ré-upload qui change l'URL
@@ -303,6 +330,36 @@ export default function AddProductScreen({ navigation, route }: any) {
           is_active: true,
         };
       }
+      
+      // Appliquer le formatage selon le champ
+      if (typeof value === 'string') {
+        const originalValue = value;
+        
+        if (field === 'purchase_price' || field === 'selling_price') {
+          // Formater les prix avec séparateurs de milliers (utiliser l'utilitaire)
+          console.log(`💰 [FORMAT] ${field} - Avant: "${originalValue}"`);
+          value = formatPriceInput(value, getCurrency());
+          console.log(`💰 [FORMAT] ${field} - Après: "${value}"`);
+        } else if (field === 'quantity' || field === 'alert_threshold') {
+          // Formater les poids/quantités
+          if (prev.sale_unit_type === 'weight') {
+            console.log(`⚖️ [FORMAT] ${field} (poids) - Avant: "${originalValue}"`);
+            value = formatWeightInput(value);
+            console.log(`⚖️ [FORMAT] ${field} (poids) - Après: "${value}"`);
+          } else {
+            // Pour les quantités en unités, permettre les entiers (y compris négatifs pour backorders)
+            // Permettre le signe moins au début
+            console.log(`🔢 [FORMAT] ${field} (unité) - Avant: "${originalValue}"`);
+            if (value.startsWith('-')) {
+              value = '-' + value.substring(1).replace(/[^0-9]/g, '');
+            } else {
+              value = value.replace(/[^0-9]/g, '');
+            }
+            console.log(`🔢 [FORMAT] ${field} (unité) - Après: "${value}"`);
+          }
+        }
+      }
+      
       return { ...prev, [field]: value };
     });
   }, []);
@@ -381,10 +438,12 @@ export default function AddProductScreen({ navigation, route }: any) {
         description: form.description.trim(),
         sale_unit_type: form.sale_unit_type,
         weight_unit: form.sale_unit_type === 'weight' ? form.weight_unit : null,
-        purchase_price: parseFloat(form.purchase_price),
-        selling_price: parseFloat(form.selling_price),
-        quantity: parseFloat(form.quantity || '0'),
-        alert_threshold: parseFloat(form.alert_threshold),
+        // Nettoyer les prix avant conversion (enlever les espaces) - utiliser l'utilitaire
+        purchase_price: parseFloat(cleanFormattedValue(form.purchase_price)),
+        selling_price: parseFloat(cleanFormattedValue(form.selling_price)),
+        // Les quantités sont déjà nettoyées par formatWeightInput
+        quantity: parseFloat(cleanFormattedValue(form.quantity || '0')),
+        alert_threshold: parseFloat(cleanFormattedValue(form.alert_threshold || '5')),
         category: form.category_id ? parseInt(form.category_id) : null,
         brand: form.brand_id ? parseInt(form.brand_id) : null,
         is_active: form.is_active,
@@ -501,6 +560,21 @@ export default function AddProductScreen({ navigation, route }: any) {
       } else if (error.response?.status === 413) {
         errorTitle = 'Image Trop Volumineuse';
         errorMessage = 'L\'image dépasse la taille maximale autorisée.';
+      } else if (error.response?.status === 403) {
+        // Erreur de limite d'abonnement
+        const limitInfo = error.response?.data?.limit_info;
+        if (limitInfo) {
+          errorTitle = 'Limite de Produits Atteinte';
+          errorMessage = error.response?.data?.error || 
+                        `Vous avez atteint la limite de ${limitInfo.max_products} produits de votre plan ${limitInfo.plan_name || ''}.\n\n` +
+                        `Produits actuels: ${limitInfo.current_count}/${limitInfo.max_products}\n\n` +
+                        `Veuillez mettre à niveau votre abonnement pour ajouter plus de produits.`;
+        } else {
+          errorTitle = 'Accès Refusé';
+          errorMessage = error.response?.data?.error || 
+                        error.response?.data?.message || 
+                        'Vous n\'avez pas la permission d\'effectuer cette action.';
+        }
       } else if (error.response?.status === 400) {
         errorTitle = 'Données Incorrectes';
         errorMessage = error.response?.data?.detail || 
@@ -819,7 +893,7 @@ export default function AddProductScreen({ navigation, route }: any) {
               value={form.purchase_price}
               onChangeText={(value: string) => updateForm('purchase_price', value)}
               placeholder="0"
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
               required
             />
 
@@ -830,7 +904,7 @@ export default function AddProductScreen({ navigation, route }: any) {
               value={form.selling_price}
               onChangeText={(value: string) => updateForm('selling_price', value)}
               placeholder="0"
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
               required
             />
 
@@ -841,7 +915,7 @@ export default function AddProductScreen({ navigation, route }: any) {
               value={form.quantity}
               onChangeText={(value: string) => updateForm('quantity', value)}
               placeholder="0"
-              keyboardType="numeric"
+              keyboardType={form.sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
               required
             />
             <Text style={styles.helpText}>
@@ -855,7 +929,7 @@ export default function AddProductScreen({ navigation, route }: any) {
               value={form.alert_threshold}
               onChangeText={(value: string) => updateForm('alert_threshold', value)}
               placeholder="5"
-              keyboardType="numeric"
+              keyboardType={form.sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
               required
             />
 
