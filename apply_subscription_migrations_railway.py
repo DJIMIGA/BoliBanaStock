@@ -154,11 +154,24 @@ def apply_migrations():
             cursor.execute("SELECT 1")
         print("✅ Connexion à la base de données réussie")
         
-        # ÉTAPE 0: Corriger l'ordre des migrations d'abord
+        # ÉTAPE 0: Corriger l'ordre des migrations d'abord avec fix_migration_order.py
         print("\n" + "=" * 60)
         print("🔧 ÉTAPE 0: Correction de l'ordre des migrations...")
         print("=" * 60)
-        fix_migration_order()
+        print("📋 Utilisation de fix_migration_order.py pour corriger tous les problèmes...")
+        
+        # Importer et exécuter fix_migration_order
+        try:
+            import fix_migration_order
+            fix_migration_order.fix_migration_order()
+            print("✅ fix_migration_order.py terminé avec succès")
+        except ImportError:
+            print("⚠️ fix_migration_order.py non trouvé, utilisation de la correction générique...")
+            fix_migration_order()
+        except Exception as e:
+            print(f"⚠️ Erreur avec fix_migration_order.py: {e}")
+            print("🔄 Tentative avec la correction générique...")
+            fix_migration_order()
         
         # Afficher l'état actuel des migrations
         print("\n📋 État actuel des migrations:")
@@ -166,6 +179,23 @@ def apply_migrations():
         call_command('showmigrations', 'subscription', verbosity=1)
         print("\n--- Core (subscription related) ---")
         call_command('showmigrations', 'core', verbosity=1)
+        
+        # Vérifier une dernière fois qu'il n'y a plus de problèmes d'ordre
+        print("\n" + "=" * 60)
+        print("🔍 Vérification finale de l'ordre des migrations...")
+        print("=" * 60)
+        try:
+            # Essayer d'appliquer toutes les migrations pour détecter les problèmes restants
+            call_command('migrate', '--check', verbosity=0)
+            print("✅ Aucun problème d'ordre détecté")
+        except Exception as check_error:
+            error_str = str(check_error)
+            if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str:
+                print(f"⚠️ Problème d'ordre restant détecté: {error_str[:200]}...")
+                print("🔄 Correction supplémentaire...")
+                fix_migration_order()
+            else:
+                print(f"⚠️ Autre erreur: {error_str[:200]}...")
         
         # Appliquer les migrations subscription
         print("\n" + "=" * 60)
