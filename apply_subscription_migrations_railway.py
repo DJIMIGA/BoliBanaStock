@@ -20,6 +20,106 @@ def setup_django():
     # Initialiser Django
     django.setup()
 
+def fix_migration_order():
+    """Corrige l'ordre des migrations avant d'appliquer les nouvelles"""
+    from django.db import connection
+    from django.core.management import call_command
+    
+    print("=" * 60)
+    print("  CORRECTION DE L'ORDRE DES MIGRATIONS")
+    print("=" * 60)
+    
+    try:
+        with connection.cursor() as cursor:
+            # 1. Vérifier l'état actuel
+            print("\n📋 Étape 1: Vérification de l'état actuel...")
+            cursor.execute("""
+                SELECT app, name, applied 
+                FROM django_migrations 
+                WHERE app = 'inventory' 
+                AND (name LIKE '0037_%' OR name LIKE '0038_%' OR name LIKE '0039_%' OR name LIKE '0040_%')
+                ORDER BY name
+            """)
+            existing = cursor.fetchall()
+            print(f"   Migrations inventory 0037-0040 trouvées: {len(existing)}")
+            for app, name, applied in existing:
+                print(f"      - {app}.{name} (appliquée: {applied})")
+            
+            # 2. Vérifier le problème spécifique: 0038 avant 0037
+            cursor.execute("""
+                SELECT COUNT(*) FROM django_migrations 
+                WHERE app = 'inventory' 
+                AND name = '0038_add_unique_phone_per_site'
+            """)
+            has_0038 = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*) FROM django_migrations 
+                WHERE app = 'inventory' 
+                AND name = '0037_customer_is_loyalty_member_and_more'
+            """)
+            has_0037 = cursor.fetchone()[0] > 0
+            
+            if has_0038 and not has_0037:
+                print("\n🔧 Étape 2: Correction du problème 0038 avant 0037...")
+                # Supprimer 0038
+                cursor.execute("""
+                    DELETE FROM django_migrations 
+                    WHERE app = 'inventory' 
+                    AND name = '0038_add_unique_phone_per_site'
+                """)
+                deleted_0038 = cursor.rowcount
+                print(f"   ✅ {deleted_0038} entrée(s) de migration 0038 supprimée(s)")
+                
+                # Ajouter 0037
+                cursor.execute("""
+                    INSERT INTO django_migrations (app, name, applied) 
+                    VALUES ('inventory', '0037_customer_is_loyalty_member_and_more', NOW())
+                """)
+                print("   ✅ Migration 0037 ajoutée dans l'historique")
+            
+            # 3. Vérifier et corriger 0040 avant 0039
+            cursor.execute("""
+                SELECT COUNT(*) FROM django_migrations 
+                WHERE app = 'inventory' 
+                AND name LIKE '0040_%'
+            """)
+            has_0040 = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*) FROM django_migrations 
+                WHERE app = 'inventory' 
+                AND name = '0039_alter_customer_credit_balance_and_more'
+            """)
+            has_0039 = cursor.fetchone()[0] > 0
+            
+            if has_0040 and not has_0039:
+                print("\n🔧 Étape 3: Correction du problème 0040 avant 0039...")
+                # Supprimer 0040
+                cursor.execute("""
+                    DELETE FROM django_migrations 
+                    WHERE app = 'inventory' 
+                    AND name LIKE '0040_%'
+                """)
+                deleted_0040 = cursor.rowcount
+                print(f"   ✅ {deleted_0040} entrée(s) de migration 0040 supprimée(s)")
+                
+                # Ajouter 0039
+                cursor.execute("""
+                    INSERT INTO django_migrations (app, name, applied) 
+                    VALUES ('inventory', '0039_alter_customer_credit_balance_and_more', NOW())
+                """)
+                print("   ✅ Migration 0039 ajoutée dans l'historique")
+            
+            print("\n✅ Correction de l'ordre des migrations terminée")
+            return True
+            
+    except Exception as e:
+        print(f"⚠️ Erreur lors de la correction: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 def apply_migrations():
     """Applique les migrations subscription et core"""
     from django.core.management import call_command
@@ -34,6 +134,12 @@ def apply_migrations():
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
         print("✅ Connexion à la base de données réussie")
+        
+        # ÉTAPE 0: Corriger l'ordre des migrations d'abord
+        print("\n" + "=" * 60)
+        print("🔧 ÉTAPE 0: Correction de l'ordre des migrations...")
+        print("=" * 60)
+        fix_migration_order()
         
         # Afficher l'état actuel des migrations
         print("\n📋 État actuel des migrations:")
