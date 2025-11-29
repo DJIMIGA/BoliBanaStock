@@ -19,11 +19,23 @@ print("============================================")
 
 loader = MigrationLoader(connection, load=True)
 
-# Collect inventory migration names from disk and sort by name
-inventory_names = [name for (app, name) in loader.disk_migrations.keys() if app == "inventory"]
-ordered = sorted(inventory_names)
+# Collect inventory migration names in topological order using leaf nodes
+ordered_names = []
+seen = set()
+try:
+    leaves = loader.graph.leaf_nodes("inventory")
+    for leaf in leaves:
+        for app, name in loader.graph.forwards_plan(leaf):
+            if app == "inventory" and name not in seen:
+                seen.add(name)
+                ordered_names.append(name)
+except Exception:
+    # Fallback to sorted by name
+    ordered_names = sorted([name for (app, name) in loader.disk_migrations.keys() if app == "inventory"])
 
-print(f"Found {len(ordered)} inventory migrations on disk")
+ordered = ordered_names
+
+print(f"Found {len(ordered)} inventory migrations on disk (ordered)")
 
 inserted = 0
 with connection.cursor() as cursor:
