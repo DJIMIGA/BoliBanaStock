@@ -31,7 +31,7 @@ def fix_migration_order():
     print("=" * 60)
     
     try:
-        max_iterations = 20
+        max_iterations = 10  # Réduire pour éviter les boucles infinies
         iteration = 0
         
         while iteration < max_iterations:
@@ -128,6 +128,8 @@ def fix_migration_order():
         if iteration >= max_iterations:
             print(f"\n⚠️ Nombre maximum d'itérations atteint ({max_iterations})")
             print("   Il pourrait y avoir des problèmes d'ordre complexes")
+            print("   💡 Suggestion: Exécutez d'abord 'python fix_migration_order.py' pour corriger tous les problèmes")
+            print("   Puis relancez ce script pour appliquer les migrations subscription")
         else:
             print(f"\n✅ Correction de l'ordre des migrations terminée après {iteration} itération(s)")
         
@@ -154,24 +156,16 @@ def apply_migrations():
             cursor.execute("SELECT 1")
         print("✅ Connexion à la base de données réussie")
         
-        # ÉTAPE 0: Corriger l'ordre des migrations d'abord avec fix_migration_order.py
+        # ÉTAPE 0: Corriger l'ordre des migrations d'abord
         print("\n" + "=" * 60)
         print("🔧 ÉTAPE 0: Correction de l'ordre des migrations...")
         print("=" * 60)
-        print("📋 Utilisation de fix_migration_order.py pour corriger tous les problèmes...")
+        print("📋 Note: Les problèmes d'ordre complexes peuvent nécessiter plusieurs exécutions")
+        print("📋 Si le script échoue, exécutez d'abord: python fix_migration_order.py")
+        print("=" * 60)
         
-        # Importer et exécuter fix_migration_order
-        try:
-            import fix_migration_order
-            fix_migration_order.fix_migration_order()
-            print("✅ fix_migration_order.py terminé avec succès")
-        except ImportError:
-            print("⚠️ fix_migration_order.py non trouvé, utilisation de la correction générique...")
-            fix_migration_order()
-        except Exception as e:
-            print(f"⚠️ Erreur avec fix_migration_order.py: {e}")
-            print("🔄 Tentative avec la correction générique...")
-            fix_migration_order()
+        # Utiliser la correction générique (limite à 10 itérations pour éviter les boucles)
+        fix_migration_order()
         
         # Afficher l'état actuel des migrations
         print("\n📋 État actuel des migrations:")
