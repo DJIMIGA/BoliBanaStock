@@ -273,9 +273,9 @@ const ConfigurationScreen: React.FC = () => {
           keyboardShouldPersistTaps="handled"
         >
       <View style={styles.header}>
-        <View style={styles.headerIconContainer}>
-          <Ionicons name="settings" size={24} color={theme.colors.primary[500]} />
-        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
+        </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.title}>Configuration</Text>
           <Text style={styles.subtitle}>Paramètres de votre entreprise</Text>
@@ -613,6 +613,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 8,
   },
   headerIconContainer: {
     width: 40,

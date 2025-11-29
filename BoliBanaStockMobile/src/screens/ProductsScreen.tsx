@@ -587,9 +587,9 @@ export default function ProductsScreen({ navigation, route }: any) {
 
       {/* Category Selection Modal */}
       <Modal
-        animationType="slide"
-        transparent={false}
         visible={categoryModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => setCategoryModalVisible(false)}
       >
         <CategorySelector

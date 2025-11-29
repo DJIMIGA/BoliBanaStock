@@ -98,8 +98,22 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
   useEffect(() => {
     if (visible) {
       getCameraPermissions();
+    } else {
+      // Nettoyer quand le scanner devient invisible
+      // Réinitialiser les références pour éviter les scans en arrière-plan
+      lastScanByCodeRef.current = {};
+      lastLengthRef.current = 0;
     }
   }, [visible]);
+
+  // Cleanup quand le composant est démonté ou devient invisible
+  useEffect(() => {
+    return () => {
+      // Nettoyer les références et arrêter tout scan en cours
+      lastScanByCodeRef.current = {};
+      lastLengthRef.current = 0;
+    };
+  }, []);
 
   // Initialiser tempQuantity quand le modal s'ouvre
   useEffect(() => {
@@ -117,7 +131,13 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
   const processedItemsRef = useRef<Set<string>>(new Set());
 
   // Détecter quand un produit au poids est ajouté et ouvrir automatiquement le modal
+  // SAUF pour les contextes "sales" et "reception" où on gère les produits au poids directement dans la liste
   useEffect(() => {
+    // Ne pas ouvrir le modal pour les produits au poids dans les contextes "sales" et "reception"
+    if (context === 'sales' || context === 'reception') {
+      return;
+    }
+    
     if (scanList.length > 0 && !showQuantityModal) {
       // Trouver le dernier produit ajouté qui est au poids et qui n'a pas encore été traité
       const lastItem = scanList[scanList.length - 1];
@@ -152,7 +172,7 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
         return () => clearTimeout(timer);
       }
     }
-  }, [scanList, showQuantityModal]);
+  }, [scanList, showQuantityModal, context]);
 
   const getCameraPermissions = async () => {
     try {
@@ -265,11 +285,12 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
       <StatusBar barStyle="light-content" />
       
       {/* Scanner Camera - overlay transparent et compact */}
+      {visible && (
       <CameraView
         ref={cameraRef}
         style={[styles.cameraOverlay, { opacity: 0.3 }]}
         facing="back"
-        onBarcodeScanned={handleBarCodeScanned}
+          onBarcodeScanned={visible ? handleBarCodeScanned : undefined}
         barcodeScannerSettings={{
           barcodeTypes: ['ean13', 'ean8', 'upc_a', 'code128', 'code39'],
           // Optimisations pour petits codes-barres
@@ -277,6 +298,7 @@ const ContinuousBarcodeScanner: React.FC<ContinuousBarcodeScannerProps> = ({
           enableTorch: false, // L'utilisateur peut activer si nécessaire
         }}
       />
+      )}
       
       {/* Zone de scan réduite et discrète */}
       <View style={styles.scanArea}>

@@ -43,6 +43,8 @@ interface ProductDetail {
   alert_threshold: number;
   selling_price: number;
   purchase_price: number;
+  sale_unit_type?: 'quantity' | 'weight';
+  weight_unit?: 'kg' | 'g';
   category?: { id: number; name: string } | null;
   brand?: { id: number; name: string } | null;
   image?: string | null;
@@ -260,9 +262,23 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       return;
     }
 
-    const quantity = parseInt(actionModal.quantity);
+    // Vérifier si le produit est au poids
+    const isWeight = product.sale_unit_type === 'weight';
+    
+    // Pour les produits au poids, utiliser parseFloat, sinon parseInt
+    const quantity = isWeight 
+      ? parseFloat(actionModal.quantity.replace(',', '.'))
+      : parseInt(actionModal.quantity, 10);
+    
     if (isNaN(quantity) || quantity < 0) {
-      Alert.alert('Erreur', 'Veuillez saisir une quantité valide');
+      const unit = isWeight ? (product.weight_unit || 'kg') : 'unité(s)';
+      Alert.alert('Erreur', `Veuillez saisir une ${isWeight ? 'valeur' : 'quantité'} valide (${unit})`);
+      return;
+    }
+    
+    // Pour les produits au poids, vérifier que la valeur est > 0
+    if (isWeight && quantity <= 0) {
+      Alert.alert('Erreur', `Le poids doit être supérieur à 0 ${product.weight_unit || 'kg'}`);
       return;
     }
 
@@ -808,13 +824,35 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{actionModal.title}</Text>
             
-            <Text style={styles.modalLabel}>Quantité</Text>
+            <Text style={styles.modalLabel}>
+              {product?.sale_unit_type === 'weight' ? 'Poids' : 'Quantité'}
+              {product?.sale_unit_type === 'weight' && product?.weight_unit && ` (${product.weight_unit})`}
+            </Text>
             <TextInput
               style={styles.modalInput}
               value={actionModal.quantity}
-              onChangeText={(text) => setActionModal(prev => ({ ...prev, quantity: text }))}
-              placeholder={actionModal.placeholder}
-              keyboardType="numeric"
+              onChangeText={(text) => {
+                // Pour les produits au poids, permettre les décimales
+                if (product?.sale_unit_type === 'weight') {
+                  // Convertir les virgules en points et permettre les décimales
+                  let cleaned = text.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+                  // S'assurer qu'il n'y a qu'un seul point
+                  const parts = cleaned.split('.');
+                  if (parts.length > 2) {
+                    cleaned = parts[0] + '.' + parts.slice(1).join('');
+                  }
+                  setActionModal(prev => ({ ...prev, quantity: cleaned }));
+                } else {
+                  // Pour les produits en quantité, seulement les entiers
+                  setActionModal(prev => ({ ...prev, quantity: text.replace(/[^0-9]/g, '') }));
+                }
+              }}
+              placeholder={
+                product?.sale_unit_type === 'weight' 
+                  ? `Ex: 0.500 ${product?.weight_unit || 'kg'}` 
+                  : actionModal.placeholder
+              }
+              keyboardType={product?.sale_unit_type === 'weight' ? 'decimal-pad' : 'numeric'}
               autoFocus
             />
             

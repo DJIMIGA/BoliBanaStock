@@ -135,7 +135,7 @@
                         {% for transaction in transactions %}
                         <div class="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-neutral-50 transition-colors duration-200">
                             <span class="text-neutral-900">{{ transaction.get_type_display }}</span>
-                            <span class="text-neutral-600">{{ transaction.formatted_quantity }} {{ transaction.product.unit_display }}</span>
+                            <span class="text-neutral-600">{{ transaction.formatted_quantity }} {{ transaction.unit_display }}</span>
                             <span class="text-neutral-500">{{ transaction.transaction_date|date:"d/m/Y H:i" }}</span>
                         </div>
                                     {% endfor %}

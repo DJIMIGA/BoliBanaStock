@@ -23,6 +23,8 @@ interface AdjustmentTransaction {
   product_name?: string;
   product_cug?: string;
   quantity: number;
+  formatted_quantity?: string;
+  unit_display?: string;
   unit_price: number;
   total_amount: number;
   transaction_date?: string;
@@ -42,6 +44,7 @@ interface ProductAdjustment {
   adjustment_count: number;
   positive_count: number;
   negative_count: number;
+  unit_display?: string; // Unité d'affichage du produit
 }
 
 interface StockStats {
@@ -61,6 +64,10 @@ interface StockStats {
   net_value: number;
   low_stock_count: number;
   out_of_stock_count: number;
+  has_mixed_units_positive?: boolean; // Indique si on mélange poids et unités pour les positifs
+  has_mixed_units_negative?: boolean; // Indique si on mélange poids et unités pour les négatifs
+  positive_unit?: string; // Unité principale pour les positifs
+  negative_unit?: string; // Unité principale pour les négatifs
   previousYear?: {
     total_adjustments: number;
     total_positive_quantity: number;
@@ -76,12 +83,16 @@ interface ShrinkageStats {
     total_quantity: number;
     total_value: number;
     shrinkage_rate: number;
+    has_mixed_units?: boolean; // Indique si on mélange poids et unités
+    unit?: string; // Unité principale
   };
   unknown: {
     total_transactions: number;
     total_quantity: number;
     total_value: number;
     shrinkage_rate: number;
+    has_mixed_units?: boolean; // Indique si on mélange poids et unités
+    unit?: string; // Unité principale
   };
 }
 
@@ -214,8 +225,8 @@ export default function StockReportScreen({ navigation }: any) {
           return isAdjustmentType || isManualAdjustment || isInventoryContext || hasInventoryKeywords;
         })
         .map((tx: any) => {
-          // Normaliser les quantités
-          let normalizedQuantity = parseInt(tx.quantity || 0);
+          // Normaliser les quantités (utiliser parseFloat pour les produits au poids)
+          let normalizedQuantity = parseFloat(tx.quantity || 0);
           if (tx.type === 'out' && normalizedQuantity > 0) {
             normalizedQuantity = -normalizedQuantity;
           }
@@ -358,7 +369,8 @@ export default function StockReportScreen({ navigation }: any) {
           // Les transactions de type 'adjustment' ont déjà la bonne quantité (positive ou négative)
           // Les transactions de type 'in' restent positives (ajouts)
           // Les transactions de type 'out' doivent être négatives (retraits)
-          let normalizedQuantity = parseInt(tx.quantity || 0);
+          // Utiliser parseFloat pour gérer les produits au poids (décimales)
+          let normalizedQuantity = parseFloat(tx.quantity || 0);
           if (tx.type === 'out' && normalizedQuantity > 0) {
             normalizedQuantity = -normalizedQuantity;
           }
@@ -421,24 +433,63 @@ export default function StockReportScreen({ navigation }: any) {
       return isDateInRange(txDate, today, new Date(today.getTime() + 86400000 - 1));
     });
 
-    // Écarts positifs et négatifs
+    // Écarts positifs et négatifs (utiliser parseFloat pour les produits au poids)
     const positiveAdjustments = transactionsList.filter((tx: any) => {
-      const quantity = parseInt(tx.quantity || 0);
+      const quantity = parseFloat(tx.quantity || 0);
       return quantity > 0;
     });
     
     const negativeAdjustments = transactionsList.filter((tx: any) => {
-      const quantity = parseInt(tx.quantity || 0);
+      const quantity = parseFloat(tx.quantity || 0);
       return quantity < 0;
     });
 
-    const totalPositiveQuantity = positiveAdjustments.reduce((sum: number, tx: any) => {
-      return sum + (parseInt(tx.quantity || 0) || 0);
-    }, 0);
+    // Séparer les quantités par type d'unité pour éviter d'additionner poids et unités
+    const isWeightUnit = (unit?: string) => unit === 'kg' || unit === 'g';
+    
+    // Calculer les totaux positifs séparément par type d'unité
+    const positiveByUnit = positiveAdjustments.reduce((acc: any, tx: any) => {
+      const unit = tx.unit_display || 'unité(s)';
+      const isWeight = isWeightUnit(unit);
+      const key = isWeight ? 'weight' : 'quantity';
+      if (!acc[key]) {
+        acc[key] = { total: 0, unit: unit, count: 0 };
+      }
+      acc[key].total += parseFloat(tx.quantity || 0);
+      acc[key].count += 1;
+      return acc;
+    }, {});
+    
+    // Calculer les totaux négatifs séparément par type d'unité
+    const negativeByUnit = negativeAdjustments.reduce((acc: any, tx: any) => {
+      const unit = tx.unit_display || 'unité(s)';
+      const isWeight = isWeightUnit(unit);
+      const key = isWeight ? 'weight' : 'quantity';
+      if (!acc[key]) {
+        acc[key] = { total: 0, unit: unit, count: 0 };
+      }
+      acc[key].total += Math.abs(parseFloat(tx.quantity || 0));
+      acc[key].count += 1;
+      return acc;
+    }, {});
 
-    const totalNegativeQuantity = Math.abs(negativeAdjustments.reduce((sum: number, tx: any) => {
-      return sum + (parseInt(tx.quantity || 0) || 0);
-    }, 0));
+    // Vérifier si on a un mélange d'unités (poids et quantité ensemble)
+    const hasPositiveMixed = Object.keys(positiveByUnit).length > 1;
+    const hasNegativeMixed = Object.keys(negativeByUnit).length > 1;
+    
+    // Déterminer l'unité principale pour l'affichage
+    const positiveUnit = positiveByUnit.quantity?.unit || positiveByUnit.weight?.unit || 'unité(s)';
+    const negativeUnit = negativeByUnit.quantity?.unit || negativeByUnit.weight?.unit || 'unité(s)';
+    
+    // Pour l'affichage, utiliser le total principal (quantité) si disponible, sinon poids, sinon 0
+    // Si mélangé, on ne peut pas additionner - on utilisera 0 et on affichera un message
+    const totalPositiveQuantity = hasPositiveMixed 
+      ? 0 // Ne pas additionner poids et unités
+      : (positiveByUnit.quantity?.total || positiveByUnit.weight?.total || 0);
+    
+    const totalNegativeQuantity = hasNegativeMixed
+      ? 0 // Ne pas additionner poids et unités
+      : (negativeByUnit.quantity?.total || negativeByUnit.weight?.total || 0);
 
     const totalPositiveValue = positiveAdjustments.reduce((sum: number, tx: any) => {
       return sum + (Math.abs(parseFloat(tx.total_amount || 0)) || 0);
@@ -451,11 +502,11 @@ export default function StockReportScreen({ navigation }: any) {
     // Calculer les stats de l'année précédente
     let previousYearStats = undefined;
     if (previousYearTransactions.length > 0) {
-      const prevPositive = previousYearTransactions.filter((tx: any) => parseInt(tx.quantity || 0) > 0);
-      const prevNegative = previousYearTransactions.filter((tx: any) => parseInt(tx.quantity || 0) < 0);
+      const prevPositive = previousYearTransactions.filter((tx: any) => parseFloat(tx.quantity || 0) > 0);
+      const prevNegative = previousYearTransactions.filter((tx: any) => parseFloat(tx.quantity || 0) < 0);
       
-      const prevPositiveQty = prevPositive.reduce((sum: number, tx: any) => sum + (parseInt(tx.quantity || 0) || 0), 0);
-      const prevNegativeQty = Math.abs(prevNegative.reduce((sum: number, tx: any) => sum + (parseInt(tx.quantity || 0) || 0), 0));
+      const prevPositiveQty = prevPositive.reduce((sum: number, tx: any) => sum + (parseFloat(tx.quantity || 0) || 0), 0);
+      const prevNegativeQty = Math.abs(prevNegative.reduce((sum: number, tx: any) => sum + (parseFloat(tx.quantity || 0) || 0), 0));
       const prevPositiveVal = prevPositive.reduce((sum: number, tx: any) => sum + (Math.abs(parseFloat(tx.total_amount || 0)) || 0), 0);
       const prevNegativeVal = prevNegative.reduce((sum: number, tx: any) => sum + (Math.abs(parseFloat(tx.total_amount || 0)) || 0), 0);
 
@@ -483,6 +534,10 @@ export default function StockReportScreen({ navigation }: any) {
       total_negative_value: totalNegativeValue,
       net_quantity: totalPositiveQuantity - totalNegativeQuantity,
       net_value: totalPositiveValue - totalNegativeValue,
+      has_mixed_units_positive: hasPositiveMixed,
+      has_mixed_units_negative: hasNegativeMixed,
+      positive_unit: positiveUnit,
+      negative_unit: negativeUnit,
       low_stock_count: dashboardStats.low_stock_count || 0,
       out_of_stock_count: dashboardStats.out_of_stock_count || 0,
       previousYear: previousYearStats,
@@ -517,7 +572,7 @@ export default function StockReportScreen({ navigation }: any) {
       const lossTransactions = allTransactions
         .filter((tx: any) => tx.type === 'loss')
         .map((tx: any) => {
-          let normalizedQuantity = parseInt(tx.quantity || 0);
+          let normalizedQuantity = parseFloat(tx.quantity || 0);
           if (normalizedQuantity < 0) {
             normalizedQuantity = Math.abs(normalizedQuantity);
           }
@@ -557,7 +612,8 @@ export default function StockReportScreen({ navigation }: any) {
             return false;
           }
 
-          const quantity = parseInt(tx.quantity || 0);
+          // Utiliser parseFloat pour gérer les produits au poids (décimales)
+          const quantity = parseFloat(tx.quantity || 0);
 
           // Inclure les écarts d'inventaire NÉGATIFS uniquement
           if (tx.type === 'adjustment' && quantity < 0 && (tx.context === 'inventory' || (tx.notes && tx.notes.toLowerCase().includes('écart inventaire')))) {
@@ -577,8 +633,8 @@ export default function StockReportScreen({ navigation }: any) {
           return false;
         })
         .map((tx: any) => {
-          // Normaliser les quantités
-          let normalizedQuantity = parseInt(tx.quantity || 0);
+          // Normaliser les quantités (utiliser parseFloat pour les produits au poids)
+          let normalizedQuantity = parseFloat(tx.quantity || 0);
           if (tx.type === 'out' && normalizedQuantity > 0) {
             normalizedQuantity = -normalizedQuantity;
           }
@@ -606,10 +662,26 @@ export default function StockReportScreen({ navigation }: any) {
         return isDateInRange(txDate, range.start, range.end);
       });
 
-      // Calculer les stats de casse
-      const lossQuantity = filteredLoss.reduce((sum: number, tx: any) => {
-        return sum + Math.abs(parseInt(String(tx.quantity || 0)));
-      }, 0);
+      // Séparer les quantités par type d'unité pour éviter d'additionner poids et unités
+      const isWeightUnit = (unit?: string) => unit === 'kg' || unit === 'g';
+      
+      // Calculer les stats de casse par type d'unité
+      const lossByUnit = filteredLoss.reduce((acc: any, tx: any) => {
+        const unit = tx.unit_display || 'unité(s)';
+        const isWeight = isWeightUnit(unit);
+        const key = isWeight ? 'weight' : 'quantity';
+        if (!acc[key]) {
+          acc[key] = { total: 0, unit: unit };
+        }
+        acc[key].total += Math.abs(parseFloat(String(tx.quantity || 0)));
+        return acc;
+      }, {});
+      
+      const hasLossMixed = Object.keys(lossByUnit).length > 1;
+      const lossQuantity = hasLossMixed 
+        ? 0 
+        : (lossByUnit.quantity?.total || lossByUnit.weight?.total || 0);
+      const lossUnit = lossByUnit.quantity?.unit || lossByUnit.weight?.unit || 'unité(s)';
       
       const lossValue = filteredLoss.reduce((sum: number, tx: any) => {
         return sum + Math.abs(parseFloat(String(tx.total_amount || 0)));
@@ -617,10 +689,23 @@ export default function StockReportScreen({ navigation }: any) {
       
       const lossRate = totalStockValue > 0 ? (lossValue / totalStockValue) * 100 : 0;
 
-      // Calculer les stats de démarque inconnue
-      const unknownQuantity = filteredUnknown.reduce((sum: number, tx: any) => {
-        return sum + Math.abs(parseInt(String(tx.quantity || 0)));
-      }, 0);
+      // Calculer les stats de démarque inconnue par type d'unité
+      const unknownByUnit = filteredUnknown.reduce((acc: any, tx: any) => {
+        const unit = tx.unit_display || 'unité(s)';
+        const isWeight = isWeightUnit(unit);
+        const key = isWeight ? 'weight' : 'quantity';
+        if (!acc[key]) {
+          acc[key] = { total: 0, unit: unit };
+        }
+        acc[key].total += Math.abs(parseFloat(String(tx.quantity || 0)));
+        return acc;
+      }, {});
+      
+      const hasUnknownMixed = Object.keys(unknownByUnit).length > 1;
+      const unknownQuantity = hasUnknownMixed 
+        ? 0 
+        : (unknownByUnit.quantity?.total || unknownByUnit.weight?.total || 0);
+      const unknownUnit = unknownByUnit.quantity?.unit || unknownByUnit.weight?.unit || 'unité(s)';
       
       const unknownValue = filteredUnknown.reduce((sum: number, tx: any) => {
         return sum + Math.abs(parseFloat(String(tx.total_amount || 0)));
@@ -634,12 +719,16 @@ export default function StockReportScreen({ navigation }: any) {
           total_quantity: lossQuantity,
           total_value: lossValue,
           shrinkage_rate: lossRate,
+          has_mixed_units: hasLossMixed,
+          unit: lossUnit,
         },
         unknown: {
           total_transactions: filteredUnknown.length,
           total_quantity: unknownQuantity,
           total_value: unknownValue,
           shrinkage_rate: unknownRate,
+          has_mixed_units: hasUnknownMixed,
+          unit: unknownUnit,
         },
       });
     } catch (error) {
@@ -665,10 +754,11 @@ export default function StockReportScreen({ navigation }: any) {
           adjustment_count: 0,
           positive_count: 0,
           negative_count: 0,
+          unit_display: tx.unit_display || 'unité(s)', // Stocker l'unité du produit
         };
       }
 
-      const quantity = parseInt(String(tx.quantity || 0));
+      const quantity = parseFloat(String(tx.quantity || 0));
       productMap[key].total_quantity += Math.abs(quantity);
       productMap[key].total_value += Math.abs(parseFloat(String(tx.total_amount || 0)));
       productMap[key].adjustment_count += 1;
@@ -786,7 +876,7 @@ export default function StockReportScreen({ navigation }: any) {
   };
 
   const renderAdjustmentItem = ({ item }: { item: AdjustmentTransaction }) => {
-    const quantity = parseInt(String(item.quantity || 0));
+    const quantity = item.formatted_quantity ? parseFloat(item.formatted_quantity) : parseFloat(String(item.quantity || 0));
     const isPositive = quantity > 0;
     
     return (
@@ -817,7 +907,7 @@ export default function StockReportScreen({ navigation }: any) {
               styles.transactionQuantity,
               { color: isPositive ? theme.colors.success[600] : theme.colors.error[600] }
             ]}>
-              {isPositive ? '+' : ''}{quantity} unité(s)
+              {isPositive ? '+' : ''}{quantity} {item.unit_display || 'unité(s)'}
             </Text>
             <Text style={[
               styles.transactionAmount,
@@ -1021,7 +1111,14 @@ export default function StockReportScreen({ navigation }: any) {
                             <Ionicons name="cube-outline" size={16} color={theme.colors.error[500]} />
                             <Text style={styles.compactStatLabelSmall}>Quantité</Text>
                           </View>
-                          <Text style={styles.compactStatValueSmall}>{shrinkageStats.loss.total_quantity}</Text>
+                          <Text style={styles.compactStatValueSmall}>
+                            {shrinkageStats.loss.has_mixed_units ? 'N/A' : shrinkageStats.loss.total_quantity.toFixed(3).replace(/\.?0+$/, '')}
+                          </Text>
+                          {shrinkageStats.loss.has_mixed_units && (
+                            <Text style={[styles.compactStatLabelSmall, { fontSize: 10, marginTop: 2 }]}>
+                              Mélange d'unités
+                            </Text>
+                          )}
                         </View>
 
                         <View style={styles.compactStatCardSmall}>
@@ -1064,7 +1161,14 @@ export default function StockReportScreen({ navigation }: any) {
                             <Ionicons name="cube-outline" size={16} color={theme.colors.warning[500]} />
                             <Text style={styles.compactStatLabelSmall}>Quantité</Text>
                           </View>
-                          <Text style={styles.compactStatValueSmall}>{shrinkageStats.unknown.total_quantity}</Text>
+                          <Text style={styles.compactStatValueSmall}>
+                            {shrinkageStats.unknown.has_mixed_units ? 'N/A' : shrinkageStats.unknown.total_quantity.toFixed(3).replace(/\.?0+$/, '')}
+                          </Text>
+                          {shrinkageStats.unknown.has_mixed_units && (
+                            <Text style={[styles.compactStatLabelSmall, { fontSize: 10, marginTop: 2 }]}>
+                              Mélange d'unités
+                            </Text>
+                          )}
                         </View>
 
                         <View style={styles.compactStatCardSmall}>
@@ -1144,9 +1248,11 @@ export default function StockReportScreen({ navigation }: any) {
                         </View>
                         <View style={styles.adjustmentCardContent}>
                           <Text style={[styles.adjustmentCardValue, { color: theme.colors.success[600] }]}>
-                            {stats.total_positive_quantity}
+                            {stats.has_mixed_units_positive ? 'N/A' : stats.total_positive_quantity.toFixed(3).replace(/\.?0+$/, '')}
                           </Text>
-                          <Text style={styles.adjustmentCardUnit}>unités</Text>
+                          <Text style={styles.adjustmentCardUnit}>
+                            {stats.has_mixed_units_positive ? 'Mélange d\'unités' : (stats.positive_unit || 'unité(s)')}
+                          </Text>
                         </View>
                         <View style={styles.adjustmentCardFooter}>
                           <Text style={styles.adjustmentCardCount}>
@@ -1167,9 +1273,11 @@ export default function StockReportScreen({ navigation }: any) {
                         </View>
                         <View style={styles.adjustmentCardContent}>
                           <Text style={[styles.adjustmentCardValue, { color: theme.colors.error[600] }]}>
-                            {stats.total_negative_quantity}
+                            {stats.has_mixed_units_negative ? 'N/A' : stats.total_negative_quantity.toFixed(3).replace(/\.?0+$/, '')}
                           </Text>
-                          <Text style={styles.adjustmentCardUnit}>unités</Text>
+                          <Text style={styles.adjustmentCardUnit}>
+                            {stats.has_mixed_units_negative ? 'Mélange d\'unités' : (stats.negative_unit || 'unité(s)')}
+                          </Text>
                         </View>
                         <View style={styles.adjustmentCardFooter}>
                           <Text style={styles.adjustmentCardCount}>
@@ -1245,7 +1353,9 @@ export default function StockReportScreen({ navigation }: any) {
                     <View style={styles.productStats}>
                       <View style={styles.productStatItem}>
                         <Ionicons name="cube-outline" size={14} color={theme.colors.text.secondary} />
-                        <Text style={styles.productStatValue}>{product.total_quantity}</Text>
+                        <Text style={styles.productStatValue}>
+                          {product.total_quantity.toFixed(3).replace(/\.?0+$/, '')} {product.unit_display || 'unité(s)'}
+                        </Text>
                       </View>
                       <View style={styles.productStatItem}>
                         <Ionicons name="cash-outline" size={14} color={theme.colors.text.secondary} />

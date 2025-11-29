@@ -7,7 +7,10 @@ import {
   Modal,
   Dimensions,
   Animated,
+  ScrollView,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { formatCurrency } from '../utils/currencyFormatter';
@@ -27,7 +30,9 @@ export default function PaymentMethodModal({
   onSelectMethod,
   totalAmount,
 }: PaymentMethodModalProps) {
-  const slideAnim = React.useRef(new Animated.Value(height)).current;
+  // Hauteur approximative du modal (header + total + 3 méthodes + footer + padding)
+  const modalHeight = 500;
+  const slideAnim = React.useRef(new Animated.Value(modalHeight)).current;
 
   React.useEffect(() => {
     if (visible) {
@@ -38,7 +43,7 @@ export default function PaymentMethodModal({
       }).start();
     } else {
       Animated.timing(slideAnim, {
-        toValue: height,
+        toValue: modalHeight,
         duration: 300,
         useNativeDriver: true,
       }).start();
@@ -66,76 +71,85 @@ export default function PaymentMethodModal({
             },
           ]}
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Mode de Paiement</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color={theme.colors.text.primary} />
-            </TouchableOpacity>
-          </View>
+          <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onClose} style={styles.backButton}>
+                <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+              <Text style={styles.title}>Mode de Paiement</Text>
+              <View style={styles.placeholder} />
+            </View>
 
-          {/* Total Amount */}
-          <View style={styles.totalSection}>
-            <Text style={styles.totalLabel}>Total à payer</Text>
-            <Text style={styles.totalAmount}>
-              {formatCurrency(totalAmount)}
-            </Text>
-          </View>
-
-          {/* Payment Methods */}
-          <View style={styles.methodsContainer}>
-            {/* Cash Payment */}
-            <TouchableOpacity
-              style={[styles.methodButton, styles.cashButton]}
-              onPress={() => handleMethodSelect('cash')}
+            <ScrollView 
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
             >
-              <View style={styles.methodIcon}>
-                <Ionicons name="cash-outline" size={32} color="white" />
+              {/* Total Amount */}
+              <View style={styles.totalSection}>
+                <Text style={styles.totalLabel}>Total à payer</Text>
+                <Text style={styles.totalAmount}>
+                  {formatCurrency(totalAmount)}
+                </Text>
               </View>
-              <View style={styles.methodInfo}>
-                <Text style={styles.methodTitle}>Liquide</Text>
-                <Text style={styles.methodSubtitle}>Paiement en espèces</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="white" />
-            </TouchableOpacity>
 
-            {/* Credit Payment */}
-            <TouchableOpacity
-              style={[styles.methodButton, styles.creditButton]}
-              onPress={() => handleMethodSelect('credit')}
-            >
-              <View style={styles.methodIcon}>
-                <Ionicons name="card-outline" size={32} color="white" />
-              </View>
-              <View style={styles.methodInfo}>
-                <Text style={styles.methodTitle}>Crédit</Text>
-                <Text style={styles.methodSubtitle}>Paiement différé</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="white" />
-            </TouchableOpacity>
+              {/* Payment Methods */}
+              <View style={styles.methodsContainer}>
+                {/* Cash Payment */}
+                <TouchableOpacity
+                  style={[styles.methodButton, styles.cashButton]}
+                  onPress={() => handleMethodSelect('cash')}
+                >
+                  <View style={styles.methodIcon}>
+                    <Ionicons name="cash-outline" size={32} color="white" />
+                  </View>
+                  <View style={styles.methodInfo}>
+                    <Text style={styles.methodTitle}>Liquide</Text>
+                    <Text style={styles.methodSubtitle}>Paiement en espèces</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="white" />
+                </TouchableOpacity>
 
-            {/* Sarali Payment */}
-            <TouchableOpacity
-              style={[styles.methodButton, styles.saraliButton]}
-              onPress={() => handleMethodSelect('sarali')}
-            >
-              <View style={styles.methodIcon}>
-                <Ionicons name="phone-portrait-outline" size={32} color="white" />
-              </View>
-              <View style={styles.methodInfo}>
-                <Text style={styles.methodTitle}>Sarali</Text>
-                <Text style={styles.methodSubtitle}>Mobile Money</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="white" />
-            </TouchableOpacity>
-          </View>
+                {/* Credit Payment */}
+                <TouchableOpacity
+                  style={[styles.methodButton, styles.creditButton]}
+                  onPress={() => handleMethodSelect('credit')}
+                >
+                  <View style={styles.methodIcon}>
+                    <Ionicons name="card-outline" size={32} color="white" />
+                  </View>
+                  <View style={styles.methodInfo}>
+                    <Text style={styles.methodTitle}>Crédit</Text>
+                    <Text style={styles.methodSubtitle}>Paiement différé</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="white" />
+                </TouchableOpacity>
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              Choisissez votre mode de paiement préféré
-            </Text>
-          </View>
+                {/* Sarali Payment */}
+                <TouchableOpacity
+                  style={[styles.methodButton, styles.saraliButton]}
+                  onPress={() => handleMethodSelect('sarali')}
+                >
+                  <View style={styles.methodIcon}>
+                    <Ionicons name="phone-portrait-outline" size={32} color="white" />
+                  </View>
+                  <View style={styles.methodInfo}>
+                    <Text style={styles.methodTitle}>Sarali</Text>
+                    <Text style={styles.methodSubtitle}>Mobile Money</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="white" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Footer */}
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>
+                  Choisissez votre mode de paiement préféré
+                </Text>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
         </Animated.View>
       </View>
     </Modal>
@@ -152,8 +166,17 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background.primary,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 34, // Safe area bottom
-    maxHeight: height * 0.8,
+    maxHeight: height * 0.9, // Maximum 90% de la hauteur de l'écran
+    width: '100%',
+  },
+  safeArea: {
+    maxHeight: height * 0.9,
+  },
+  scrollView: {
+    maxHeight: height * 0.75, // Limiter la hauteur du scroll
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -163,13 +186,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.neutral[200],
   },
+  backButton: {
+    padding: 4,
+  },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
+    flex: 1,
+    textAlign: 'center',
   },
-  closeButton: {
-    padding: 4,
+  placeholder: {
+    width: 32, // Même largeur que le bouton retour pour équilibrer
   },
   totalSection: {
     alignItems: 'center',

@@ -82,19 +82,74 @@ class ReceiptPrinterService {
 
   private async initializeBluetoothLibrary() {
     try {
-      // Import dynamique de la librairie Bluetooth
-      const bluetoothModule = require('react-native-bluetooth-escpos-printer');
-      this.BluetoothEscposPrinter = bluetoothModule.BluetoothEscposPrinter;
-      this.BluetoothManager = bluetoothModule.BluetoothManager;
-      console.log('✅ Librairie Bluetooth chargée avec succès');
-    } catch (error) {
-      console.warn('⚠️ Librairie Bluetooth non disponible:', error);
+      // Vérifier la plateforme avant de charger la librairie
+      if (Platform.OS === 'ios') {
+        // Sur iOS, la librairie peut ne pas être disponible ou causer des crashes
+        // On essaie de la charger mais on gère les erreurs gracieusement
+        try {
+          const bluetoothModule = require('react-native-bluetooth-escpos-printer');
+          this.BluetoothEscposPrinter = bluetoothModule.BluetoothEscposPrinter;
+          this.BluetoothManager = bluetoothModule.BluetoothManager;
+          console.log('✅ Librairie Bluetooth chargée avec succès (iOS)');
+        } catch (iosError: any) {
+          console.warn('⚠️ Librairie Bluetooth non disponible sur iOS:', iosError?.message || iosError);
+          // Ne pas planter l'application, juste logger l'erreur
+          this.BluetoothEscposPrinter = null;
+          this.BluetoothManager = null;
+        }
+      } else {
+        // Android
+        const bluetoothModule = require('react-native-bluetooth-escpos-printer');
+        this.BluetoothEscposPrinter = bluetoothModule.BluetoothEscposPrinter;
+        this.BluetoothManager = bluetoothModule.BluetoothManager;
+        console.log('✅ Librairie Bluetooth chargée avec succès (Android)');
+      }
+    } catch (error: any) {
+      console.warn('⚠️ Librairie Bluetooth non disponible:', error?.message || error);
       // En mode développement, on peut simuler
+      this.BluetoothEscposPrinter = null;
+      this.BluetoothManager = null;
     }
   }
 
   // Demander les permissions Bluetooth
   async requestBluetoothPermissions(): Promise<boolean> {
+    // Sur iOS, les permissions Bluetooth sont gérées automatiquement par le système
+    // mais on doit vérifier que la librairie est disponible
+    if (Platform.OS === 'ios') {
+      try {
+        // Vérifier que la librairie est chargée
+        if (!this.BluetoothManager && !this.BluetoothEscposPrinter) {
+          // Essayer de charger la librairie si elle n'est pas encore chargée
+          await this.initializeBluetoothLibrary();
+        }
+        
+        // Si la librairie n'est toujours pas disponible, retourner false
+        if (!this.BluetoothManager && !this.BluetoothEscposPrinter) {
+          console.warn('⚠️ [iOS] Librairie Bluetooth non disponible');
+          Alert.alert(
+            'Bluetooth non disponible',
+            'Le Bluetooth n\'est pas disponible sur cet appareil iOS. Veuillez utiliser un appareil compatible ou vérifier que l\'application a été compilée avec les modules natifs requis.',
+            [{ text: 'OK' }]
+          );
+          return false;
+        }
+        
+        // Sur iOS, les permissions sont demandées automatiquement lors de la première utilisation
+        // On retourne true si la librairie est disponible
+        console.log('✅ [iOS] Permissions Bluetooth vérifiées (gérées automatiquement par iOS)');
+        return true;
+      } catch (error: any) {
+        console.error('❌ [iOS] Erreur vérification permissions Bluetooth:', error?.message || error);
+        Alert.alert(
+          'Erreur Bluetooth',
+          'Une erreur est survenue lors de la vérification des permissions Bluetooth. Veuillez réessayer.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+    }
+    
     if (Platform.OS === 'android') {
       const androidVersion = Platform.Version;
       
@@ -212,7 +267,10 @@ class ReceiptPrinterService {
         }
       }
     }
-    return true; // iOS gère les permissions différemment
+    
+    // Si on arrive ici, c'est une plateforme non supportée
+    console.warn('⚠️ Plateforme non supportée pour Bluetooth:', Platform.OS);
+    return false;
   }
 
   // Découvrir les imprimantes Bluetooth disponibles
@@ -226,18 +284,39 @@ class ReceiptPrinterService {
       // Essayer de charger la librairie si elle n'est pas encore chargée
       if (!this.BluetoothManager || !this.BluetoothEscposPrinter) {
         try {
-          const bluetoothModule = require('react-native-bluetooth-escpos-printer');
-          this.BluetoothEscposPrinter = bluetoothModule.BluetoothEscposPrinter;
-          this.BluetoothManager = bluetoothModule.BluetoothManager;
+          await this.initializeBluetoothLibrary();
+          
+          // Vérifier à nouveau après le chargement
+          if (!this.BluetoothManager || !this.BluetoothEscposPrinter) {
+            const errorMsg = Platform.OS === 'ios' 
+              ? 'Le Bluetooth n\'est pas disponible sur iOS. Veuillez utiliser un development build avec les modules natifs requis.'
+              : 'Librairie Bluetooth non disponible. Utilisez un development build avec expo-dev-client.';
+            throw new Error(errorMsg);
+          }
+          
           console.log('✅ Librairie Bluetooth chargée avec succès');
-        } catch (loadError) {
-          console.error('❌ Impossible de charger la librairie Bluetooth:', loadError);
-          throw new Error('Librairie Bluetooth non disponible. Utilisez un development build avec expo-dev-client.');
+        } catch (loadError: any) {
+          console.error('❌ Impossible de charger la librairie Bluetooth:', loadError?.message || loadError);
+          const errorMsg = Platform.OS === 'ios'
+            ? 'Le Bluetooth n\'est pas disponible sur cet appareil iOS. Veuillez vérifier que l\'application a été compilée avec les modules natifs requis.'
+            : 'Librairie Bluetooth non disponible. Utilisez un development build avec expo-dev-client.';
+          throw new Error(errorMsg);
         }
+      }
+      
+      // Vérifier que BluetoothManager est disponible avant de l'utiliser
+      if (!this.BluetoothManager) {
+        throw new Error('BluetoothManager non disponible');
       }
 
       // Appeler la vraie méthode de découverte via BluetoothManager
       console.log('🔍 Démarrage de la découverte Bluetooth...');
+      
+      // Protection supplémentaire pour iOS
+      if (Platform.OS === 'ios' && !this.BluetoothManager.scanDevices) {
+        throw new Error('La méthode scanDevices n\'est pas disponible sur iOS. Veuillez vérifier que l\'application a été compilée avec les modules natifs requis.');
+      }
+      
       const resultString = await this.BluetoothManager.scanDevices();
       console.log('🔍 Résultat scan Bluetooth (raw):', resultString);
       console.log('🔍 Type du résultat:', typeof resultString);

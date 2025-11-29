@@ -1,0 +1,2 @@
+C'est ici qu'apparaîtront vos images redimensionnées pour l'App Store (6.5 pouces et 5.5 pouces) une fois le script lancé.
+

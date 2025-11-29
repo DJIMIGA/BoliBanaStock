@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useRef } from 'react';
-import { View, Animated } from 'react-native';
+import { View, Animated, AppState, AppStateStatus } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Provider } from 'react-redux';
 import { NavigationContainer } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { store } from './src/store';
 import { checkAuthStatus, logout } from './src/store/slices/authSlice';
 import { RootState } from './src/store';
@@ -203,6 +204,7 @@ const MainTabs = () => {
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading } = useSelector((state: RootState) => state.auth);
+  const appState = useRef(AppState.currentState);
   
   // Gérer le mode veille globalement - permettre à l'écran de s'éteindre normalement
   useGlobalKeepAwake();
@@ -211,6 +213,115 @@ const AppContent: React.FC = () => {
     // Vérifier l'état d'authentification au démarrage
     store.dispatch(checkAuthStatus());
   }, []);
+
+  // Logs détaillés pour le suivi de l'état de l'application
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      const previousState = appState.current;
+      const timestamp = new Date().toISOString();
+      
+      console.log(`📱 [APP STATE] ${timestamp}`);
+      console.log(`   État précédent: ${previousState}`);
+      console.log(`   État suivant: ${nextAppState}`);
+      console.log(`   Utilisateur authentifié: ${isAuthenticated}`);
+      
+      // Quand l'app passe en arrière-plan
+      if (
+        previousState.match(/active|foreground/) &&
+        nextAppState.match(/inactive|background/)
+      ) {
+        console.log('🔄 [APP] Application passe en arrière-plan');
+        console.log(`   Raison possible: ${nextAppState === 'inactive' ? 'Verrouillage ou notification' : 'Fermeture ou autre app'}`);
+        
+        if (isAuthenticated) {
+          // Récupérer les infos de session pour les logs
+          (async () => {
+            try {
+              const loginTimestamp = await AsyncStorage.getItem('login_timestamp');
+              const accessToken = await AsyncStorage.getItem('access_token');
+              
+              if (loginTimestamp) {
+                const loginTime = parseInt(loginTimestamp, 10);
+                const now = Date.now();
+                const elapsed = now - loginTime;
+                const elapsedHours = (elapsed / (60 * 60 * 1000)).toFixed(2);
+                
+                console.log(`   Session active depuis: ${elapsedHours} heures`);
+                console.log(`   Token présent: ${accessToken ? 'Oui' : 'Non'}`);
+                console.log(`   Timestamp connexion: ${new Date(loginTime).toISOString()}`);
+              } else {
+                console.log('   ⚠️ Pas de timestamp de connexion trouvé');
+              }
+            } catch (error) {
+              console.error('   ❌ Erreur lecture session:', error);
+            }
+          })();
+          
+          // Ne pas déconnecter - la session reste active en arrière-plan
+          console.log('ℹ️ [APP] Application en arrière-plan - Session maintenue active');
+          console.log('   → La session restera active jusqu\'à expiration (12h) ou fermeture de l\'app');
+        } else {
+          console.log('   ℹ️ Utilisateur non authentifié');
+        }
+      }
+      
+      // Quand l'app revient au premier plan
+      if (
+        previousState.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        console.log('🔄 [APP] Application revenue au premier plan');
+        console.log(`   Était en: ${previousState}`);
+        
+        // Vérifier silencieusement si la session a expiré (12h) sans afficher le loading
+        if (isAuthenticated) {
+          (async () => {
+            try {
+              const loginTimestamp = await AsyncStorage.getItem('login_timestamp');
+              const accessToken = await AsyncStorage.getItem('access_token');
+              const refreshToken = await AsyncStorage.getItem('refresh_token');
+              
+              console.log(`   Token d'accès présent: ${accessToken ? 'Oui' : 'Non'}`);
+              console.log(`   Refresh token présent: ${refreshToken ? 'Oui' : 'Non'}`);
+              
+              if (loginTimestamp) {
+                const SESSION_DURATION = 12 * 60 * 60 * 1000; // 12 heures
+                const loginTime = parseInt(loginTimestamp, 10);
+                const now = Date.now();
+                const elapsed = now - loginTime;
+                const elapsedHours = (elapsed / (60 * 60 * 1000)).toFixed(2);
+                const remainingHours = ((SESSION_DURATION - elapsed) / (60 * 60 * 1000)).toFixed(2);
+                
+                console.log(`   Session active depuis: ${elapsedHours} heures`);
+                console.log(`   Temps restant avant expiration: ${remainingHours} heures`);
+                
+                if (elapsed > SESSION_DURATION) {
+                  console.log('⏰ [APP] ⚠️ Session expirée après 12 heures');
+                  console.log(`   Temps écoulé: ${elapsedHours} heures (limite: 12h)`);
+                  console.log('   → Déconnexion automatique');
+                  store.dispatch(logout());
+                } else {
+                  console.log('✅ [APP] Session toujours valide');
+                }
+              } else {
+                console.log('   ⚠️ Pas de timestamp de connexion trouvé');
+              }
+            } catch (error) {
+              console.error('   ❌ Erreur vérification expiration session:', error);
+            }
+          })();
+        } else {
+          console.log('   ℹ️ Utilisateur non authentifié');
+        }
+      }
+      
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isAuthenticated]);
 
   // Initialiser le cache de configuration dès que l'utilisateur est authentifié
   useEffect(() => {

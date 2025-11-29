@@ -74,8 +74,21 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visibl
       // Réinitialiser le scanner quand il devient visible
       setScanned(false);
       setScannerDisabled(false);
+    } else {
+      // Nettoyer quand le scanner devient invisible
+      setScanned(false);
+      setScannerDisabled(true);
     }
   }, [visible]);
+
+  // Cleanup quand le composant est démonté
+  useEffect(() => {
+    return () => {
+      // Arrêter le scanner quand le composant est démonté
+      setScanned(false);
+      setScannerDisabled(true);
+    };
+  }, []);
 
   const getCameraPermissions = async () => {
     try {
@@ -141,11 +154,12 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visibl
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      {visible && (
       <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFillObject}
         facing="back"
-        onBarcodeScanned={scanned || scannerDisabled ? undefined : handleBarCodeScanned}
+          onBarcodeScanned={scanned || scannerDisabled || !visible ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: ['ean13', 'ean8', 'upc_a', 'code128', 'code39', 'qr'],
         }}
@@ -172,6 +186,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScan, onClose, visibl
           </TouchableOpacity>
         </View>
       </CameraView>
+      )}
     </View>
   );
 };

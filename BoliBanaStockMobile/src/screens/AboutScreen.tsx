@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import theme from '../utils/theme';
@@ -28,17 +29,18 @@ const AboutScreen: React.FC = () => {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerIconContainer}>
-          <Ionicons name="information-circle" size={24} color={theme.colors.primary[500]} />
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.title}>À propos</Text>
+            <Text style={styles.subtitle}>Informations sur l'application</Text>
+          </View>
+          <View style={styles.headerRight} />
         </View>
-        <View style={styles.headerCenter}>
-          <Text style={styles.title}>À propos</Text>
-          <Text style={styles.subtitle}>Informations sur l'application</Text>
-        </View>
-        <View style={styles.headerRight} />
-      </View>
 
       <View style={styles.content}>
         {/* Informations de l'application */}
@@ -159,11 +161,16 @@ const AboutScreen: React.FC = () => {
           </Text>
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
@@ -177,6 +184,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 8,
   },
   headerIconContainer: {
     width: 40,

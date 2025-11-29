@@ -162,6 +162,11 @@ const ScanProductScreen: React.FC = () => {
       
       return () => {
         clearTimeout(timer);
+        // Arrêter le scanner quand on quitte la page
+        console.log('🛑 [SCAN RAPIDE] Arrêt du scanner - sortie de la page');
+        setShowScanner(false);
+        setScanned(false);
+        setScannerBlocked(true);
       };
     }, [hasPermission])
   );

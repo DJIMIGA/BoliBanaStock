@@ -304,39 +304,43 @@ const ProfileScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-          {/* Bouton retour */}
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color="white" />
-          </TouchableOpacity>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.colors.primary[500]} />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Profil utilisateur</Text>
+          <Text style={styles.subtitle}>{getFullName()}</Text>
+        </View>
+        <View style={styles.headerSpacer} />
+      </View>
 
-          {/* Contenu du header */}
-          <View style={styles.headerContent}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatarInner}>
-                <Text style={styles.avatar}>
-                  {getInitials()}
-                </Text>
-              </View>
-              <View style={styles.avatarBadge}>
-                <Ionicons name="checkmark" size={16} color="white" />
-              </View>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Avatar et infos utilisateur */}
+        <View style={styles.profileHeader}>
+          <View style={styles.avatarContainer}>
+            <View style={styles.avatarInner}>
+              <Text style={styles.avatar}>
+                {getInitials()}
+              </Text>
             </View>
-            
-            <Text style={styles.name}>{getFullName()}</Text>
-            <Text style={styles.username}>@{user?.username || 'username'}</Text>
-            
-            {user?.poste && (
-              <View style={styles.posteContainer}>
-                <Ionicons name="briefcase-outline" size={14} color={theme.colors.secondary[500]} />
-                <Text style={styles.poste}>{user.poste}</Text>
-              </View>
-            )}
+            <View style={styles.avatarBadge}>
+              <Ionicons name="checkmark" size={16} color="white" />
+            </View>
           </View>
+          
+          <Text style={styles.name}>{getFullName()}</Text>
+          <Text style={styles.username}>@{user?.username || 'username'}</Text>
+          
+          {user?.poste && (
+            <View style={styles.posteContainer}>
+              <Ionicons name="briefcase-outline" size={14} color={theme.colors.secondary[500]} />
+              <Text style={styles.poste}>{user.poste}</Text>
+            </View>
+          )}
         </View>
 
       <View style={styles.content}>
@@ -741,45 +745,58 @@ const styles = StyleSheet.create({
     color: theme.colors.text.tertiary,
   },
   header: {
-    backgroundColor: theme.colors.primary[500],
-    paddingBottom: 32,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
   backButton: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
   },
-  headerContent: {
+  headerCenter: {
+    flex: 1,
     alignItems: 'center',
-    paddingTop: 20,
-    paddingHorizontal: 20,
+    marginHorizontal: 12,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  profileHeader: {
+    alignItems: 'center',
+    paddingTop: 24,
+    paddingBottom: 16,
+    backgroundColor: 'white',
+    marginBottom: 16,
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   avatarInner: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: theme.colors.secondary[500],
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 4,
+    borderWidth: 3,
     borderColor: 'white',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -806,21 +823,21 @@ const styles = StyleSheet.create({
     borderColor: 'white',
   },
   name: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
+    color: '#1e293b',
     marginBottom: 4,
     textAlign: 'center',
   },
   username: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 14,
+    color: '#64748b',
     marginBottom: 8,
   },
   posteContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: theme.colors.primary[100],
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -828,7 +845,7 @@ const styles = StyleSheet.create({
   },
   poste: {
     fontSize: 14,
-    color: 'white',
+    color: theme.colors.primary[600],
     marginLeft: 6,
     fontWeight: '500',
   },

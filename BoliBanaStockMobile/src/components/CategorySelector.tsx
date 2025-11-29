@@ -325,10 +325,10 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose}>
+        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <Ionicons name="close" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.title}>{title}</Text>
@@ -391,10 +391,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: 16,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    minHeight: 56,
+  },
+  closeButton: {
+    padding: 4,
+    marginLeft: -4,
   },
   title: {
     fontSize: 20,

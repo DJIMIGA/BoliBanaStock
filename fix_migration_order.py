@@ -87,6 +87,7 @@ def fix_migration_order():
             max_iterations = 50  # Augmenter la limite car il y a beaucoup de migrations à corriger
             iteration = 0
             last_error = None
+            current_migration = None  # Initialiser la variable pour la migration en cours
             
             while iteration < max_iterations:
                 iteration += 1

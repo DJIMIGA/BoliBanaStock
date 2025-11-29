@@ -409,9 +409,176 @@ function updatePriceLabels() {
     }
 }
 
-// Initialiser les labels au chargement de la page
+// Fonction pour formater les prix en FCFA avec séparateur de milliers
+function formatPrice(value) {
+    if (!value) return '';
+    // Enlever les espaces et virgules existants
+    let numValue = value.toString().replace(/\s/g, '').replace(/,/g, '');
+    // Formater avec des espaces comme séparateur de milliers (standard français/africain)
+    return numValue.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+// Fonction pour formater le poids (limiter les décimales et enlever les zéros inutiles)
+function formatWeight(value) {
+    if (!value && value !== 0) return '';
+    let numValue = parseFloat(value);
+    if (isNaN(numValue)) return value; // Retourner la valeur originale si ce n'est pas un nombre
+    
+    // Si c'est un entier, pas de décimales
+    if (numValue % 1 === 0) {
+        return numValue.toString();
+    }
+    
+    // Sinon, limiter à 3 décimales max et enlever les zéros inutiles
+    return numValue.toFixed(3).replace(/\.?0+$/, '');
+}
+
+// Fonction pour nettoyer la valeur avant l'envoi (enlever les espaces)
+function cleanValue(value) {
+    if (!value) return '';
+    return value.toString().replace(/\s/g, '').replace(/,/g, '');
+}
+
+// Initialiser les labels et le formatage au chargement de la page
 document.addEventListener('DOMContentLoaded', function() {
     updatePriceLabels();
+    
+    // Formater les champs de prix
+    const purchasePriceInput = document.getElementById('{{ form.purchase_price.id_for_label }}');
+    const sellingPriceInput = document.getElementById('{{ form.selling_price.id_for_label }}');
+    
+    if (purchasePriceInput) {
+        // Formater à l'affichage initial
+        if (purchasePriceInput.value) {
+            let initialValue = purchasePriceInput.value.toString().replace(/\s/g, '').replace(/,/g, '');
+            if (!isNaN(initialValue) && initialValue !== '') {
+                purchasePriceInput.value = formatPrice(initialValue);
+            }
+        }
+        
+        // Formater lors de la saisie (avec délai pour éviter les problèmes pendant la frappe)
+        let purchasePriceTimeout;
+        purchasePriceInput.addEventListener('input', function(e) {
+            clearTimeout(purchasePriceTimeout);
+            purchasePriceTimeout = setTimeout(function() {
+                let value = e.target.value.replace(/\s/g, '').replace(/,/g, '');
+                if (value && !isNaN(value) && value !== '') {
+                    e.target.value = formatPrice(value);
+                }
+            }, 300); // Attendre 300ms après la dernière frappe
+        });
+        
+        // Nettoyer et formater avant la soumission
+        purchasePriceInput.addEventListener('blur', function(e) {
+            let value = cleanValue(e.target.value);
+            if (value && !isNaN(value)) {
+                e.target.value = formatPrice(value);
+            }
+        });
+    }
+    
+    if (sellingPriceInput) {
+        // Formater à l'affichage initial
+        if (sellingPriceInput.value) {
+            let initialValue = sellingPriceInput.value.toString().replace(/\s/g, '').replace(/,/g, '');
+            if (!isNaN(initialValue) && initialValue !== '') {
+                sellingPriceInput.value = formatPrice(initialValue);
+            }
+        }
+        
+        // Formater lors de la saisie (avec délai pour éviter les problèmes pendant la frappe)
+        let sellingPriceTimeout;
+        sellingPriceInput.addEventListener('input', function(e) {
+            clearTimeout(sellingPriceTimeout);
+            sellingPriceTimeout = setTimeout(function() {
+                let value = e.target.value.replace(/\s/g, '').replace(/,/g, '');
+                if (value && !isNaN(value) && value !== '') {
+                    e.target.value = formatPrice(value);
+                }
+            }, 300); // Attendre 300ms après la dernière frappe
+        });
+        
+        // Nettoyer et formater avant la soumission
+        sellingPriceInput.addEventListener('blur', function(e) {
+            let value = cleanValue(e.target.value);
+            if (value && !isNaN(value)) {
+                e.target.value = formatPrice(value);
+            }
+        });
+    }
+    
+    // Formater les champs de poids (quantity et alert_threshold)
+    const quantityInput = document.getElementById('{{ form.quantity.id_for_label }}');
+    const alertThresholdInput = document.getElementById('{{ form.alert_threshold.id_for_label }}');
+    
+    if (quantityInput) {
+        // Formater à l'affichage
+        if (quantityInput.value) {
+            quantityInput.value = formatWeight(quantityInput.value);
+        }
+        
+        // Formater lors de la saisie (avec délai pour éviter les problèmes pendant la frappe)
+        let quantityTimeout;
+        quantityInput.addEventListener('input', function(e) {
+            clearTimeout(quantityTimeout);
+            quantityTimeout = setTimeout(function() {
+                let value = e.target.value;
+                if (value && !isNaN(value) && value !== '') {
+                    e.target.value = formatWeight(value);
+                }
+            }, 300); // Attendre 300ms après la dernière frappe
+        });
+        
+        // Nettoyer et formater avant la soumission
+        quantityInput.addEventListener('blur', function(e) {
+            let value = cleanValue(e.target.value);
+            if (value && !isNaN(value)) {
+                e.target.value = formatWeight(value);
+            }
+        });
+    }
+    
+    if (alertThresholdInput) {
+        // Formater à l'affichage
+        if (alertThresholdInput.value) {
+            alertThresholdInput.value = formatWeight(alertThresholdInput.value);
+        }
+        
+        // Formater lors de la saisie (avec délai pour éviter les problèmes pendant la frappe)
+        let alertThresholdTimeout;
+        alertThresholdInput.addEventListener('input', function(e) {
+            clearTimeout(alertThresholdTimeout);
+            alertThresholdTimeout = setTimeout(function() {
+                let value = e.target.value;
+                if (value && !isNaN(value) && value !== '') {
+                    e.target.value = formatWeight(value);
+                }
+            }, 300); // Attendre 300ms après la dernière frappe
+        });
+        
+        // Nettoyer et formater avant la soumission
+        alertThresholdInput.addEventListener('blur', function(e) {
+            let value = cleanValue(e.target.value);
+            if (value && !isNaN(value)) {
+                e.target.value = formatWeight(value);
+            }
+        });
+    }
+    
+    // Nettoyer tous les champs avant la soumission du formulaire
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            // Nettoyer les prix
+            if (purchasePriceInput && purchasePriceInput.value) {
+                purchasePriceInput.value = cleanValue(purchasePriceInput.value);
+            }
+            if (sellingPriceInput && sellingPriceInput.value) {
+                sellingPriceInput.value = cleanValue(sellingPriceInput.value);
+            }
+            // Les poids sont déjà nettoyés par formatWeight
+        });
+    }
 });
 
 function openCamera() {

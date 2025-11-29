@@ -21,6 +21,8 @@ interface Transaction {
   type: string;
   product_name: string;
   quantity: number;
+  formatted_quantity?: string;
+  unit_display?: string;
   transaction_date: string;
   notes?: string;
   context?: 'sale' | 'reception' | 'inventory' | 'manual' | 'return' | 'correction';
@@ -515,7 +517,7 @@ export default function TransactionsScreen({ navigation }: any) {
           <View style={styles.quantityContainer}>
             <Ionicons name="cube-outline" size={14} color={theme.colors.neutral[600]} />
             <Text style={styles.quantityText}>
-              {item.quantity} unités
+              {item.formatted_quantity || item.quantity} {item.unit_display || 'unité(s)'}
             </Text>
           </View>
           {item.notes && !item.notes.includes('Vente à crédit #') && (

@@ -9,7 +9,10 @@ import {
   Dimensions,
   Animated,
   Alert,
+  ScrollView,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { generateQuickAmounts } from '../utils/currencyUtils';
@@ -32,7 +35,9 @@ export default function CashPaymentModal({
 }: CashPaymentModalProps) {
   const [amountGiven, setAmountGiven] = useState('');
   const [changeAmount, setChangeAmount] = useState(0);
-  const slideAnim = React.useRef(new Animated.Value(height)).current;
+  // Hauteur approximative du modal
+  const modalHeight = 600;
+  const slideAnim = React.useRef(new Animated.Value(modalHeight)).current;
 
   useEffect(() => {
     if (visible) {
@@ -43,7 +48,7 @@ export default function CashPaymentModal({
       }).start();
     } else {
       Animated.timing(slideAnim, {
-        toValue: height,
+        toValue: modalHeight,
         duration: 300,
         useNativeDriver: true,
       }).start();
@@ -102,84 +107,94 @@ export default function CashPaymentModal({
             },
           ]}
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Paiement Liquide</Text>
-            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color={theme.colors.text.primary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Total Amount */}
-          <View style={styles.totalSection}>
-            <Text style={styles.totalLabel}>Total à payer</Text>
-            <Text style={styles.totalAmount}>
-              {formatCurrency(totalAmount)}
-            </Text>
-          </View>
-
-          {/* Amount Input */}
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>Montant donné par le client</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.amountInput}
-                value={amountGiven}
-                onChangeText={setAmountGiven}
-                placeholder="0"
-                keyboardType="numeric"
-                autoFocus
-                selectTextOnFocus
-              />
-              <Text style={styles.currencyLabel}>{getCurrency()}</Text>
+          <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={handleClose} style={styles.backButton}>
+                <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+              <Text style={styles.title}>Paiement Liquide</Text>
+              <View style={styles.placeholder} />
             </View>
-          </View>
 
-          {/* Change Amount */}
-          <View style={styles.changeSection}>
-            <Text style={styles.changeLabel}>Monnaie à rendre</Text>
-            <View style={[
-              styles.changeContainer,
-              changeAmount > 0 && styles.changeContainerPositive
-            ]}>
-              <Text style={[
-                styles.changeAmount,
-                changeAmount > 0 && styles.changeAmountPositive
-              ]}>
-                {formatCurrency(changeAmount)}
-              </Text>
-            </View>
-          </View>
-
-          {/* Quick Amount Buttons */}
-          <View style={styles.quickAmountsSection}>
-            <Text style={styles.quickAmountsLabel}>Montants rapides</Text>
-            <View style={styles.quickAmountsContainer}>
-              {quickAmounts.map((amount) => (
-                <TouchableOpacity
-                  key={amount}
-                  style={styles.quickAmountButton}
-                  onPress={() => setAmountGiven(amount.toString())}
-                >
-                  <Text style={styles.quickAmountText}>
-                    {amount.toLocaleString()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity
-              style={[styles.confirmButton, !isAmountValid && styles.confirmButtonDisabled]}
-              onPress={handleConfirm}
-              disabled={!isAmountValid}
+            <ScrollView 
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <Ionicons name="checkmark-circle" size={20} color="white" />
-              <Text style={styles.confirmButtonText}>Confirmer</Text>
-            </TouchableOpacity>
-          </View>
+              {/* Total Amount */}
+              <View style={styles.totalSection}>
+                <Text style={styles.totalLabel}>Total à payer</Text>
+                <Text style={styles.totalAmount}>
+                  {formatCurrency(totalAmount)}
+                </Text>
+              </View>
+
+              {/* Amount Input */}
+              <View style={styles.inputSection}>
+                <Text style={styles.inputLabel}>Montant donné par le client</Text>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.amountInput}
+                    value={amountGiven}
+                    onChangeText={setAmountGiven}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    autoFocus
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.currencyLabel}>{getCurrency()}</Text>
+                </View>
+              </View>
+
+              {/* Change Amount */}
+              <View style={styles.changeSection}>
+                <Text style={styles.changeLabel}>Monnaie à rendre</Text>
+                <View style={[
+                  styles.changeContainer,
+                  changeAmount > 0 && styles.changeContainerPositive
+                ]}>
+                  <Text style={[
+                    styles.changeAmount,
+                    changeAmount > 0 && styles.changeAmountPositive
+                  ]}>
+                    {formatCurrency(changeAmount)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Quick Amount Buttons */}
+              <View style={styles.quickAmountsSection}>
+                <Text style={styles.quickAmountsLabel}>Montants rapides</Text>
+                <View style={styles.quickAmountsContainer}>
+                  {quickAmounts.map((amount) => (
+                    <TouchableOpacity
+                      key={amount}
+                      style={styles.quickAmountButton}
+                      onPress={() => setAmountGiven(amount.toString())}
+                    >
+                      <Text style={styles.quickAmountText}>
+                        {amount.toLocaleString()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionsContainer}>
+                <TouchableOpacity
+                  style={[styles.confirmButton, !isAmountValid && styles.confirmButtonDisabled]}
+                  onPress={handleConfirm}
+                  disabled={!isAmountValid}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Text style={styles.confirmButtonText}>Confirmer</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
         </Animated.View>
       </View>
     </Modal>
@@ -196,8 +211,17 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background.primary,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 34, // Safe area bottom
+    maxHeight: height * 0.9, // Maximum 90% de la hauteur de l'écran
+    width: '100%',
+  },
+  safeArea: {
     maxHeight: height * 0.9,
+  },
+  scrollView: {
+    maxHeight: height * 0.75, // Limiter la hauteur du scroll
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -207,13 +231,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.neutral[200],
   },
+  backButton: {
+    padding: 4,
+  },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
+    flex: 1,
+    textAlign: 'center',
   },
-  closeButton: {
-    padding: 4,
+  placeholder: {
+    width: 32, // Même largeur que le bouton retour pour équilibrer
   },
   totalSection: {
     alignItems: 'center',

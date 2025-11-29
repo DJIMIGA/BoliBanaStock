@@ -9,7 +9,10 @@ import {
   Dimensions,
   Animated,
   Alert,
+  ScrollView,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
 import { formatCurrency } from '../utils/currencyFormatter';
@@ -30,7 +33,9 @@ export default function SaraliPaymentModal({
   totalAmount,
 }: SaraliPaymentModalProps) {
   const [reference, setReference] = useState('');
-  const slideAnim = React.useRef(new Animated.Value(height)).current;
+  // Hauteur approximative du modal
+  const modalHeight = 600;
+  const slideAnim = React.useRef(new Animated.Value(modalHeight)).current;
 
   useEffect(() => {
     if (visible) {
@@ -41,7 +46,7 @@ export default function SaraliPaymentModal({
       }).start();
     } else {
       Animated.timing(slideAnim, {
-        toValue: height,
+        toValue: modalHeight,
         duration: 300,
         useNativeDriver: true,
       }).start();
@@ -77,87 +82,97 @@ export default function SaraliPaymentModal({
             },
           ]}
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Paiement Sarali</Text>
-            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color={theme.colors.text.primary} />
-            </TouchableOpacity>
-          </View>
+          <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={handleClose} style={styles.backButton}>
+                <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+              <Text style={styles.title}>Paiement Sarali</Text>
+              <View style={styles.placeholder} />
+            </View>
 
-          {/* Total Amount */}
-          <View style={styles.totalSection}>
-            <Text style={styles.totalLabel}>Total à payer</Text>
-            <Text style={styles.totalAmount}>
-              {formatCurrency(totalAmount)}
-            </Text>
-          </View>
-
-          {/* Sarali Info */}
-          <View style={styles.infoSection}>
-            <View style={styles.infoIcon}>
-              <Ionicons name="phone-portrait" size={24} color={theme.colors.info[500]} />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Transaction Sarali</Text>
-              <Text style={styles.infoText}>
-                Saisissez la référence de la transaction Sarali effectuée par le client.
-              </Text>
-            </View>
-          </View>
-
-          {/* Reference Input */}
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>Référence de transaction (optionnel)</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.referenceInput}
-                value={reference}
-                onChangeText={setReference}
-                placeholder="Ex: SAR123456789 (optionnel)"
-                autoFocus
-                selectTextOnFocus
-                autoCapitalize="characters"
-              />
-            </View>
-            <Text style={styles.inputHelp}>
-              La référence est optionnelle. Vous pouvez laisser vide si nécessaire.
-            </Text>
-          </View>
-
-          {/* Instructions */}
-          <View style={styles.instructionsSection}>
-            <Text style={styles.instructionsTitle}>Instructions</Text>
-            <View style={styles.instructionItem}>
-              <Ionicons name="checkmark-circle" size={16} color={theme.colors.success[500]} />
-              <Text style={styles.instructionText}>
-                Demandez au client de faire le paiement via Sarali
-              </Text>
-            </View>
-            <View style={styles.instructionItem}>
-              <Ionicons name="checkmark-circle" size={16} color={theme.colors.success[500]} />
-              <Text style={styles.instructionText}>
-                Notez la référence de transaction affichée
-              </Text>
-            </View>
-            <View style={styles.instructionItem}>
-              <Ionicons name="checkmark-circle" size={16} color={theme.colors.success[500]} />
-              <Text style={styles.instructionText}>
-                Saisissez la référence ci-dessus
-              </Text>
-            </View>
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity
-              style={styles.confirmButton}
-              onPress={handleConfirm}
+            <ScrollView 
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <Ionicons name="checkmark-circle" size={20} color="white" />
-              <Text style={styles.confirmButtonText}>Confirmer</Text>
-            </TouchableOpacity>
-          </View>
+              {/* Total Amount */}
+              <View style={styles.totalSection}>
+                <Text style={styles.totalLabel}>Total à payer</Text>
+                <Text style={styles.totalAmount}>
+                  {formatCurrency(totalAmount)}
+                </Text>
+              </View>
+
+              {/* Sarali Info */}
+              <View style={styles.infoSection}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="phone-portrait" size={24} color={theme.colors.info[500]} />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>Transaction Sarali</Text>
+                  <Text style={styles.infoText}>
+                    Saisissez la référence de la transaction Sarali effectuée par le client.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Reference Input */}
+              <View style={styles.inputSection}>
+                <Text style={styles.inputLabel}>Référence de transaction (optionnel)</Text>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.referenceInput}
+                    value={reference}
+                    onChangeText={setReference}
+                    placeholder="Ex: SAR123456789 (optionnel)"
+                    autoFocus
+                    selectTextOnFocus
+                    autoCapitalize="characters"
+                  />
+                </View>
+                <Text style={styles.inputHelp}>
+                  La référence est optionnelle. Vous pouvez laisser vide si nécessaire.
+                </Text>
+              </View>
+
+              {/* Instructions */}
+              <View style={styles.instructionsSection}>
+                <Text style={styles.instructionsTitle}>Instructions</Text>
+                <View style={styles.instructionItem}>
+                  <Ionicons name="checkmark-circle" size={16} color={theme.colors.success[500]} />
+                  <Text style={styles.instructionText}>
+                    Demandez au client de faire le paiement via Sarali
+                  </Text>
+                </View>
+                <View style={styles.instructionItem}>
+                  <Ionicons name="checkmark-circle" size={16} color={theme.colors.success[500]} />
+                  <Text style={styles.instructionText}>
+                    Notez la référence de transaction affichée
+                  </Text>
+                </View>
+                <View style={styles.instructionItem}>
+                  <Ionicons name="checkmark-circle" size={16} color={theme.colors.success[500]} />
+                  <Text style={styles.instructionText}>
+                    Saisissez la référence ci-dessus
+                  </Text>
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionsContainer}>
+                <TouchableOpacity
+                  style={styles.confirmButton}
+                  onPress={handleConfirm}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Text style={styles.confirmButtonText}>Confirmer</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
         </Animated.View>
       </View>
     </Modal>
@@ -174,8 +189,17 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background.primary,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 34, // Safe area bottom
+    maxHeight: height * 0.9, // Maximum 90% de la hauteur de l'écran
+    width: '100%',
+  },
+  safeArea: {
     maxHeight: height * 0.9,
+  },
+  scrollView: {
+    maxHeight: height * 0.75, // Limiter la hauteur du scroll
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -185,13 +209,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.neutral[200],
   },
+  backButton: {
+    padding: 4,
+  },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
+    flex: 1,
+    textAlign: 'center',
   },
-  closeButton: {
-    padding: 4,
+  placeholder: {
+    width: 32, // Même largeur que le bouton retour pour équilibrer
   },
   totalSection: {
     alignItems: 'center',

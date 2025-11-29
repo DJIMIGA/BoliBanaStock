@@ -40,9 +40,6 @@ const api = axios.create({
 // Intercepteur pour logger les requêtes
 api.interceptors.request.use(
   async (config) => {
-    console.log('🌐 [API_REQUEST]', config.method?.toUpperCase(), config.url);
-    console.log('🌐 [API_REQUEST] Headers:', config.headers);
-    console.log('🌐 [API_REQUEST] Data:', config.data);
     const token = await AsyncStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -70,9 +67,6 @@ api.interceptors.request.use(
 // Intercepteur pour gérer les erreurs d'authentification et réseau
 api.interceptors.response.use(
   (response) => {
-    // Log des réponses réussies pour debug
-    console.log('✅ [API_RESPONSE]', response.status, response.config?.url);
-    console.log('✅ [API_RESPONSE] Data:', response.data);
     return response;
   },
   async (error) => {
@@ -80,11 +74,6 @@ api.interceptors.response.use(
     const isHandledLocally = error._handledLocally || 
                             (error.config?.url?.includes('/categories/') && 
                              error.config?.method === 'delete');
-    
-    if (!isHandledLocally) {
-      console.error('❌ [API_RESPONSE_ERROR]', error.config?.url, error.response?.status);
-      console.error('❌ [API_RESPONSE_ERROR] Data:', error.response?.data);
-    }
 
     // Gestion des erreurs réseau
     if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
@@ -141,7 +130,7 @@ api.interceptors.response.use(
         } catch (refreshError: any) {
           console.error('❌ Échec du refresh token', refreshError);
           // Échec du refresh, déconnexion
-          await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+          await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user', 'login_timestamp']);
           
           // Déclencher la déconnexion Redux immédiatement
           if (onSessionExpired) {
@@ -151,7 +140,7 @@ api.interceptors.response.use(
       } else {
         console.log('❌ Pas de refresh token disponible');
         // Pas de refresh token, déconnexion forcée
-        await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+        await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user', 'login_timestamp']);
         
         // Déclencher la déconnexion Redux immédiatement
         if (onSessionExpired) {
@@ -295,9 +284,11 @@ export const authService = {
   },
   
   logout: async () => {
+    console.log('🔐 [API] Début de la déconnexion...');
     try {
       // Récupérer le refresh token pour l'invalidation
       const refreshToken = await AsyncStorage.getItem('refresh_token');
+      console.log(`   Refresh token présent: ${refreshToken ? 'Oui' : 'Non'}`);
       
       // Appeler l'API de déconnexion côté serveur
       const payload: any = {};
@@ -305,12 +296,18 @@ export const authService = {
         payload.refresh = refreshToken;
       }
       
+      console.log('   → Appel API /auth/logout/...');
       await api.post('/auth/logout/', payload);
+      console.log('   ✅ Déconnexion côté serveur réussie');
     } catch (error) {
       // Erreur API déconnexion (normal si endpoint n'existe pas)
+      console.log('   ⚠️ Erreur API déconnexion (ignorée):', error);
     } finally {
       // Toujours nettoyer le stockage local
-      await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+      console.log('   → Nettoyage du stockage local...');
+      await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user', 'login_timestamp']);
+      console.log('   ✅ Stockage local nettoyé');
+      console.log('✅ [API] Déconnexion terminée');
     }
   },
   
@@ -322,7 +319,7 @@ export const authService = {
       // Erreur API déconnexion forcée
     } finally {
       // Toujours nettoyer le stockage local
-      await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+      await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user', 'login_timestamp']);
     }
   },
   
@@ -408,8 +405,14 @@ export const productService = {
       // ✅ Logs détaillés sur l'image côté mobile
       console.log(`🔍 MOBILE - Détail produit: ${productData.name} (ID: ${productData.id})`);
       console.log(`   CUG: ${productData.cug}`);
+      console.log(`   Quantity: ${productData.quantity} (type: ${typeof productData.quantity})`);
       console.log(`   Image URL reçue: ${productData.image_url || 'Aucune'}`);
-      console.log(`   Données complètes:`, JSON.stringify(productData, null, 2));
+      
+      // Vérifier si quantity est présent, sinon le définir à 0
+      if (productData.quantity === undefined || productData.quantity === null) {
+        console.warn(`⚠️ MOBILE - Quantity manquante pour produit ${productData.id}, définition à 0`);
+        productData.quantity = 0;
+      }
       
       return productData;
     } catch (error: any) {
@@ -925,28 +928,20 @@ export const categoryService = {
   // Nouvelles API pour la sélection hiérarchisée
   getRayons: async () => {
     try {
-      console.log('🔄 categoryService.getRayons - Début');
       const response = await api.get('/rayons/');
       const data = response.data;
-      console.log('📡 categoryService.getRayons - Réponse brute:', data);
       
       // Gérer les différents formats de réponse de l'API backend
       if (data.success && data.rayons && Array.isArray(data.rayons)) {
-        console.log('✅ categoryService.getRayons - Format success.rayons:', data.rayons.length);
         return { success: true, rayons: data.rayons, results: data.rayons };
       } else if (data.results && Array.isArray(data.results)) {
-        console.log('✅ categoryService.getRayons - Format results:', data.results.length);
         return { success: true, results: data.results, rayons: data.results };
       } else if (Array.isArray(data)) {
-        console.log('✅ categoryService.getRayons - Format array:', data.length);
         return { success: true, results: data, rayons: data };
       } else {
-        console.warn('⚠️ categoryService.getRayons - Format inattendu:', data);
         return { success: false, results: [], rayons: [] };
       }
     } catch (error: any) {
-      console.error('❌ categoryService.getRayons - Erreur:', error.response?.data || error.message);
-      console.error('📊 Status:', error.response?.status);
       // Retourner un format cohérent en cas d'erreur
       return { success: false, results: [], rayons: [] };
     }

@@ -598,7 +598,7 @@ export default function ReceptionScreen({ navigation }: any) {
           <Text style={styles.searchResultMeta}>{item.cug} • {item.category_name} • {item.brand_name}</Text>
           </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.searchResultQty}>{item.quantity}</Text>
+          <Text style={styles.searchResultQty}>{item.quantity ?? 0}</Text>
           <Text style={styles.searchResultPrice}>{formatFCFA((item as any).purchase_price)}</Text>
             </View>
       </TouchableOpacity>

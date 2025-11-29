@@ -42,6 +42,7 @@ interface ProductShrinkage {
   total_quantity: number;
   total_value: number;
   shrinkage_count: number;
+  unit_display?: string; // Unité d'affichage du produit
 }
 
 interface ShrinkageStats {
@@ -50,6 +51,8 @@ interface ShrinkageStats {
   total_value: number;
   shrinkage_rate: number;
   total_stock_value: number;
+  has_mixed_units?: boolean; // Indique si on mélange poids et unités
+  unit?: string; // Unité principale
   previousYear?: {
     total_transactions: number;
     total_quantity: number;
@@ -341,9 +344,27 @@ export default function ShrinkageReportScreen({ navigation }: any) {
 
   const calculateStats = (transactionsList: ShrinkageTransaction[], previousYearTransactions: ShrinkageTransaction[] = [], totalStockValue: number) => {
     const totalTransactions = transactionsList.length;
-    const totalQuantity = transactionsList.reduce((sum, tx) => {
-      return sum + (Math.abs(parseFloat(String(tx.quantity || 0))) || 0);
-    }, 0);
+    
+    // Séparer les quantités par type d'unité pour éviter d'additionner poids et unités
+    const isWeightUnit = (unit?: string) => unit === 'kg' || unit === 'g';
+    
+    const quantityByUnit = transactionsList.reduce((acc: any, tx: any) => {
+      const unit = tx.unit_display || 'unité(s)';
+      const isWeight = isWeightUnit(unit);
+      const key = isWeight ? 'weight' : 'quantity';
+      if (!acc[key]) {
+        acc[key] = { total: 0, unit: unit };
+      }
+      acc[key].total += Math.abs(parseFloat(String(tx.quantity || 0)));
+      return acc;
+    }, {});
+    
+    const hasMixedUnits = Object.keys(quantityByUnit).length > 1;
+    const totalQuantity = hasMixedUnits 
+      ? 0 
+      : (quantityByUnit.quantity?.total || quantityByUnit.weight?.total || 0);
+    const unit = quantityByUnit.quantity?.unit || quantityByUnit.weight?.unit || 'unité(s)';
+    
     const totalValue = transactionsList.reduce((sum, tx) => {
       return sum + (Math.abs(parseFloat(String(tx.total_amount || 0))) || 0);
     }, 0);
@@ -353,9 +374,22 @@ export default function ShrinkageReportScreen({ navigation }: any) {
     // Calculer les stats de l'année précédente
     let previousYearStats = undefined;
     if (previousYearTransactions.length > 0) {
-      const prevQuantity = previousYearTransactions.reduce((sum, tx) => {
-        return sum + (Math.abs(parseFloat(String(tx.quantity || 0))) || 0);
-      }, 0);
+      const prevQuantityByUnit = previousYearTransactions.reduce((acc: any, tx: any) => {
+        const unit = tx.unit_display || 'unité(s)';
+        const isWeight = isWeightUnit(unit);
+        const key = isWeight ? 'weight' : 'quantity';
+        if (!acc[key]) {
+          acc[key] = { total: 0, unit: unit };
+        }
+        acc[key].total += Math.abs(parseFloat(String(tx.quantity || 0)));
+        return acc;
+      }, {});
+      
+      const prevHasMixed = Object.keys(prevQuantityByUnit).length > 1;
+      const prevQuantity = prevHasMixed 
+        ? 0 
+        : (prevQuantityByUnit.quantity?.total || prevQuantityByUnit.weight?.total || 0);
+      
       const prevValue = previousYearTransactions.reduce((sum, tx) => {
         return sum + (Math.abs(parseFloat(String(tx.total_amount || 0))) || 0);
       }, 0);
@@ -375,6 +409,8 @@ export default function ShrinkageReportScreen({ navigation }: any) {
       total_value: totalValue,
       shrinkage_rate: shrinkageRate,
       total_stock_value: totalStockValue,
+      has_mixed_units: hasMixedUnits,
+      unit: unit,
       previousYear: previousYearStats,
     });
   };
@@ -400,6 +436,7 @@ export default function ShrinkageReportScreen({ navigation }: any) {
           total_quantity: 0,
           total_value: 0,
           shrinkage_count: 0,
+          unit_display: tx.unit_display || 'unité(s)', // Stocker l'unité du produit
         };
       }
 
@@ -786,11 +823,11 @@ export default function ShrinkageReportScreen({ navigation }: any) {
                       )}
                     </View>
                     <Text style={styles.compactStatValue}>
-                      {stats.total_quantity.toLocaleString()} unités
+                      {stats.has_mixed_units ? 'N/A' : stats.total_quantity.toFixed(3).replace(/\.?0+$/, '')} {stats.has_mixed_units ? 'Mélange d\'unités' : (stats.unit || 'unité(s)')}
                     </Text>
                     {stats.previousYear && (
                       <Text style={styles.previousYearValue}>
-                        An dernier: {stats.previousYear.total_quantity.toLocaleString()} unités
+                        An dernier: {stats.previousYear.total_quantity.toFixed(3).replace(/\.?0+$/, '')} {stats.unit || 'unité(s)'}
                       </Text>
                     )}
                   </View>
@@ -953,7 +990,9 @@ export default function ShrinkageReportScreen({ navigation }: any) {
                     <View style={styles.productStats}>
                       <View style={styles.productStatItem}>
                         <Ionicons name="cube-outline" size={14} color={theme.colors.text.secondary} />
-                        <Text style={styles.productStatValue}>{product.total_quantity}</Text>
+                        <Text style={styles.productStatValue}>
+                          {product.total_quantity.toFixed(3).replace(/\.?0+$/, '')} {product.unit_display || 'unité(s)'}
+                        </Text>
                       </View>
                       <View style={styles.productStatItem}>
                         <Ionicons name="cash-outline" size={14} color={theme.colors.text.secondary} />

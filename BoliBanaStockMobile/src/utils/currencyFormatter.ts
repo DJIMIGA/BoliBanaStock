@@ -102,3 +102,100 @@ export const formatAmount = (
   }
 };
 
+/**
+ * Formate une valeur de prix pendant la saisie (pour les champs de saisie)
+ * @param value - La valeur à formater (string)
+ * @param currency - Optionnel: devise pour déterminer le format
+ * @returns La valeur formatée avec séparateurs de milliers (ex: "1 500" pour FCFA)
+ */
+export const formatPriceInput = (
+  value: string,
+  currency?: string
+): string => {
+  if (!value) return '';
+  
+  // Gérer les valeurs négatives
+  const isNegative = value.startsWith('-');
+  let numValue = value.replace(/\s/g, '').replace(/,/g, '').replace(/^-/, '');
+  
+  // Si ce n'est pas un nombre valide, retourner la valeur originale
+  if (numValue === '' || numValue === '.') return isNegative ? '-' + numValue : numValue;
+  
+  // Pour FCFA (pas de décimales), formater avec espaces comme séparateurs de milliers
+  const finalCurrency = currency || getCachedCurrency();
+  const decimalPlaces = getDecimalPlacesForCurrency(finalCurrency);
+  
+  if (decimalPlaces === 0) {
+    // Pas de décimales pour FCFA - arrondir et supprimer les décimales
+    const num = parseFloat(numValue);
+    if (!isNaN(num)) {
+      const rounded = Math.round(num).toString();
+      const formatted = rounded.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+      return isNegative ? '-' + formatted : formatted;
+    }
+    // Si ce n'est pas un nombre valide, retourner la valeur nettoyée sans décimales
+    const cleaned = numValue.split('.')[0]; // Prendre seulement la partie entière
+    const formatted = cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return isNegative ? '-' + formatted : formatted;
+  } else {
+    // Pour les devises avec décimales, permettre les décimales
+    const parts = numValue.split('.');
+    if (parts.length > 2) {
+      numValue = parts[0] + '.' + parts.slice(1).join('');
+    }
+    if (parts.length === 2 && parts[1].length > 2) {
+      // Limiter à 2 décimales
+      numValue = parts[0] + '.' + parts[1].substring(0, 2);
+    }
+    const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const formatted = parts.length > 1 ? `${integerPart}.${parts[1]}` : integerPart;
+    return isNegative ? '-' + formatted : formatted;
+  }
+};
+
+/**
+ * Formate une valeur de poids/quantité pendant la saisie
+ * @param value - La valeur à formater (string)
+ * @returns La valeur formatée avec max 3 décimales, zéros inutiles supprimés
+ */
+export const formatWeightInput = (value: string): string => {
+  if (!value && value !== '0') return '';
+  
+  // Gérer les valeurs négatives
+  const isNegative = value.startsWith('-');
+  // Permettre les virgules et les points comme séparateurs décimaux
+  let cleaned = value.replace(/,/g, '.').replace(/^-/, '');
+  // Enlever tout sauf les chiffres et un point
+  cleaned = cleaned.replace(/[^0-9.]/g, '');
+  // S'assurer qu'il n'y a qu'un seul point
+  const parts = cleaned.split('.');
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('');
+  }
+  
+  if (cleaned === '' || cleaned === '.') return isNegative ? '-' + cleaned : cleaned;
+  
+  const numValue = parseFloat(cleaned);
+  if (isNaN(numValue)) return value; // Retourner la valeur originale si ce n'est pas un nombre
+  
+  // Si c'est un entier, pas de décimales
+  if (numValue % 1 === 0) {
+    return isNegative ? '-' + numValue.toString() : numValue.toString();
+  }
+  
+  // Sinon, limiter à 3 décimales max et enlever les zéros inutiles
+  const formatted = numValue.toFixed(3).replace(/\.?0+$/, '');
+  return isNegative ? '-' + formatted : formatted;
+};
+
+/**
+ * Nettoie une valeur formatée avant l'envoi (enlève les espaces et formate correctement)
+ * @param value - La valeur à nettoyer
+ * @returns La valeur nettoyée (sans espaces, prête pour parseFloat)
+ */
+export const cleanFormattedValue = (value: string): string => {
+  if (!value) return '';
+  // Enlever les espaces et remplacer les virgules par des points
+  return value.replace(/\s/g, '').replace(/,/g, '');
+};
+

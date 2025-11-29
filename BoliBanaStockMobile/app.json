@@ -3,7 +3,7 @@
     "name": "BoliBana Stock",
     "slug": "BoliBanaStockMobile",
     "version": "1.0.0",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "icon": "./assets/icon.png",
     "adaptiveIcon": {
       "foregroundImage": "./assets/adaptive-icon.png",
@@ -19,7 +19,16 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bolibana.stock"
+      "bundleIdentifier": "com.bolibana.stock",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSBluetoothAlwaysUsageDescription": "Cette application utilise Bluetooth pour se connecter aux imprimantes thermiques",
+        "NSBluetoothPeripheralUsageDescription": "Cette application utilise Bluetooth pour se connecter aux imprimantes thermiques",
+        "NSLocationWhenInUseUsageDescription": "Cette application utilise la localisation pour découvrir les imprimantes Bluetooth à proximité"
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +36,8 @@
         "backgroundColor": "#2B3A67"
       },
       "package": "com.bolibana.stock",
-      "icon": "./assets/icon.png"
+      "icon": "./assets/icon.png",
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -36,6 +46,9 @@
       "eas": {
         "projectId": "766c638b-333f-4f5a-9d0e-19d79965d050"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/766c638b-333f-4f5a-9d0e-19d79965d050"
     }
   }
 }

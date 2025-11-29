@@ -436,6 +436,7 @@ def deploy_railway():
                 
                 # ÉTAPE 1: Corriger l'ordre des migrations AVANT d'appliquer
                 print("🔍 Correction préventive de l'ordre des migrations...")
+                migration_order_fixed = False
                 try:
                     # Essayer d'utiliser fix_migration_order.py s'il existe
                     try:
@@ -443,8 +444,15 @@ def deploy_railway():
                         print("   📋 Utilisation de fix_migration_order.py...")
                         fix_migration_order.fix_migration_order()
                         print("   ✅ fix_migration_order.py terminé")
+                        migration_order_fixed = True
                     except ImportError:
                         print("   ⚠️ fix_migration_order.py non trouvé, correction basique...")
+                    except Exception as fix_error:
+                        print(f"   ⚠️ Erreur avec fix_migration_order.py: {fix_error}")
+                        print("   🔄 Tentative avec correction basique...")
+                    
+                    # Si fix_migration_order.py n'a pas fonctionné, essayer correction basique
+                    if not migration_order_fixed:
                         # Correction basique pour les problèmes connus
                         with connection.cursor() as cursor:
                             # Vérifier si la migration 0040 existe avant 0039
@@ -474,6 +482,20 @@ def deploy_railway():
                 except Exception as prevent_error:
                     print(f"   ⚠️ Erreur lors de la correction préventive: {prevent_error}")
                     print("   Continuation avec l'application normale des migrations...")
+                
+                # Vérifier qu'il n'y a plus de problèmes d'ordre avant d'appliquer
+                print("\n🔍 Vérification finale de l'ordre avant application...")
+                try:
+                    call_command('migrate', '--check', verbosity=0)
+                    print("   ✅ Aucun problème d'ordre détecté")
+                except Exception as check_error:
+                    error_str = str(check_error)
+                    if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str:
+                        print(f"   ⚠️ Problème d'ordre restant détecté")
+                        print(f"   💡 Suggestion: Exécutez manuellement 'python fix_migration_order.py' sur Railway")
+                        print(f"   🔄 Tentative d'application quand même...")
+                    else:
+                        print(f"   ⚠️ Autre erreur: {check_error}")
                 
                 # ÉTAPE 2: Appliquer les migrations normalement (toutes les apps, y compris subscription et core)
                 print("\n📋 Application des migrations pour toutes les apps...")

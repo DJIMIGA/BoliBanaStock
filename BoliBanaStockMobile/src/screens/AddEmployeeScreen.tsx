@@ -12,7 +12,8 @@ import {
   Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { authService } from '../services/api';
 import theme, { actionColors } from '../utils/theme';
 import Logo from '../components/Logo';
@@ -197,25 +198,33 @@ const AddEmployeeScreen: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView 
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 20) }
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View style={styles.logoWrapper}>
-            <Logo size={70} showBackground={true} />
-          </View>
-          <Text style={styles.brandName}>Ajouter un employé</Text>
-          <Text style={styles.subtitle}>Créez un compte pour un nouvel employé de votre site</Text>
+    <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.colors.primary[500]} />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Ajouter un employé</Text>
+          <Text style={styles.subtitle}>Nouvel employé</Text>
         </View>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <KeyboardAvoidingView 
+        style={styles.keyboardView} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView 
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 20) }
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
 
         <View style={styles.form}>
           {/* Informations de base */}
@@ -363,43 +372,57 @@ const AddEmployeeScreen: React.FC = () => {
             <Text style={styles.buttonTextSecondary}>Annuler</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: '#f8fafc',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 12,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  keyboardView: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
     padding: 16,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-    marginTop: 20,
-    paddingTop: 10,
-  },
-  logoWrapper: {
-    marginBottom: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: theme.colors.primary[500],
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-    marginTop: 4,
   },
   form: {
     flex: 1,

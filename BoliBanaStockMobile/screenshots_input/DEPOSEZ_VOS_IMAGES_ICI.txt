@@ -1,0 +1,4 @@
+Déposez vos captures d'écran (png ou jpg) dans ce dossier.
+Ensuite, lancez le script 'resize_screenshots.py'.
+Les images redimensionnées apparaîtront dans le dossier 'screenshots_output'.
+

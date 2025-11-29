@@ -112,7 +112,7 @@
                             <div class="text-sm text-neutral-500">{{ transaction.product.cug }}</div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-neutral-900">
-                            {{ transaction.quantity|intcomma }}
+                            {{ transaction.formatted_quantity }} {{ transaction.unit_display }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-neutral-900">
                             {{ transaction.unit_price|intcomma }} FCFA

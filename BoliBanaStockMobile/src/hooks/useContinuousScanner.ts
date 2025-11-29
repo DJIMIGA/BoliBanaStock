@@ -58,8 +58,19 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
 
   // Ajouter un produit à la liste (anti-rafale + déduplication forte)
   const addToScanList = useCallback((incomingBarcode: string, productData: Partial<ScannedItem>) => {
+    console.log('🎯 [SCANNER] addToScanList appelé:', {
+      incomingBarcode,
+      productDataKeys: Object.keys(productData),
+      sale_unit_type: productData.sale_unit_type,
+      weight_unit: productData.weight_unit,
+      productId: productData.productId,
+      productName: productData.productName
+    });
     const barcode = normalizeBarcode(incomingBarcode);
-    if (!barcode) return;
+    if (!barcode) {
+      console.warn('⚠️ [SCANNER] Barcode vide après normalisation');
+      return;
+    }
 
     // Contrainte stricte en mode vente (caisse): empêcher tout ajout sans données réelles
     if (context === 'sales') {
@@ -79,10 +90,24 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
     }
 
     // Anti-rafale par code-barres (2s)
+    // Pour les produits au poids, on ignore l'anti-rafale car on veut toujours créer une nouvelle ligne
+    // Détection robuste : vérifier sale_unit_type OU weight_unit
+    const isWeightProduct = productData.sale_unit_type === 'weight' || !!productData.weight_unit;
     const now = Date.now();
     const last = lastScanTimeByBarcodeRef.current[barcode] || 0;
-    if (now - last < 2000) {
+    const timeSinceLastScan = now - last;
+    
+    console.log('⏱️ [SCANNER] Anti-rafale check:', {
+      barcode,
+      isWeightProduct,
+      timeSinceLastScan,
+      willSkipAntiRafale: isWeightProduct,
+      willIncrement: !isWeightProduct && timeSinceLastScan < 2000
+    });
+    
+    if (!isWeightProduct && timeSinceLastScan < 2000) {
       // Si un item existe déjà, on incrémente sa quantité; sinon on ignore ce duplicate très rapproché
+      // ⚠️ Cette logique ne s'applique QUE aux produits unitaires
       setScanList(prev => {
         const index = prev.findIndex(item => item.barcode === barcode || (!!productData.productId && item.productId === productData.productId));
         if (index === -1) return prev; // ignore duplicate si pas encore en liste
@@ -112,11 +137,45 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
     setScanList(prev => {
       // Déduplication par barcode OU productId si présent
       // Pour les produits au poids, on force une nouvelle ligne à chaque scan (multi-lignes)
-      const isWeightProduct = productData.sale_unit_type === 'weight';
+      // Détection robuste : vérifier sale_unit_type OU weight_unit
+      const isWeightProduct = productData.sale_unit_type === 'weight' || !!productData.weight_unit;
       
-      const existingIndex = isWeightProduct 
-        ? -1 
-        : prev.findIndex(item => item.barcode === barcode || (!!productData.productId && item.productId === productData.productId));
+      // Log détaillé pour déboguer
+      console.log('🔍 [SCANNER] Vérification produit:', {
+        barcode,
+        productId: productData.productId,
+        productName: productData.productName,
+        sale_unit_type: productData.sale_unit_type,
+        weight_unit: productData.weight_unit,
+        isWeightProduct,
+        allProductDataKeys: Object.keys(productData),
+        existingItemsCount: prev.filter(item => item.barcode === barcode || item.productId === productData.productId).length,
+        existingItems: prev.filter(item => item.barcode === barcode || item.productId === productData.productId).map(item => ({
+          id: item.id,
+          sale_unit_type: item.sale_unit_type,
+          weight_unit: item.weight_unit
+        }))
+      });
+      
+      // Pour les produits au poids, on force toujours une nouvelle ligne
+      // Pour les produits unitaires, on cherche s'il existe déjà
+      let existingIndex = -1;
+      if (!isWeightProduct) {
+        existingIndex = prev.findIndex(item => 
+          item.barcode === barcode || (!!productData.productId && item.productId === productData.productId)
+        );
+      } else {
+        // Pour les produits au poids, vérifier aussi si l'item existant est au poids
+        // Si oui, on force quand même une nouvelle ligne (multi-lignes)
+        // Si non, on ignore (cas improbable mais possible)
+        console.log('⚖️ [SCANNER] Produit au poids détecté - Création nouvelle ligne forcée');
+      }
+
+      console.log('🔍 [SCANNER] Résultat recherche:', {
+        existingIndex,
+        isWeightProduct,
+        willCreateNewLine: existingIndex === -1
+      });
 
       if (existingIndex !== -1) {
         const updated = [...prev];
@@ -165,6 +224,8 @@ export const useContinuousScanner = (context: ScannerContext): UseContinuousScan
         unitPrice: newItem.unitPrice,
         totalPrice: newItem.totalPrice,
         timestamp: new Date().toISOString(),
+        newListSize: prev.length + 1,
+        newItemId: newItem.id
       });
       return [...prev, newItem];
     });

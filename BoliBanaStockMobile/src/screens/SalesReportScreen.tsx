@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
-import { saleService, siteService } from '../services/api';
+import { saleService, siteService, productService } from '../services/api';
 import { useUserPermissions } from '../hooks/useUserPermissions';
 
 interface SaleItem {
@@ -53,6 +53,9 @@ interface ProductSales {
   total_revenue: number;
   total_margin: number;
   sale_count: number;
+  current_stock?: number; // Stock actuel du produit
+  sale_unit_type?: 'quantity' | 'weight'; // Type de vente
+  weight_unit?: 'kg' | 'g'; // Unité de poids
 }
 
 interface SalesStats {
@@ -285,8 +288,8 @@ export default function SalesReportScreen({ navigation }: any) {
       // Calculer les statistiques avec comparaison
       calculateStats(salesWithItems, previousYearSales);
       
-      // Calculer le classement des produits
-      calculateProductSales(salesWithItems);
+      // Calculer le classement des produits (avec récupération des stocks)
+      await calculateProductSales(salesWithItems);
     } catch (error) {
       console.error('❌ Erreur chargement ventes:', error);
     } finally {
@@ -377,7 +380,22 @@ export default function SalesReportScreen({ navigation }: any) {
     return ((current - previous) / previous) * 100;
   };
 
-  const calculateProductSales = (salesList: Sale[]) => {
+  // Fonction pour formater la quantité selon le type (entier ou décimal)
+  const formatQuantity = (qty: number | undefined | null): string => {
+    // Vérifier que qty est un nombre valide
+    if (qty === undefined || qty === null || isNaN(Number(qty))) {
+      return '0';
+    }
+    const numQty = Number(qty);
+    // Si c'est un entier (ou très proche), afficher sans décimales
+    if (Math.abs(numQty - Math.round(numQty)) < 0.0001) {
+      return Math.round(numQty).toString();
+    }
+    // Sinon, formater avec max 3 décimales et supprimer les zéros inutiles
+    return parseFloat(numQty.toFixed(3)).toString();
+  };
+
+  const calculateProductSales = async (salesList: Sale[]) => {
     const productMap: { [key: string]: ProductSales } = {};
 
     salesList.forEach((sale) => {
@@ -397,6 +415,9 @@ export default function SalesReportScreen({ navigation }: any) {
             total_revenue: 0,
             total_margin: 0,
             sale_count: 0,
+            current_stock: undefined, // Sera rempli plus tard
+            sale_unit_type: (item as any).sale_unit_type,
+            weight_unit: (item as any).weight_unit,
           };
         }
 
@@ -411,7 +432,42 @@ export default function SalesReportScreen({ navigation }: any) {
       });
     });
 
+    // Récupérer le stock actuel pour chaque produit unique
     const products = Object.values(productMap);
+    const productIds = products
+      .filter(p => p.product_id && typeof p.product_id === 'number')
+      .map(p => p.product_id as number);
+    
+    // Charger les stocks en parallèle pour tous les produits
+    if (productIds.length > 0) {
+      try {
+        const stockPromises = productIds.map(async (productId) => {
+          try {
+            const product = await productService.getProduct(productId);
+            return { productId, stock: product.quantity ?? 0, sale_unit_type: product.sale_unit_type, weight_unit: product.weight_unit };
+          } catch (error) {
+            console.error(`Erreur chargement stock produit ${productId}:`, error);
+            return { productId, stock: 0, sale_unit_type: undefined, weight_unit: undefined };
+          }
+        });
+        
+        const stockData = await Promise.all(stockPromises);
+        
+        // Mettre à jour les stocks dans productMap
+        stockData.forEach(({ productId, stock, sale_unit_type, weight_unit }) => {
+          const key = String(productId);
+          if (productMap[key]) {
+            productMap[key].current_stock = stock;
+            if (sale_unit_type) productMap[key].sale_unit_type = sale_unit_type;
+            if (weight_unit) productMap[key].weight_unit = weight_unit;
+          }
+        });
+      } catch (error) {
+        console.error('Erreur chargement stocks:', error);
+      }
+    }
+    
+    const productsWithStock = Object.values(productMap);
     
     // Trier selon le critère choisi
     products.sort((a, b) => {
@@ -422,7 +478,7 @@ export default function SalesReportScreen({ navigation }: any) {
       }
     });
 
-    setProductSales(products);
+    setProductSales(productsWithStock);
   };
 
   // ✅ Charger les sites pour les superusers
@@ -461,7 +517,9 @@ export default function SalesReportScreen({ navigation }: any) {
 
   useEffect(() => {
     if (sales.length > 0) {
-      calculateProductSales(sales);
+      (async () => {
+        await calculateProductSales(sales);
+      })();
     }
   }, [sortBy, sales]);
 
@@ -932,7 +990,11 @@ export default function SalesReportScreen({ navigation }: any) {
                       <View style={styles.productStats}>
                         <View style={styles.productStatItem}>
                           <Ionicons name="cube-outline" size={14} color={theme.colors.text.secondary} />
-                          <Text style={styles.productStatValue}>{product.total_quantity}</Text>
+                          <Text style={styles.productStatValue}>
+                            {product.current_stock !== undefined 
+                              ? `${formatQuantity(product.current_stock)} ${product.sale_unit_type === 'weight' ? (product.weight_unit || 'kg') : 'unité(s)'}`
+                              : '0'}
+                          </Text>
                         </View>
                         <View style={styles.productStatItem}>
                           <Ionicons name="cash-outline" size={14} color={theme.colors.text.secondary} />

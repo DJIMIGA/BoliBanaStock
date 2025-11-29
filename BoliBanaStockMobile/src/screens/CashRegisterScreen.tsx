@@ -14,6 +14,7 @@ import {
   Linking,
   Platform,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../utils/theme';
@@ -72,6 +73,8 @@ export default function CashRegisterScreen({ navigation }: any) {
               supplier: it.supplier,
               site: it.site,
               notes: it.notes,
+              sale_unit_type: it.sale_unit_type,
+              weight_unit: it.weight_unit
             });
           }
         } catch {}
@@ -83,6 +86,18 @@ export default function CashRegisterScreen({ navigation }: any) {
   useEffect(() => {
     saveSalesCartDraft(scanner.scanList);
   }, [scanner.scanList]);
+
+  // Arrêter le scanner quand on quitte la page
+  useFocusEffect(
+    useCallback(() => {
+      // Quand on revient sur la page, on ne fait rien (le scanner reste dans son état)
+      return () => {
+        // Quand on quitte la page, arrêter le scanner
+        console.log('🛑 [CAISSE] Arrêt du scanner - sortie de la page');
+        setShowScanner(false);
+      };
+    }, [])
+  );
 
   // Charger le programme de fidélité au montage
   useEffect(() => {
@@ -259,6 +274,66 @@ export default function CashRegisterScreen({ navigation }: any) {
   const [selectedWeightProduct, setSelectedWeightProduct] = useState<any>(null);
   const [weightInput, setWeightInput] = useState('');
 
+  // États pour la gestion des champs éditable (comme dans réception)
+  const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
+  const qtyInputRefs = useRef<Record<string, any>>({});
+  const rowPositionsRef = useRef<Record<string, number>>({});
+  const articlesScrollRef = useRef<ScrollView>(null);
+  const searchInputRef = useRef<TextInput>(null);
+  
+  // État pour suivre le productId en attente de focus
+  const pendingFocusProductId = useRef<string | null>(null);
+  
+  // Détecter quand un produit au poids est ajouté à la liste et mettre le focus
+  useEffect(() => {
+    if (pendingFocusProductId.current && scanner.scanList.length > 0) {
+      // Pour les produits au poids, on veut la dernière ligne ajoutée (la plus récente)
+      // Filtrer les items correspondants et prendre le dernier (le plus récent)
+      const matchingItems = scanner.scanList.filter(item => 
+        (item.productId === pendingFocusProductId.current || 
+         item.barcode === pendingFocusProductId.current) &&
+        item.sale_unit_type === 'weight'
+      );
+      
+      if (matchingItems.length > 0) {
+        // Trier par scannedAt pour trouver la ligne la plus récente (la dernière ajoutée)
+        const sortedItems = [...matchingItems].sort((a, b) => {
+          const timeA = a.scannedAt ? new Date(a.scannedAt).getTime() : 0;
+          const timeB = b.scannedAt ? new Date(b.scannedAt).getTime() : 0;
+          return timeB - timeA; // Plus récent en premier
+        });
+        const lastAddedItem = sortedItems[0]; // Le plus récent
+        console.log('✅ [CAISSE] Item au poids trouvé dans la liste, focus sur la nouvelle ligne:', lastAddedItem.id, 'Total lignes:', matchingItems.length);
+        setFocusedItemId(lastAddedItem.id);
+        pendingFocusProductId.current = null;
+      }
+    }
+  }, [scanner.scanList]);
+  
+  // Focus programmatique sur le champ quantité ciblé (comme dans inventaire)
+  useEffect(() => {
+    if (focusedItemId) {
+      console.log('🔍 [CAISSE] useEffect focus - Tentative de focus sur:', focusedItemId);
+      const timer = setTimeout(() => {
+        const ref = qtyInputRefs.current[focusedItemId];
+        console.log('🔍 [CAISSE] useEffect focus - Référence trouvée:', !!ref, 'Type:', typeof ref?.focus);
+        if (ref && typeof ref.focus === 'function') {
+          try {
+            ref.focus();
+            console.log('✅ [CAISSE] Focus appliqué avec succès sur:', focusedItemId);
+          } catch (error) {
+            console.error('❌ [CAISSE] Erreur lors du focus:', error);
+          }
+        } else {
+          console.warn('⚠️ [CAISSE] Référence non disponible ou focus non disponible pour:', focusedItemId);
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [focusedItemId]);
+  
+
   const handleProductSelect = (product: Product) => {
     const barcode = product.cug || String(product.id);
     const unitPrice = typeof product.selling_price === 'number' ? product.selling_price : parseFloat(String(product.selling_price || 0));
@@ -275,72 +350,120 @@ export default function CashRegisterScreen({ navigation }: any) {
     }
     saleUnitType = saleUnitType || 'quantity';
     
-    console.log('🛒 [CAISSE] Produit sélectionné depuis la recherche:', {
-      id: product.id,
-      name: product.name,
-      sale_unit_type: saleUnitType,
-      weight_unit: product.weight_unit || (saleUnitType === 'weight' ? ((product as any).unit_display || 'kg') : undefined),
-      unit_display: (product as any).unit_display,
-      unitPrice
-    });
-    
-    // Si c'est un produit au poids, ouvrir le modal de saisie
-    if (saleUnitType === 'weight') {
-      // Déterminer l'unité de poids
+    // Déterminer l'unité de poids si nécessaire
       let weightUnit = product.weight_unit;
-      if (!weightUnit && (product as any).unit_display) {
+    if (!weightUnit && saleUnitType === 'weight' && (product as any).unit_display) {
         weightUnit = (product as any).unit_display === 'kg' ? 'kg' : 
                      (product as any).unit_display === 'g' ? 'g' : 'kg';
       }
       weightUnit = weightUnit || 'kg';
       
-      console.log('⚖️ [CAISSE] Produit au poids détecté, ouverture du modal de poids:', {
-        name: product.name,
-        weight_unit: weightUnit,
-        unit_display: (product as any).unit_display
-      });
-      
-      setSelectedWeightProduct({
-        id: product.id.toString(),
-        productId: product.id.toString(),
-        barcode: barcode,
-        productName: product.name,
-        unitPrice: unitPrice,
-        stock: product.quantity,
-        category: product.category_name || 'Non catégorisé',
-        brand: product.brand_name || 'Non définie',
+    const initialQuantity = saleUnitType === 'weight' ? 0.001 : 1;
+    
+    console.log('🛒 [CAISSE] Produit sélectionné depuis la recherche:', {
+      id: product.id,
+      name: product.name,
         sale_unit_type: saleUnitType,
         weight_unit: weightUnit,
-        cug: product.cug
-      });
-      setWeightInput('0.001');
-      setWeightModalVisible(true);
-      setSearchQuery('');
-      setProducts([]);
-      return;
-    }
+      unit_display: (product as any).unit_display,
+      unitPrice,
+      initialQuantity
+    });
     
-    // Pour les produits en quantité, ajouter directement
+    // Ajouter directement le produit (au poids ou en quantité) à la liste
     const scannedProduct = {
       id: product.id.toString(),
       productId: product.id.toString(),
       barcode: barcode,
       productName: product.name,
-      quantity: 1,
+      quantity: initialQuantity,
       unitPrice: unitPrice,
-      totalPrice: unitPrice,
+      totalPrice: unitPrice * initialQuantity,
       scannedAt: new Date(),
       customer: 'Client en cours',
       notes: `Sélectionné depuis la recherche - CUG: ${product.cug}`,
-      stock: product.quantity,
+      stock: product.quantity ?? 0,
       category: product.category_name || 'Non catégorisé',
       brand: product.brand_name || 'Non définie',
       sale_unit_type: saleUnitType,
-      weight_unit: undefined
+      weight_unit: saleUnitType === 'weight' ? weightUnit : undefined
     };
+    
     scanner.addToScanList(barcode, scannedProduct);
+    
+    // Si c'est un produit au poids, mettre le focus sur le champ de quantité
+    if (saleUnitType === 'weight') {
+      console.log('⚖️ [CAISSE] Produit au poids sélectionné depuis recherche, focus:', {
+        productId: scannedProduct.productId,
+        productName: scannedProduct.productName,
+        weight_unit: scannedProduct.weight_unit,
+        quantity: scannedProduct.quantity
+      });
+      // Retirer le focus du champ de recherche
+      searchInputRef.current?.blur();
+      // Marquer le productId comme en attente de focus (le useEffect surveillera la liste)
+      pendingFocusProductId.current = scannedProduct.productId;
+    }
+    
     setSearchQuery('');
     setProducts([]);
+  };
+
+  // Fonctions pour gérer l'édition de quantité/poids directement dans la liste
+  const setDraftQuantity = (itemId: string, text: string, isWeight: boolean = false) => {
+    if (isWeight) {
+      // Pour les produits au poids, permettre les décimales
+      // Convertir les virgules en points pour la compatibilité
+      let cleaned = text.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+      // S'assurer qu'il n'y a qu'un seul point
+      const parts = cleaned.split('.');
+      if (parts.length > 2) {
+        cleaned = parts[0] + '.' + parts.slice(1).join('');
+      }
+      setQtyDraft(prev => ({ ...prev, [itemId]: cleaned }));
+    } else {
+      // Pour les produits en quantité, seulement les entiers
+      setQtyDraft(prev => ({ ...prev, [itemId]: text.replace(/[^0-9]/g, '') }));
+    }
+  };
+
+  const commitQuantity = (itemId: string) => {
+    const item = scanner.scanList.find(it => it.id === itemId);
+    if (!item) {
+      console.log('❌ [CAISSE] Item non trouvé pour commitQuantity:', itemId);
+      return;
+    }
+    
+    const raw = qtyDraft[itemId];
+    const isWeight = item.sale_unit_type === 'weight';
+    const newQty = raw 
+      ? (isWeight ? parseFloat(raw) : parseInt(raw, 10))
+      : item.quantity;
+    
+    console.log('💾 [CAISSE] Commit quantité:', {
+      itemId,
+      productName: item.productName,
+      raw,
+      isWeight,
+      oldQuantity: item.quantity,
+      newQty,
+      isValid: !isNaN(newQty) && newQty > 0
+    });
+    
+    if (!isNaN(newQty) && newQty > 0) {
+      scanner.updateQuantity(itemId, newQty);
+      console.log('✅ [CAISSE] Quantité mise à jour:', newQty);
+    } else {
+      console.log('❌ [CAISSE] Quantité invalide, non mise à jour');
+    }
+    
+    // Nettoyer le draft
+    setQtyDraft(prev => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+    setFocusedItemId(null);
   };
 
   const handleConfirmWeight = () => {
@@ -532,7 +655,7 @@ export default function CashRegisterScreen({ navigation }: any) {
           scannedAt: new Date(),
           customer: 'Client en cours',
           notes: `Scanné à la caisse - CUG: ${product.cug}`,
-          stock: product.quantity,
+          stock: product.quantity ?? 0,
           category: product.category_name || 'Non catégorisé',
           brand: product.brand_name || 'Non définie',
           sale_unit_type: saleUnitType,
@@ -543,11 +666,38 @@ export default function CashRegisterScreen({ navigation }: any) {
           name: scannedProduct.productName,
           sale_unit_type: scannedProduct.sale_unit_type,
           weight_unit: scannedProduct.weight_unit,
-          quantity: scannedProduct.quantity
+          quantity: scannedProduct.quantity,
+          barcode: barcode,
+          productId: scannedProduct.productId
         });
         
         // Fusion directe locale via le hook (déduplication forte côté hook déjà active)
+        console.log('🚀 [CAISSE] Appel addToScanList avec:', {
+          barcode,
+          productData: {
+            productId: scannedProduct.productId,
+            sale_unit_type: scannedProduct.sale_unit_type,
+            weight_unit: scannedProduct.weight_unit,
+            productName: scannedProduct.productName
+          }
+        });
         scanner.addToScanList(barcode, scannedProduct);
+        
+        // Si c'est un produit au poids, fermer le scanner et mettre le focus sur le champ de quantité
+        if (saleUnitType === 'weight') {
+          console.log('⚖️ [CAISSE] Produit au poids scanné, fermeture scanner et focus:', {
+            productId: scannedProduct.productId,
+            productName: scannedProduct.productName,
+            weight_unit: scannedProduct.weight_unit,
+            quantity: scannedProduct.quantity
+          });
+          // Retirer le focus du champ de recherche si ouvert
+          searchInputRef.current?.blur();
+          // Fermer le scanner pour permettre l'ouverture du clavier sur la quantité (comme dans réception)
+          setShowScanner(false);
+          // Marquer le productId comme en attente de focus (le useEffect surveillera la liste)
+          pendingFocusProductId.current = scannedProduct.productId;
+        }
         
         // Mettre en cache ce code pour détecter les codes similaires futurs
         similarCodesCacheRef.current[barcode] = {
@@ -1254,7 +1404,22 @@ export default function CashRegisterScreen({ navigation }: any) {
       'Voulez-vous vraiment supprimer cet article ?',
       [
         { text: 'Annuler', style: 'cancel' },
-        { text: 'Supprimer', style: 'destructive', onPress: () => scanner.removeItem(itemId) }
+        { 
+          text: 'Supprimer', 
+          style: 'destructive', 
+          onPress: () => {
+            scanner.removeItem(itemId);
+            // Nettoyer le draft et le focus
+            setQtyDraft(prev => {
+              const copy = { ...prev };
+              delete copy[itemId];
+              return copy;
+            });
+            if (focusedItemId === itemId) {
+              setFocusedItemId(null);
+            }
+          }
+        }
       ]
     );
   };
@@ -1355,6 +1520,7 @@ export default function CashRegisterScreen({ navigation }: any) {
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color={theme.colors.neutral[500]} />
         <TextInput
+          ref={searchInputRef}
           style={styles.searchInput}
           placeholder="Rechercher un produit..."
           value={searchQuery}
@@ -1457,7 +1623,11 @@ export default function CashRegisterScreen({ navigation }: any) {
 
         {/* Liste des articles scannés */}
         <View style={styles.articlesSection}>
-          <ScrollView style={styles.articlesList} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            ref={articlesScrollRef}
+            style={styles.articlesList} 
+            showsVerticalScrollIndicator={false}
+          >
             {scanner.scanList.length === 0 ? (
               <View style={styles.emptyCart}>
                 <Ionicons name="cart-outline" size={48} color={theme.colors.neutral[400]} />
@@ -1468,8 +1638,16 @@ export default function CashRegisterScreen({ navigation }: any) {
               <>
                 
                 {/* Articles */}
-                {scanner.scanList.map((item) => (
-                <View key={item.id} style={styles.articleCard}>
+                {scanner.scanList.map((item) => {
+                  const isWeight = item.sale_unit_type === 'weight';
+                  return (
+                    <View 
+                      key={item.id} 
+                      style={styles.articleCard}
+                      onLayout={(e) => {
+                        rowPositionsRef.current[item.id] = e.nativeEvent.layout.y;
+                      }}
+                    >
                   <View style={styles.articleInfo}>
                     <Text style={styles.articleName} numberOfLines={1}>
                       {item.productName}
@@ -1477,6 +1655,102 @@ export default function CashRegisterScreen({ navigation }: any) {
                   </View>
                   
                   <View style={styles.articleActions}>
+                        {/* Pour les produits au poids, utiliser un TextInput éditable */}
+                        {isWeight ? (
+                          <View style={styles.quantityInputWrapper}>
+                            <TextInput
+                              ref={(ref) => {
+                                qtyInputRefs.current[item.id] = ref;
+                                console.log('📝 [CAISSE] Référence TextInput stockée:', {
+                                  itemId: item.id,
+                                  productName: item.productName,
+                                  refExists: !!ref,
+                                  focusedItemId,
+                                  shouldFocus: focusedItemId === item.id
+                                });
+                              }}
+                              style={styles.quantityInputField}
+                              value={qtyDraft[item.id] ?? String(item.quantity)}
+                              onChangeText={(t) => {
+                                // Détection de scan accidentel dans le champ quantité
+                                // Chercher une séquence de 8 à 14 chiffres (EAN8, EAN13, UPC...)
+                                const scanMatch = t.match(/(\d{8,14})/);
+                                if (scanMatch && scanMatch[0].length >= 8) {
+                                  const scannedCode = scanMatch[0];
+                                  // Ignorer si c'est juste une saisie de poids (ex: 1000 pour 1kg en g, ou si < 8 chiffres)
+                                  // EAN13 = 13 chiffres. Poids = rarement > 6 chiffres (999.999)
+                                  if (scannedCode.length >= 8) {
+                                    console.log('🚨 [CAISSE] Code-barres détecté dans champ quantité:', scannedCode);
+                                    // Restaurer la valeur précédente pour ne pas corrompre le champ
+                                    // Idéalement on enlève le code scanné, mais le plus simple est de garder l'ancienne valeur valide
+                                    const oldValue = qtyDraft[item.id] ?? String(item.quantity);
+                                    setDraftQuantity(item.id, oldValue, true);
+                                    
+                                    // Déclencher le scan
+                                    handleScan(scannedCode);
+                                    return;
+                                  }
+                                }
+                                setDraftQuantity(item.id, t, true);
+                              }}
+                              keyboardType="decimal-pad"
+                              placeholder="Poids"
+                              autoFocus={focusedItemId === item.id}
+                              selectTextOnFocus={focusedItemId === item.id}
+                              onFocus={() => {
+                                console.log('🎯 [CAISSE] Champ de quantité reçoit le focus:', {
+                                  itemId: item.id,
+                                  productName: item.productName,
+                                  focusedItemId,
+                                  isFocused: focusedItemId === item.id,
+                                  value: qtyDraft[item.id] ?? String(item.quantity)
+                                });
+                                const y = rowPositionsRef.current[item.id] ?? 0;
+                                // Scroll pour voir le champ
+                                articlesScrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+                                // Sélectionner tout le texte au focus
+                                setTimeout(() => {
+                                  const ref = qtyInputRefs.current[item.id];
+                                  if (ref) {
+                                    const value = qtyDraft[item.id] ?? String(item.quantity);
+                                    ref.setNativeProps({ 
+                                      selection: { start: 0, end: value.length } 
+                                    });
+                                    console.log('✅ [CAISSE] Texte sélectionné dans le champ:', value);
+                                  }
+                                }, 150);
+                              }}
+                              onSubmitEditing={(e) => { 
+                                console.log('💾 [CAISSE] Soumission quantité:', item.id);
+                                
+                                const text = e.nativeEvent.text;
+                                // Vérification ultime si c'est un scan lors de la validation
+                                const scanMatch = text.match(/(\d{8,14})/);
+                                if (scanMatch && scanMatch[0].length >= 8) {
+                                  const scannedCode = scanMatch[0];
+                                  const oldValue = qtyDraft[item.id] ?? String(item.quantity);
+                                  // Si le texte contient un code-barres et est différent du poids simple
+                                  if (text !== oldValue && text.length > 6) {
+                                    console.log('🚨 [CAISSE] Scan détecté dans onSubmitEditing:', scannedCode);
+                                    setDraftQuantity(item.id, oldValue, true); // Restaurer
+                                    handleScan(scannedCode);
+                                    return;
+                                  }
+                                }
+
+                                commitQuantity(item.id); 
+                                setFocusedItemId(null); 
+                              }}
+                              onEndEditing={() => { 
+                                console.log('✏️ [CAISSE] Fin édition quantité:', item.id);
+                                commitQuantity(item.id); 
+                                setFocusedItemId(null); 
+                              }}
+                            />
+                            <Text style={styles.quantityUnitLabel}>{item.weight_unit || 'kg'}</Text>
+                          </View>
+                        ) : (
+                          /* Pour les produits en quantité, utiliser les boutons +/- */
                     <View style={styles.quantityContainer}>
                       <TouchableOpacity 
                         style={styles.quantityBtn}
@@ -1498,6 +1772,7 @@ export default function CashRegisterScreen({ navigation }: any) {
                         <Ionicons name="add" size={16} color={theme.colors.primary[500]} />
                       </TouchableOpacity>
                     </View>
+                        )}
                     
                     <TouchableOpacity 
                       style={styles.articlePrice}
@@ -1519,7 +1794,8 @@ export default function CashRegisterScreen({ navigation }: any) {
                     </TouchableOpacity>
                   </View>
                 </View>
-              ))}
+                  );
+                })}
               </>
             )}
           </ScrollView>
@@ -1532,7 +1808,22 @@ export default function CashRegisterScreen({ navigation }: any) {
               <View style={styles.summaryLeft}>
                 <View style={styles.summaryItem}>
                   <Ionicons name="cube-outline" size={16} color={theme.colors.text.secondary} />
-                  <Text style={styles.summaryItems}>{scanner.getTotalItems()} art.</Text>
+                  <Text style={styles.summaryItems}>
+                    {(() => {
+                      // Pour les produits au poids, compter le nombre de lignes, pas le poids total
+                      // Pour les produits en quantité, additionner les quantités
+                      const totalItems = scanner.scanList.reduce((total, item) => {
+                        if (item.sale_unit_type === 'weight') {
+                          // Pour les produits au poids, compter 1 par ligne
+                          return total + 1;
+                        } else {
+                          // Pour les produits en quantité, additionner les quantités
+                          return total + item.quantity;
+                        }
+                      }, 0);
+                      return totalItems;
+                    })()} art.
+                  </Text>
                 </View>
                 {loyaltyDiscountAmount > 0 && (
                   <View style={styles.summaryItem}>
@@ -1547,7 +1838,25 @@ export default function CashRegisterScreen({ navigation }: any) {
                 <Text style={styles.summaryTotalLabel}>Total</Text>
                 <Text style={styles.summaryTotal}>
                   {(() => {
-                    const subtotal = scanner.getTotalValue();
+                    // Calculer le total en prenant en compte les valeurs en cours de saisie (qtyDraft)
+                    const subtotal = scanner.scanList.reduce((total, item) => {
+                      // Si une valeur est en cours de saisie dans qtyDraft, l'utiliser
+                      const draftValue = qtyDraft[item.id];
+                      let quantity = item.quantity;
+                      
+                      if (draftValue !== undefined && draftValue !== '') {
+                        const parsedQty = item.sale_unit_type === 'weight' 
+                          ? parseFloat(draftValue) 
+                          : parseInt(draftValue, 10);
+                        if (!isNaN(parsedQty) && parsedQty > 0) {
+                          quantity = parsedQty;
+                        }
+                      }
+                      
+                      const itemTotal = (item.unitPrice || 0) * quantity;
+                      return total + itemTotal;
+                    }, 0);
+                    
                     const discount = Math.min(loyaltyDiscountAmount, subtotal); // Limiter la réduction au subtotal
                     const total = Math.max(0, subtotal - discount); // Ne pas permettre un total négatif
                     return formatCurrency(total);
@@ -2076,6 +2385,33 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     minWidth: 24,
     textAlign: 'center',
+  },
+  quantityInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.neutral[100],
+    borderRadius: 16,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  quantityInputField: {
+    minWidth: 60,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral[300],
+    borderRadius: 8,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    backgroundColor: 'white',
+  },
+  quantityUnitLabel: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginLeft: 4,
+    fontWeight: '500',
   },
   articlePrice: {
     alignItems: 'flex-end',

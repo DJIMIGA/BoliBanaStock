@@ -8,6 +8,8 @@ import {
   Alert,
   RefreshControl,
   TextInput,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -70,18 +72,36 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
 
-  const loadCustomerData = async () => {
+  const loadCustomerData = async (page: number = 1, append: boolean = false) => {
     try {
-      setLoading(true);
-      const [customerData, history, salesResponse] = await Promise.all([
-        customerService.getCustomer(customerId),
-        customerService.getCreditHistory(customerId, 20),
-        saleService.getSales({ customer: customerId, page_size: 20 })
+      if (page === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+      
+      const pageSize = 20;
+      
+      // Charger les données du client uniquement à la première page
+      if (page === 1) {
+        const customerData = await customerService.getCustomer(customerId);
+        setCustomer(customerData);
+      }
+      
+      // Charger les transactions avec pagination
+      // Pour les transactions de crédit/fidélité, on charge toutes à chaque fois (limit plus élevé car pas de pagination)
+      // Pour les ventes, on utilise la pagination normale
+      const [history, salesResponse] = await Promise.all([
+        customerService.getCreditHistory(customerId, 100), // Charger plus de transactions de crédit (pas de pagination côté API)
+        saleService.getSales({ customer: customerId, page, page_size: pageSize })
       ]);
       
       setCustomer(customerData);
@@ -106,35 +126,69 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
         items_count: sale.items?.length || 0,
       }));
       
-      // Fusionner toutes les transactions et trier par date (plus récent en premier)
-      const allTransactions = [...creditAndLoyaltyTransactions, ...saleTransactions].sort((a, b) => {
-        const dateA = new Date(a.transaction_date || a.date || 0).getTime();
-        const dateB = new Date(b.transaction_date || b.date || 0).getTime();
-        return dateB - dateA; // Plus récent en premier
-      });
+      if (append) {
+        // En mode append, on ajoute seulement les nouvelles ventes (les transactions de crédit sont déjà chargées)
+        const existingIds = new Set(transactions.map(t => `${t.transaction_type}-${t.id}`));
+        const uniqueSaleTransactions = saleTransactions.filter(
+          t => !existingIds.has(`${t.transaction_type}-${t.id}`)
+        );
+        
+        // Fusionner avec les transactions existantes et trier par date
+        setTransactions(prev => {
+          const merged = [...prev, ...uniqueSaleTransactions];
+          return merged.sort((a, b) => {
+            const dateA = new Date(a.transaction_date || a.date || 0).getTime();
+            const dateB = new Date(b.transaction_date || b.date || 0).getTime();
+            return dateB - dateA; // Plus récent en premier
+          });
+        });
+      } else {
+        // Fusionner toutes les transactions et trier par date (plus récent en premier)
+        const allTransactions = [...creditAndLoyaltyTransactions, ...saleTransactions].sort((a, b) => {
+          const dateA = new Date(a.transaction_date || a.date || 0).getTime();
+          const dateB = new Date(b.transaction_date || b.date || 0).getTime();
+          return dateB - dateA; // Plus récent en premier
+        });
+        setTransactions(allTransactions);
+      }
       
-      setTransactions(allTransactions);
+      // Vérifier s'il y a plus de pages (basé sur les ventes car elles sont paginées)
+      setHasMore(salesResponse.next ? true : false);
+      setCurrentPage(page);
     } catch (error) {
       console.error('Erreur lors du chargement du client:', error);
-      Alert.alert(
-        'Erreur',
-        'Impossible de charger les informations du client.',
-        [{ text: 'OK' }]
-      );
+      if (page === 1) {
+        Alert.alert(
+          'Erreur',
+          'Impossible de charger les informations du client.',
+          [{ text: 'OK' }]
+        );
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadCustomerData();
+    setCurrentPage(1);
+    setHasMore(true);
+    await loadCustomerData(1, false);
     setRefreshing(false);
   };
 
+  const loadMoreTransactions = useCallback(async () => {
+    if (hasMore && !loadingMore && !loading) {
+      await loadCustomerData(currentPage + 1, true);
+    }
+  }, [hasMore, loadingMore, loading, currentPage, customerId]);
+
   useFocusEffect(
     useCallback(() => {
-      loadCustomerData();
+      setCurrentPage(1);
+      setHasMore(true);
+      loadCustomerData(1, false);
     }, [customerId])
   );
 
@@ -233,7 +287,9 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
       setShowPaymentModal(false);
       setPaymentAmount('');
       setPaymentNotes('');
-      await loadCustomerData();
+      setCurrentPage(1);
+      setHasMore(true);
+      await loadCustomerData(1, false);
     } catch (error: any) {
       console.error('Erreur lors de l\'ajout du paiement:', error);
       Alert.alert(
@@ -557,14 +613,29 @@ export default function CustomerDetailScreen({ navigation, route }: any) {
           </View>
           
           {transactions.length > 0 ? (
-            transactions.map((transaction, index) => (
-              <View key={`${transaction.transaction_type}-${transaction.id}`}>
-                {renderTransactionItem({ item: transaction })}
-                {index < transactions.length - 1 && (
-                  <View style={styles.transactionSeparator} />
-                )}
-              </View>
-            ))
+            <FlatList
+              data={transactions}
+              keyExtractor={(item, index) => `${item.transaction_type}-${item.id}-${index}`}
+              renderItem={({ item, index }) => (
+                <View>
+                  {renderTransactionItem({ item })}
+                  {index < transactions.length - 1 && (
+                    <View style={styles.transactionSeparator} />
+                  )}
+                </View>
+              )}
+              scrollEnabled={false}
+              onEndReached={loadMoreTransactions}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={
+                loadingMore ? (
+                  <View style={styles.loadingMoreContainer}>
+                    <ActivityIndicator size="small" color={theme.colors.primary[500]} />
+                    <Text style={styles.loadingMoreText}>Chargement...</Text>
+                  </View>
+                ) : null
+              }
+            />
           ) : (
             <View style={styles.emptyTransactions}>
               <Ionicons name="receipt-outline" size={48} color={theme.colors.neutral[400]} />
@@ -933,6 +1004,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.text.secondary,
     marginTop: 16,
+  },
+  loadingMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingMoreText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: theme.colors.text.secondary,
   },
   modalOverlay: {
     position: 'absolute',

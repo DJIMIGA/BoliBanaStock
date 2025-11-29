@@ -214,7 +214,9 @@ export default function InventoryScreen({ navigation }: any) {
 
   const openCountModal = (product: Product) => {
     setSelectedProduct(product);
-    setCountedQuantity(product.quantity.toString());
+    // Gérer le cas où quantity pourrait être undefined ou null
+    const stockQuantity = product.quantity ?? 0;
+    setCountedQuantity(stockQuantity.toString());
     setNotes('');
     setCountModalVisible(true);
   };
@@ -378,7 +380,7 @@ export default function InventoryScreen({ navigation }: any) {
             setInventoryItems(prev => ([
               {
                 product: item,
-                counted_quantity: item.quantity,
+                counted_quantity: item.quantity ?? 0,
                 difference: 0,
                 notes: '',
                 from_search: true,
@@ -664,7 +666,7 @@ export default function InventoryScreen({ navigation }: any) {
             
             <View style={styles.modalInfo}>
               <Text style={styles.modalInfoText}>
-                Stock système: {selectedProduct?.quantity}
+                Stock système: {selectedProduct?.quantity ?? 0}
               </Text>
             </View>
             
@@ -749,7 +751,7 @@ export default function InventoryScreen({ navigation }: any) {
                       return [
                         {
                           product: prod!,
-                          counted_quantity: prod!.quantity, // Par défaut stock théorique
+                          counted_quantity: prod!.quantity ?? 0, // Par défaut stock théorique
                           difference: 0,
                           notes: '',
                         },

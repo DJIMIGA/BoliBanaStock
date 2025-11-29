@@ -915,7 +915,7 @@ class OrderItem(models.Model):
             # Pour les produits au poids, afficher avec décimales
             formatted = f"{quantity_decimal:.3f}".rstrip('0').rstrip('.')
             return formatted
-    
+
     def __str__(self):
         unit = self.product.unit_display if hasattr(self.product, 'unit_display') else "unité(s)"
         formatted_qty = self.formatted_quantity if hasattr(self, 'formatted_quantity') else str(self.quantity)
@@ -985,6 +985,13 @@ class Transaction(models.Model):
             formatted = f"{quantity_decimal:.3f}".rstrip('0').rstrip('.')
             return formatted
     
+    @property
+    def unit_display(self):
+        """Retourne l'unité d'affichage selon le type de vente du produit"""
+        if hasattr(self.product, 'unit_display'):
+            return self.product.unit_display
+        return "unité(s)"
+
     def __str__(self):
         return f"{self.get_type_display()} - {self.product.name} ({self.formatted_quantity})"
 

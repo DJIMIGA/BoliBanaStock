@@ -36,6 +36,8 @@ export const login = createAsyncThunk(
       await AsyncStorage.setItem('access_token', response.access);
       await AsyncStorage.setItem('refresh_token', response.refresh);
       await AsyncStorage.setItem('user', JSON.stringify(response.user));
+      // Sauvegarder le timestamp de connexion pour vérifier l'expiration après 12h
+      await AsyncStorage.setItem('login_timestamp', Date.now().toString());
       
       return response;
     } catch (error: any) {
@@ -108,6 +110,8 @@ export const signup = createAsyncThunk(
         await AsyncStorage.setItem('access_token', response.access);
         await AsyncStorage.setItem('refresh_token', response.refresh);
         await AsyncStorage.setItem('user', JSON.stringify(response.user));
+        // Sauvegarder le timestamp de connexion pour vérifier l'expiration après 12h
+        await AsyncStorage.setItem('login_timestamp', Date.now().toString());
         
         return response;
       }
@@ -153,11 +157,27 @@ export const checkAuthStatus = createAsyncThunk(
   'auth/checkStatus',
   async (_, { rejectWithValue }) => {
     try {
-      const [accessToken, refreshToken, userData] = await Promise.all([
+      const [accessToken, refreshToken, userData, loginTimestamp] = await Promise.all([
         AsyncStorage.getItem('access_token'),
         AsyncStorage.getItem('refresh_token'),
         AsyncStorage.getItem('user'),
+        AsyncStorage.getItem('login_timestamp'),
       ]);
+
+      // Vérifier si la session a expiré (12 heures = 43200000 ms)
+      const SESSION_DURATION = 12 * 60 * 60 * 1000; // 12 heures en millisecondes
+      if (loginTimestamp) {
+        const loginTime = parseInt(loginTimestamp, 10);
+        const now = Date.now();
+        const elapsed = now - loginTime;
+        
+        if (elapsed > SESSION_DURATION) {
+          console.log('⏰ [AUTH] Session expirée après 12 heures - Déconnexion automatique');
+          // Nettoyer le stockage
+          await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user', 'login_timestamp']);
+          return null;
+        }
+      }
 
       if (accessToken && refreshToken && userData) {
         const parsedUser = JSON.parse(userData);
@@ -297,9 +317,14 @@ const authSlice = createSlice({
       
       // Logout
       .addCase(logout.pending, (state) => {
+        console.log('🔄 [AUTH] Déconnexion en cours...');
         state.loading = true;
       })
       .addCase(logout.fulfilled, (state) => {
+        console.log('✅ [AUTH] Déconnexion réussie');
+        console.log('   → isAuthenticated: false');
+        console.log('   → user: null');
+        console.log('   → tokens: null');
         state.loading = false;
         state.isAuthenticated = false;
         state.user = null;
@@ -307,6 +332,7 @@ const authSlice = createSlice({
         state.showSessionExpiredNotification = false; // Masquer la notification lors de la déconnexion
       })
       .addCase(logout.rejected, (state, action) => {
+        console.error('❌ [AUTH] Erreur lors de la déconnexion:', action.payload);
         state.loading = false;
         state.error = action.payload as string;
       })

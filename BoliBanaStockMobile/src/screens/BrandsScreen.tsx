@@ -11,6 +11,7 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Brand, Category } from '../types';
 import { brandService, categoryService } from '../services/api';
@@ -319,7 +320,7 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
 
   return (
     <ErrorBoundary>
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -535,7 +536,7 @@ const BrandsScreen: React.FC<BrandsScreenProps> = ({ navigation }) => {
         brandToEdit={selectedBrand}
         onBrandUpdated={handleBrandUpdated}
       />
-    </View>
+      </SafeAreaView>
     </ErrorBoundary>
   );
 };
@@ -560,7 +561,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 30,
+    paddingTop: 16,
     paddingBottom: 20,
     backgroundColor: 'white',
     borderBottomWidth: 1,
