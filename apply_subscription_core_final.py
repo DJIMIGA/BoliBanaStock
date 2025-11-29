@@ -44,9 +44,11 @@ try:
         """)
         price_table_exists = cursor.fetchone()[0]
     
-    print(f"\n📋 État des tables subscription:")
-    print(f"   subscription_plan: {'✅ existe' if plan_table_exists else '❌ n\'existe pas'}")
-    print(f"   subscription_planprice: {'✅ existe' if price_table_exists else '❌ n\'existe pas'}")
+    print("\n📋 État des tables subscription:")
+    exists_msg = "✅ existe" if plan_table_exists else "❌ n'existe pas"
+    print(f"   subscription_plan: {exists_msg}")
+    exists_msg2 = "✅ existe" if price_table_exists else "❌ n'existe pas"
+    print(f"   subscription_planprice: {exists_msg2}")
     
     # Si les tables n'existent pas, les créer
     if not plan_table_exists or not price_table_exists:
@@ -77,8 +79,9 @@ try:
         """)
         column_exists = cursor.fetchone()[0]
     
-    print(f"\n📋 État de la colonne subscription_plan_id:")
-    print(f"   core_configuration.subscription_plan_id: {'✅ existe' if column_exists else '❌ n\'existe pas'}")
+    print("\n📋 État de la colonne subscription_plan_id:")
+    col_exists_msg = "✅ existe" if column_exists else "❌ n'existe pas"
+    print(f"   core_configuration.subscription_plan_id: {col_exists_msg}")
     
     # Appliquer les migrations core 0012 et 0013
     if not column_exists:
