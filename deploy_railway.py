@@ -468,8 +468,40 @@ def deploy_railway():
                     print(f"⚠️ Erreur lors de la vérification préventive: {prevent_error}")
                     print("   Continuation avec l'application normale des migrations...")
                 
-                # Appliquer les migrations normalement
-                call_command('migrate', '--noinput', verbosity=1)
+                # Appliquer les migrations normalement (toutes les apps, y compris subscription et core)
+                print("📋 Application des migrations pour toutes les apps...")
+                call_command('migrate', '--noinput', verbosity=2)
+                
+                # Vérifier spécifiquement les migrations subscription et core
+                print("\n🔍 Vérification des migrations subscription et core...")
+                try:
+                    from django.db import connection
+                    with connection.cursor() as cursor:
+                        # Vérifier subscription
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM django_migrations 
+                            WHERE app = 'subscription'
+                        """)
+                        subscription_count = cursor.fetchone()[0]
+                        print(f"   Migrations subscription appliquées: {subscription_count}")
+                        
+                        # Vérifier core 0012 et 0013
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM django_migrations 
+                            WHERE app = 'core' AND name IN ('0012_add_subscription_plan_to_configuration', '0013_assign_default_plan_to_configurations')
+                        """)
+                        core_subscription_count = cursor.fetchone()[0]
+                        print(f"   Migrations core subscription appliquées: {core_subscription_count}/2")
+                        
+                        if subscription_count == 0:
+                            print("   ⚠️ Aucune migration subscription trouvée, réapplication...")
+                            call_command('migrate', 'subscription', '--noinput', verbosity=2)
+                        
+                        if core_subscription_count < 2:
+                            print("   ⚠️ Migrations core subscription incomplètes, réapplication...")
+                            call_command('migrate', 'core', '--noinput', verbosity=2)
+                except Exception as check_error:
+                    print(f"   ⚠️ Erreur lors de la vérification: {check_error}")
             
             print("✅ Migrations appliquées avec succès")
         except Exception as migrate_error:
