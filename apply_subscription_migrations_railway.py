@@ -21,98 +21,117 @@ def setup_django():
     django.setup()
 
 def fix_migration_order():
-    """Corrige l'ordre des migrations avant d'appliquer les nouvelles"""
+    """Corrige l'ordre des migrations avant d'appliquer les nouvelles - Version générique"""
     from django.db import connection
     from django.core.management import call_command
+    import re
     
     print("=" * 60)
-    print("  CORRECTION DE L'ORDRE DES MIGRATIONS")
+    print("  CORRECTION DE L'ORDRE DES MIGRATIONS (GÉNÉRIQUE)")
     print("=" * 60)
     
     try:
-        with connection.cursor() as cursor:
-            # 1. Vérifier l'état actuel
-            print("\n📋 Étape 1: Vérification de l'état actuel...")
-            cursor.execute("""
-                SELECT app, name, applied 
-                FROM django_migrations 
-                WHERE app = 'inventory' 
-                AND (name LIKE '0037_%' OR name LIKE '0038_%' OR name LIKE '0039_%' OR name LIKE '0040_%')
-                ORDER BY name
-            """)
-            existing = cursor.fetchall()
-            print(f"   Migrations inventory 0037-0040 trouvées: {len(existing)}")
-            for app, name, applied in existing:
-                print(f"      - {app}.{name} (appliquée: {applied})")
+        max_iterations = 20
+        iteration = 0
+        
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n🔄 Itération {iteration}/{max_iterations} - Vérification des problèmes d'ordre...")
             
-            # 2. Vérifier le problème spécifique: 0038 avant 0037
-            cursor.execute("""
-                SELECT COUNT(*) FROM django_migrations 
-                WHERE app = 'inventory' 
-                AND name = '0038_add_unique_phone_per_site'
-            """)
-            has_0038 = cursor.fetchone()[0] > 0
-            
-            cursor.execute("""
-                SELECT COUNT(*) FROM django_migrations 
-                WHERE app = 'inventory' 
-                AND name = '0037_customer_is_loyalty_member_and_more'
-            """)
-            has_0037 = cursor.fetchone()[0] > 0
-            
-            if has_0038 and not has_0037:
-                print("\n🔧 Étape 2: Correction du problème 0038 avant 0037...")
-                # Supprimer 0038
-                cursor.execute("""
-                    DELETE FROM django_migrations 
-                    WHERE app = 'inventory' 
-                    AND name = '0038_add_unique_phone_per_site'
-                """)
-                deleted_0038 = cursor.rowcount
-                print(f"   ✅ {deleted_0038} entrée(s) de migration 0038 supprimée(s)")
+            # Essayer d'appliquer les migrations pour détecter les problèmes
+            try:
+                # Capturer la sortie pour détecter les erreurs
+                import io
+                from contextlib import redirect_stdout, redirect_stderr
                 
-                # Ajouter 0037
-                cursor.execute("""
-                    INSERT INTO django_migrations (app, name, applied) 
-                    VALUES ('inventory', '0037_customer_is_loyalty_member_and_more', NOW())
-                """)
-                print("   ✅ Migration 0037 ajoutée dans l'historique")
-            
-            # 3. Vérifier et corriger 0040 avant 0039
-            cursor.execute("""
-                SELECT COUNT(*) FROM django_migrations 
-                WHERE app = 'inventory' 
-                AND name LIKE '0040_%'
-            """)
-            has_0040 = cursor.fetchone()[0] > 0
-            
-            cursor.execute("""
-                SELECT COUNT(*) FROM django_migrations 
-                WHERE app = 'inventory' 
-                AND name = '0039_alter_customer_credit_balance_and_more'
-            """)
-            has_0039 = cursor.fetchone()[0] > 0
-            
-            if has_0040 and not has_0039:
-                print("\n🔧 Étape 3: Correction du problème 0040 avant 0039...")
-                # Supprimer 0040
-                cursor.execute("""
-                    DELETE FROM django_migrations 
-                    WHERE app = 'inventory' 
-                    AND name LIKE '0040_%'
-                """)
-                deleted_0040 = cursor.rowcount
-                print(f"   ✅ {deleted_0040} entrée(s) de migration 0040 supprimée(s)")
+                output_buffer = io.StringIO()
+                error_buffer = io.StringIO()
                 
-                # Ajouter 0039
-                cursor.execute("""
-                    INSERT INTO django_migrations (app, name, applied) 
-                    VALUES ('inventory', '0039_alter_customer_credit_balance_and_more', NOW())
-                """)
-                print("   ✅ Migration 0039 ajoutée dans l'historique")
-            
-            print("\n✅ Correction de l'ordre des migrations terminée")
-            return True
+                with redirect_stdout(output_buffer), redirect_stderr(error_buffer):
+                    call_command('migrate', '--check', verbosity=0)
+                
+                # Si on arrive ici, pas de problème d'ordre
+                print("   ✅ Aucun problème d'ordre de migrations détecté")
+                break
+                
+            except Exception as migrate_error:
+                error_str = str(migrate_error)
+                
+                # Vérifier si c'est un problème d'ordre de migrations
+                if "InconsistentMigrationHistory" in error_str or "is applied before its dependency" in error_str:
+                    print(f"   ⚠️ Problème d'ordre détecté: {error_str[:150]}...")
+                    
+                    # Extraire les migrations en conflit avec regex
+                    patterns = [
+                        r"Migration (\w+\.\d+_[\w_]+) is applied before its dependency (\w+\.\d+_[\w_]+)",
+                        r"Migration '(\w+\.\d+_[\w_]+)' is applied before its dependency '(\w+\.\d+_[\w_]+)'",
+                        r"(\w+\.\d+_[\w_]+).*?is applied before.*?(\w+\.\d+_[\w_]+)",
+                    ]
+                    
+                    match = None
+                    for pattern in patterns:
+                        match = re.search(pattern, error_str)
+                        if match:
+                            break
+                    
+                    if match:
+                        applied_migration = match.group(1)  # ex: inventory.0035_fix_catalog_user_null_values
+                        missing_dependency = match.group(2)  # ex: inventory.0034_fix_catalog_user_null_values
+                        
+                        print(f"      Migration appliquée trop tôt: {applied_migration}")
+                        print(f"      Dépendance manquante: {missing_dependency}")
+                        
+                        # Corriger dans la base de données
+                        with connection.cursor() as cursor:
+                            app_label_applied, migration_full_applied = applied_migration.split('.', 1)
+                            app_label_dep, migration_full_dep = missing_dependency.split('.', 1)
+                            
+                            # 1. Supprimer la migration appliquée trop tôt
+                            print(f"      🔧 Suppression de {applied_migration}...")
+                            cursor.execute(
+                                "DELETE FROM django_migrations WHERE app = %s AND name = %s",
+                                [app_label_applied, migration_full_applied]
+                            )
+                            deleted = cursor.rowcount
+                            print(f"         ✅ {deleted} entrée(s) supprimée(s)")
+                            
+                            # 2. Vérifier si la dépendance existe
+                            cursor.execute(
+                                "SELECT COUNT(*) FROM django_migrations WHERE app = %s AND name = %s",
+                                [app_label_dep, migration_full_dep]
+                            )
+                            exists = cursor.fetchone()[0] > 0
+                            
+                            # 3. Ajouter la dépendance si elle n'existe pas
+                            if not exists:
+                                print(f"      🔧 Ajout de {missing_dependency}...")
+                                cursor.execute(
+                                    "INSERT INTO django_migrations (app, name, applied) VALUES (%s, %s, NOW())",
+                                    [app_label_dep, migration_full_dep]
+                                )
+                                print(f"         ✅ Migration ajoutée dans l'historique")
+                            else:
+                                print(f"         ⏭️  Migration existe déjà")
+                        
+                        # Continuer la boucle pour vérifier s'il y a d'autres problèmes
+                        continue
+                    else:
+                        print(f"   ❌ Impossible d'extraire les migrations depuis l'erreur")
+                        print(f"   Message complet: {error_str[:300]}")
+                        # Si on ne peut pas extraire, on arrête
+                        break
+                else:
+                    # Autre type d'erreur, on arrête
+                    print(f"   ⚠️ Autre type d'erreur: {error_str[:150]}...")
+                    break
+        
+        if iteration >= max_iterations:
+            print(f"\n⚠️ Nombre maximum d'itérations atteint ({max_iterations})")
+            print("   Il pourrait y avoir des problèmes d'ordre complexes")
+        else:
+            print(f"\n✅ Correction de l'ordre des migrations terminée après {iteration} itération(s)")
+        
+        return True
             
     except Exception as e:
         print(f"⚠️ Erreur lors de la correction: {e}")
