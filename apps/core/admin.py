@@ -53,8 +53,8 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Configuration)
 class ConfigurationAdmin(admin.ModelAdmin):
-    list_display = ('nom_societe', 'email', 'telephone', 'devise', 'tva')
-    list_filter = ('devise', 'created_at')
+    list_display = ('nom_societe', 'email', 'telephone', 'devise', 'tva', 'subscription_plan')
+    list_filter = ('devise', 'subscription_plan', 'created_at')
     search_fields = ('nom_societe', 'site_name', 'email', 'telephone')
     readonly_fields = ('created_at', 'updated_at', 'created_by', 'updated_by')
     
@@ -67,6 +67,9 @@ class ConfigurationAdmin(admin.ModelAdmin):
         }),
         (_('Configuration'), {
             'fields': ('devise', 'tva', 'logo')
+        }),
+        (_('Abonnement'), {
+            'fields': ('subscription_plan',)
         }),
         (_('Dates'), {
             'fields': ('created_at', 'updated_at', 'created_by', 'updated_by'),
