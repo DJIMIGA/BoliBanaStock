@@ -39,17 +39,47 @@ with connection.cursor() as cursor:
         """)
         print("[OK] Colonne site_id ajoutee")
         
-        # Vérifier si la colonne user_id existe encore
+        # Vérifier si la colonne user_id existe encore et la rendre nullable
         cursor.execute("""
-            SELECT column_name 
+            SELECT column_name, is_nullable
             FROM information_schema.columns 
             WHERE table_name = 'subscription_subscription' 
             AND column_name = 'user_id'
         """)
-        user_id_exists = cursor.fetchone() is not None
+        user_id_info = cursor.fetchone()
+        user_id_exists = user_id_info is not None
         
         if user_id_exists:
-            print("[INFO] Colonne user_id existe encore (sera supprimee par la migration)")
+            is_nullable = user_id_info[1] == 'YES'
+            if not is_nullable:
+                print("[FIX] Rendre user_id nullable temporairement...")
+                cursor.execute("""
+                    ALTER TABLE subscription_subscription 
+                    ALTER COLUMN user_id DROP NOT NULL
+                """)
+                print("[OK] user_id est maintenant nullable")
+            else:
+                print("[INFO] Colonne user_id existe deja et est nullable")
+            
+            # Supprimer la contrainte unique sur user_id si elle existe
+            cursor.execute("""
+                SELECT constraint_name 
+                FROM information_schema.table_constraints 
+                WHERE table_name = 'subscription_subscription' 
+                AND constraint_type = 'UNIQUE'
+                AND constraint_name LIKE '%user_id%'
+            """)
+            unique_constraint = cursor.fetchone()
+            if unique_constraint:
+                constraint_name = unique_constraint[0]
+                print(f"[FIX] Suppression de la contrainte unique {constraint_name}...")
+                cursor.execute(f"""
+                    ALTER TABLE subscription_subscription 
+                    DROP CONSTRAINT IF EXISTS {constraint_name}
+                """)
+                print("[OK] Contrainte unique supprimee")
+        else:
+            print("[OK] Colonne user_id n'existe plus (correct)")
         
         # Ajouter la contrainte de clé étrangère si elle n'existe pas
         cursor.execute("""
@@ -183,10 +213,47 @@ with connection.cursor() as cursor:
     else:
         print("[OK] Colonne billing_period n'existe plus (correct)")
 
+    # Vérifier aussi subscription_usagelimit.user_id
+    cursor.execute("""
+        SELECT column_name, is_nullable
+        FROM information_schema.columns 
+        WHERE table_name = 'subscription_usagelimit' 
+        AND column_name = 'user_id'
+    """)
+    usage_user_id_info = cursor.fetchone()
+    if usage_user_id_info:
+        is_nullable = usage_user_id_info[1] == 'YES'
+        if not is_nullable:
+            print("[FIX] Rendre user_id nullable dans subscription_usagelimit...")
+            cursor.execute("""
+                ALTER TABLE subscription_usagelimit 
+                ALTER COLUMN user_id DROP NOT NULL
+            """)
+            print("[OK] user_id est maintenant nullable dans subscription_usagelimit")
+        
+        # Supprimer la contrainte unique si elle existe
+        cursor.execute("""
+            SELECT constraint_name 
+            FROM information_schema.table_constraints 
+            WHERE table_name = 'subscription_usagelimit' 
+            AND constraint_type = 'UNIQUE'
+            AND constraint_name LIKE '%user_id%'
+        """)
+        unique_constraint = cursor.fetchone()
+        if unique_constraint:
+            constraint_name = unique_constraint[0]
+            print(f"[FIX] Suppression de la contrainte unique {constraint_name}...")
+            cursor.execute(f"""
+                ALTER TABLE subscription_usagelimit 
+                DROP CONSTRAINT IF EXISTS {constraint_name}
+            """)
+            print("[OK] Contrainte unique supprimee pour subscription_usagelimit")
+
 print("\n" + "=" * 60)
 print("[OK] HOTFIX TERMINE")
 print("=" * 60)
 print("\n[INFO] Les colonnes site_id ont ete ajoutees")
+print("[INFO] Les colonnes user_id ont ete rendues nullable")
 print("[INFO] Vous pouvez maintenant appliquer les migrations avec:")
 print("       railway run python apply_subscription_migrations_railway_v2.py")
 
