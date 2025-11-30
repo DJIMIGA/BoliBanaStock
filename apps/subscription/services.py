@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from apps.core.models import Configuration
 from apps.inventory.models import Product
+from apps.subscription.models import Subscription
 
 
 class SubscriptionService:
@@ -13,7 +14,12 @@ class SubscriptionService:
     @staticmethod
     def get_site_plan(site_configuration):
         """
-        Récupère le plan d'abonnement d'un site
+        Récupère le plan d'abonnement actif d'un site
+        
+        Priorité :
+        1. Plan de l'abonnement actif (si subscription.is_active())
+        2. Plan assigné au site (subscription_plan)
+        3. Plan gratuit par défaut
         
         Args:
             site_configuration: Instance de Configuration
@@ -23,6 +29,17 @@ class SubscriptionService:
         """
         if not site_configuration:
             return None
+        
+        # Vérifier d'abord si l'abonnement est actif
+        try:
+            subscription = site_configuration.subscription
+            if subscription and subscription.is_active():
+                # Utiliser le plan de l'abonnement actif
+                return subscription.plan
+        except Subscription.DoesNotExist:
+            pass
+        
+        # Sinon, utiliser le plan assigné au site (ou plan gratuit par défaut)
         return site_configuration.get_subscription_plan()
     
     @staticmethod
@@ -46,7 +63,19 @@ class SubscriptionService:
                 raise ValidationError(_('Configuration de site requise'))
             return False, _('Configuration de site requise')
         
+        # Récupérer le plan (priorité à l'abonnement actif, sinon plan assigné)
         plan = SubscriptionService.get_site_plan(site_configuration)
+        
+        # Vérifier si l'abonnement existe et est actif pour les fonctionnalités premium
+        try:
+            subscription = site_configuration.subscription
+            if subscription and not subscription.is_active():
+                # Pour les fonctionnalités premium, on vérifie si l'abonnement est actif
+                # Si l'abonnement n'est pas actif, on applique les limites du plan assigné
+                pass  # On continue avec les limites du plan assigné
+        except Subscription.DoesNotExist:
+            # Pas d'abonnement = on continue avec le plan assigné (plan gratuit par défaut)
+            pass
         if not plan:
             # Pas de plan = toutes les fonctionnalités accessibles (pour compatibilité)
             return True, None
@@ -114,7 +143,21 @@ class SubscriptionService:
                 raise ValidationError(_('Configuration de site requise'))
             return False, _('Configuration de site requise')
         
+        # Récupérer le plan (priorité à l'abonnement actif, sinon plan assigné)
         plan = SubscriptionService.get_site_plan(site_configuration)
+        
+        # Vérifier si l'abonnement existe et est actif
+        try:
+            subscription = site_configuration.subscription
+            if subscription:
+                if not subscription.is_active():
+                    # Abonnement existe mais n'est pas actif
+                    # On applique les limites du plan assigné (généralement plan gratuit)
+                    # mais on pourrait aussi refuser complètement selon la politique
+                    pass  # On continue avec les limites du plan assigné
+        except Subscription.DoesNotExist:
+            # Pas d'abonnement = on continue avec le plan assigné (plan gratuit par défaut)
+            pass
         if not plan:
             # Pas de plan = pas de limite (pour compatibilité)
             return True, None

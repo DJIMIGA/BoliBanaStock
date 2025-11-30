@@ -223,7 +223,7 @@ class PlanPrice(models.Model):
 
 class Subscription(models.Model):
     """
-    Modèle représentant l'abonnement d'un utilisateur
+    Modèle représentant l'abonnement d'un site
     """
     STATUS_CHOICES = [
         ('active', _('Active')),
@@ -233,11 +233,12 @@ class Subscription(models.Model):
         ('expired', _('Expirée')),
     ]
 
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
+    site = models.OneToOneField(
+        'core.Configuration',
         on_delete=models.CASCADE,
         related_name='subscription',
-        verbose_name=_('Utilisateur')
+        verbose_name=_('Site'),
+        help_text=_('Site/Configuration qui possède cet abonnement')
     )
     plan = models.ForeignKey(
         Plan,
@@ -273,7 +274,7 @@ class Subscription(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.user.username} - {self.plan.name} ({self.status})"
+        return f"{self.site.nom_societe or self.site.site_name} - {self.plan.name} ({self.status})"
 
     def is_active(self):
         """Vérifie si l'abonnement est actif"""
@@ -287,6 +288,7 @@ class Subscription(models.Model):
         """Sauvegarde avec calcul automatique de current_period_end si nécessaire"""
         if not self.current_period_end:
             # Par défaut, période de 1 mois (30 jours)
+            # La période réelle sera déterminée par le paiement lors de la validation
             if self.current_period_start:
                 self.current_period_end = self.current_period_start + timedelta(days=30)
             else:
@@ -312,12 +314,18 @@ class Payment(models.Model):
         ('cash', _('Espèces')),
         ('other', _('Autre')),
     ]
+    
+    PERIOD_CHOICES = [
+        ('monthly', _('Mensuel')),
+        ('yearly', _('Annuel')),
+    ]
 
     subscription = models.ForeignKey(
         Subscription,
         on_delete=models.CASCADE,
         related_name='payments',
-        verbose_name=_('Abonnement')
+        verbose_name=_('Abonnement'),
+        help_text=_('Abonnement du site')
     )
     amount = models.DecimalField(
         max_digits=10,
@@ -329,6 +337,13 @@ class Payment(models.Model):
         default='FCFA',
         verbose_name=_('Devise'),
         help_text=_('Devise du paiement (FCFA, EUR, etc.)')
+    )
+    period = models.CharField(
+        max_length=10,
+        choices=PERIOD_CHOICES,
+        default='monthly',
+        verbose_name=_('Type d\'abonnement'),
+        help_text=_('Période couverte par ce paiement : mensuel (30 jours) ou annuel (365 jours)')
     )
     status = models.CharField(
         max_length=20,
@@ -386,6 +401,12 @@ class Payment(models.Model):
     def __str__(self):
         return f"Paiement {self.amount} {self.currency} - {self.get_status_display()}"
 
+    def get_period_days(self):
+        """Retourne le nombre de jours selon la période du paiement"""
+        if self.period == 'yearly':
+            return 365
+        return 30  # monthly par défaut
+
     def validate_payment(self, user):
         """Valide manuellement un paiement"""
         if self.status == 'paid':
@@ -396,40 +417,43 @@ class Payment(models.Model):
         self.validated_at = timezone.now()
         self.save()
         
-        # Activer ou prolonger l'abonnement
+        # Activer ou prolonger l'abonnement selon la période du paiement
         subscription = self.subscription
+        period_days = self.get_period_days()  # Utiliser la période du paiement
+        
         if subscription.status != 'active':
             subscription.status = 'active'
             subscription.current_period_start = timezone.now()
-            subscription.current_period_end = timezone.now() + timedelta(days=30)
+            subscription.current_period_end = timezone.now() + timedelta(days=period_days)
         else:
-            # Prolonger la période de 30 jours
-            subscription.current_period_end = subscription.current_period_end + timedelta(days=30)
+            # Prolonger la période selon le type de paiement (mensuel ou annuel)
+            subscription.current_period_end = subscription.current_period_end + timedelta(days=period_days)
         
         subscription.save()
 
 
 class UsageLimit(models.Model):
     """
-    Modèle pour suivre l'utilisation des limites par utilisateur
+    Modèle pour suivre l'utilisation des limites par site
     """
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
+    site = models.OneToOneField(
+        'core.Configuration',
         on_delete=models.CASCADE,
         related_name='usage_limit',
-        verbose_name=_('Utilisateur')
+        verbose_name=_('Site'),
+        help_text=_('Site/Configuration dont on suit l\'utilisation')
     )
     
     # Compteurs
     product_count = models.IntegerField(
         default=0,
         verbose_name=_('Nombre de produits'),
-        help_text=_('Nombre total de produits créés par cet utilisateur')
+        help_text=_('Nombre total de produits créés sur ce site')
     )
     transaction_count_this_month = models.IntegerField(
         default=0,
         verbose_name=_('Transactions ce mois'),
-        help_text=_('Nombre de transactions effectuées ce mois')
+        help_text=_('Nombre de transactions effectuées ce mois sur ce site')
     )
     
     # Reset
@@ -446,7 +470,8 @@ class UsageLimit(models.Model):
         verbose_name_plural = _('Limites d\'utilisation')
 
     def __str__(self):
-        return f"Usage de {self.user.username} - {self.product_count} produits, {self.transaction_count_this_month} transactions"
+        site_name = self.site.nom_societe or self.site.site_name
+        return f"Usage de {site_name} - {self.product_count} produits, {self.transaction_count_this_month} transactions"
 
     def reset_monthly_counters(self):
         """Réinitialise les compteurs mensuels"""

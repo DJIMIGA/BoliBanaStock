@@ -3,7 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.contrib import messages
 from datetime import timedelta
-from .models import Plan, PlanPrice, Subscription, Payment, UsageLimit
+from .models import Plan, PlanPrice, Subscription, Payment  # UsageLimit commenté car non utilisé pour l'instant
 
 
 class PlanPriceInline(admin.TabularInline):
@@ -96,21 +96,22 @@ class PaymentInline(admin.TabularInline):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ('user', 'plan', 'status', 'current_period_start', 'current_period_end', 'is_active_display', 'created_at')
+    list_display = ('site', 'plan', 'status', 'current_period_start', 'current_period_end', 'is_active_display', 'created_at')
     list_filter = ('status', 'plan', 'current_period_start', 'created_at')
-    search_fields = ('user__username', 'user__email', 'user__first_name', 'user__last_name')
+    search_fields = ('site__nom_societe', 'site__site_name', 'site__email', 'site__telephone')
     readonly_fields = ('created_at', 'updated_at', 'is_active_display')
     inlines = [PaymentInline]
     
     fieldsets = (
-        (_('Utilisateur et Plan'), {
-            'fields': ('user', 'plan')
+        (_('Site et Plan'), {
+            'fields': ('site', 'plan')
         }),
         (_('Statut'), {
             'fields': ('status', 'cancel_at_period_end', 'is_active_display')
         }),
-        (_('Période'), {
-            'fields': ('current_period_start', 'current_period_end')
+        (_('Dates de facturation'), {
+            'fields': ('current_period_start', 'current_period_end'),
+            'description': _('Dates de début et fin de la période de facturation actuelle')
         }),
         (_('Dates'), {
             'fields': ('created_at', 'updated_at'),
@@ -118,7 +119,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
         }),
     )
     
-    actions = ['activate_subscriptions', 'cancel_subscriptions', 'extend_period']
+    actions = ['activate_subscriptions', 'cancel_subscriptions', 'extend_period_monthly', 'extend_period_yearly']
     
     def is_active_display(self, obj):
         """Affiche si l'abonnement est actif"""
@@ -146,7 +147,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
         self.message_user(request, f'{count} abonnement(s) annulé(s).', messages.SUCCESS)
     cancel_subscriptions.short_description = _('Annuler les abonnements sélectionnés')
     
-    def extend_period(self, request, queryset):
+    def extend_period_monthly(self, request, queryset):
         """Action pour prolonger la période d'un mois"""
         count = 0
         for subscription in queryset:
@@ -156,15 +157,28 @@ class SubscriptionAdmin(admin.ModelAdmin):
                 subscription.current_period_end = timezone.now() + timedelta(days=30)
             subscription.save()
             count += 1
-        self.message_user(request, f'Période prolongée pour {count} abonnement(s).', messages.SUCCESS)
-    extend_period.short_description = _('Prolonger la période d\'un mois')
+        self.message_user(request, f'Période prolongée d\'un mois pour {count} abonnement(s).', messages.SUCCESS)
+    extend_period_monthly.short_description = _('Prolonger d\'un mois')
+    
+    def extend_period_yearly(self, request, queryset):
+        """Action pour prolonger la période d'un an"""
+        count = 0
+        for subscription in queryset:
+            if subscription.current_period_end:
+                subscription.current_period_end = subscription.current_period_end + timedelta(days=365)
+            else:
+                subscription.current_period_end = timezone.now() + timedelta(days=365)
+            subscription.save()
+            count += 1
+        self.message_user(request, f'Période prolongée d\'un an pour {count} abonnement(s).', messages.SUCCESS)
+    extend_period_yearly.short_description = _('Prolonger d\'un an')
 
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('subscription', 'amount', 'currency', 'status', 'payment_method', 'payment_date', 'validated_by', 'validated_at')
-    list_filter = ('status', 'payment_method', 'payment_date', 'validated_at')
-    search_fields = ('subscription__user__username', 'subscription__user__email', 'payment_reference', 'notes')
+    list_display = ('subscription', 'amount', 'currency', 'period', 'status', 'payment_method', 'payment_date', 'validated_by', 'validated_at')
+    list_filter = ('status', 'payment_method', 'period', 'payment_date', 'validated_at')
+    search_fields = ('subscription__site__nom_societe', 'subscription__site__site_name', 'subscription__site__email', 'payment_reference', 'notes')
     readonly_fields = ('created_at', 'updated_at')
     date_hierarchy = 'payment_date'
     
@@ -173,7 +187,7 @@ class PaymentAdmin(admin.ModelAdmin):
             'fields': ('subscription',)
         }),
         (_('Paiement'), {
-            'fields': ('amount', 'currency', 'payment_method', 'payment_reference', 'payment_date', 'status')
+            'fields': ('amount', 'currency', 'period', 'payment_method', 'payment_reference', 'payment_date', 'status')
         }),
         (_('Validation'), {
             'fields': ('validated_by', 'validated_at', 'notes')
@@ -220,46 +234,50 @@ class PaymentAdmin(admin.ModelAdmin):
     mark_as_failed.short_description = _('Marquer comme échoué')
 
 
-@admin.register(UsageLimit)
-class UsageLimitAdmin(admin.ModelAdmin):
-    list_display = ('user', 'product_count', 'transaction_count_this_month', 'last_transaction_reset', 'updated_at')
-    list_filter = ('last_transaction_reset', 'updated_at')
-    search_fields = ('user__username', 'user__email')
-    readonly_fields = ('updated_at',)
-    
-    fieldsets = (
-        (_('Utilisateur'), {
-            'fields': ('user',)
-        }),
-        (_('Compteurs'), {
-            'fields': ('product_count', 'transaction_count_this_month', 'last_transaction_reset')
-        }),
-        (_('Dates'), {
-            'fields': ('updated_at',),
-            'classes': ('collapse',)
-        }),
-    )
-    
-    actions = ['reset_monthly_counters', 'reset_all_counters']
-    
-    def reset_monthly_counters(self, request, queryset):
-        """Action pour réinitialiser les compteurs mensuels"""
-        count = 0
-        for usage_limit in queryset:
-            usage_limit.reset_monthly_counters()
-            count += 1
-        self.message_user(request, f'Compteurs mensuels réinitialisés pour {count} utilisateur(s).', messages.SUCCESS)
-    reset_monthly_counters.short_description = _('Réinitialiser les compteurs mensuels')
-    
-    def reset_all_counters(self, request, queryset):
-        """Action pour réinitialiser tous les compteurs"""
-        count = 0
-        for usage_limit in queryset:
-            usage_limit.product_count = 0
-            usage_limit.transaction_count_this_month = 0
-            usage_limit.last_transaction_reset = timezone.now().date()
-            usage_limit.save()
-            count += 1
-        self.message_user(request, f'Tous les compteurs réinitialisés pour {count} utilisateur(s).', messages.SUCCESS)
-    reset_all_counters.short_description = _('Réinitialiser tous les compteurs')
+# UsageLimitAdmin commenté car les compteurs ne sont pas utilisés pour l'instant
+# On compte directement depuis Product.objects.filter(...).count() pour les produits
+# Les limites de transactions mensuelles ne sont pas encore implémentées
+# 
+# @admin.register(UsageLimit)
+# class UsageLimitAdmin(admin.ModelAdmin):
+#     list_display = ('site', 'product_count', 'transaction_count_this_month', 'last_transaction_reset', 'updated_at')
+#     list_filter = ('last_transaction_reset', 'updated_at')
+#     search_fields = ('site__nom_societe', 'site__site_name', 'site__email')
+#     readonly_fields = ('updated_at',)
+#     
+#     fieldsets = (
+#         (_('Site'), {
+#             'fields': ('site',)
+#         }),
+#         (_('Compteurs'), {
+#             'fields': ('product_count', 'transaction_count_this_month', 'last_transaction_reset')
+#         }),
+#         (_('Dates'), {
+#             'fields': ('updated_at',),
+#             'classes': ('collapse',)
+#         }),
+#     )
+#     
+#     actions = ['reset_monthly_counters', 'reset_all_counters']
+#     
+#     def reset_monthly_counters(self, request, queryset):
+#         """Action pour réinitialiser les compteurs mensuels"""
+#         count = 0
+#         for usage_limit in queryset:
+#             usage_limit.reset_monthly_counters()
+#             count += 1
+#         self.message_user(request, f'Compteurs mensuels réinitialisés pour {count} site(s).', messages.SUCCESS)
+#     reset_monthly_counters.short_description = _('Réinitialiser les compteurs mensuels')
+#     
+#     def reset_all_counters(self, request, queryset):
+#         """Action pour réinitialiser tous les compteurs"""
+#         count = 0
+#         for usage_limit in queryset:
+#             usage_limit.product_count = 0
+#             usage_limit.transaction_count_this_month = 0
+#             usage_limit.last_transaction_reset = timezone.now().date()
+#             usage_limit.save()
+#             count += 1
+#         self.message_user(request, f'Tous les compteurs réinitialisés pour {count} site(s).', messages.SUCCESS)
+#     reset_all_counters.short_description = _('Réinitialiser tous les compteurs')
 
