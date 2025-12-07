@@ -245,6 +245,85 @@ class SubscriptionService:
         }
     
     @staticmethod
+    def get_products_queryset(site_configuration, exclude_excess=True):
+        """
+        Retourne un queryset de produits pour un site, avec option d'exclure les produits excédentaires
+        
+        Args:
+            site_configuration: Instance de Configuration
+            exclude_excess: Si True, exclut les produits excédentaires (par défaut pour les listes)
+        
+        Returns:
+            QuerySet: Produits du site, avec ou sans produits excédentaires selon le contexte
+        """
+        from apps.inventory.models import Product
+        
+        if not site_configuration:
+            return Product.objects.none()
+        
+        queryset = Product.objects.select_related('category', 'brand').filter(
+            site_configuration=site_configuration
+        )
+        
+        # Exclure les produits excédentaires si demandé (pour les listes)
+        if exclude_excess:
+            excess_product_ids = SubscriptionService.get_excess_product_ids(site_configuration)
+            if excess_product_ids:
+                queryset = queryset.exclude(id__in=excess_product_ids)
+        
+        return queryset
+    
+    @staticmethod
+    def get_excess_product_ids(site_configuration):
+        """
+        Retourne les IDs des produits excédentaires (au-delà de la limite du plan)
+        Ces produits sont en lecture seule
+        
+        Args:
+            site_configuration: Instance de Configuration
+        
+        Returns:
+            list: Liste des IDs des produits excédentaires
+        """
+        if not site_configuration:
+            return []
+        
+        plan = SubscriptionService.get_site_plan(site_configuration)
+        if not plan or plan.max_products is None:
+            return []
+        
+        current_count = SubscriptionService.get_site_product_count(site_configuration)
+        if current_count <= plan.max_products:
+            return []
+        
+        # Retourner les IDs des produits au-delà de la limite (les plus anciens d'abord)
+        excess_count = current_count - plan.max_products
+        excess_products = Product.objects.filter(
+            site_configuration=site_configuration
+        ).order_by('created_at')[:excess_count].values_list('id', flat=True)
+        
+        return list(excess_products)
+    
+    @staticmethod
+    def is_product_excess(site_configuration, product):
+        """
+        Vérifie si un produit est en excédent (lecture seule)
+        
+        Args:
+            site_configuration: Instance de Configuration
+            product: Instance de Product ou ID de produit
+        
+        Returns:
+            bool: True si le produit est en excédent
+        """
+        if not site_configuration or not product:
+            return False
+        
+        excess_ids = SubscriptionService.get_excess_product_ids(site_configuration)
+        product_id = product.id if hasattr(product, 'id') else product
+        return product_id in excess_ids
+    
+    @staticmethod
     def get_plan_info(site_configuration):
         """
         Retourne les informations complètes du plan d'un site

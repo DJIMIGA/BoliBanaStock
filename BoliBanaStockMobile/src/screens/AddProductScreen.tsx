@@ -562,18 +562,39 @@ export default function AddProductScreen({ navigation, route }: any) {
         errorMessage = 'L\'image dépasse la taille maximale autorisée.';
       } else if (error.response?.status === 403) {
         // Erreur de limite d'abonnement
-        const limitInfo = error.response?.data?.limit_info;
+        const responseData = error.response?.data || {};
+        const limitInfo = responseData.limit_info;
+        const errorMsg = responseData.error || responseData.message;
+        
+        console.log('🔍 [403] Données reçues:', {
+          error: errorMsg,
+          limit_info: limitInfo,
+          full_data: responseData
+        });
+        
         if (limitInfo) {
           errorTitle = 'Limite de Produits Atteinte';
-          errorMessage = error.response?.data?.error || 
-                        `Vous avez atteint la limite de ${limitInfo.max_products} produits de votre plan ${limitInfo.plan_name || ''}.\n\n` +
-                        `Produits actuels: ${limitInfo.current_count}/${limitInfo.max_products}\n\n` +
-                        `Veuillez mettre à niveau votre abonnement pour ajouter plus de produits.`;
+          // Construire un message détaillé avec les informations de limite
+          const planName = limitInfo.plan_name || 'votre plan';
+          const currentCount = limitInfo.current_count || 0;
+          const maxProducts = limitInfo.max_products || 0;
+          const percentage = limitInfo.percentage_used || 0;
+          
+          errorMessage = errorMsg || 
+                        `Vous avez atteint la limite de ${maxProducts} produits de votre plan ${planName}.\n\n` +
+                        `📊 Produits actuels: ${currentCount}/${maxProducts} (${percentage.toFixed(0)}% utilisé)\n\n` +
+                        `💡 Pour ajouter plus de produits, veuillez mettre à niveau votre abonnement.\n\n` +
+                        `Plans disponibles:\n` +
+                        `• Starter: 500 produits\n` +
+                        `• Professional: Produits illimités`;
+        } else if (errorMsg) {
+          // Si pas de limit_info mais un message d'erreur personnalisé
+          errorTitle = 'Limite de Produits Atteinte';
+          errorMessage = errorMsg;
         } else {
+          // Message par défaut si aucune info
           errorTitle = 'Accès Refusé';
-          errorMessage = error.response?.data?.error || 
-                        error.response?.data?.message || 
-                        'Vous n\'avez pas la permission d\'effectuer cette action.';
+          errorMessage = 'Vous n\'avez pas la permission d\'effectuer cette action. Vérifiez vos permissions ou contactez l\'administrateur.';
         }
       } else if (error.response?.status === 400) {
         errorTitle = 'Données Incorrectes';

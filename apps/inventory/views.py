@@ -45,9 +45,13 @@ class ProductListView(SiteRequiredMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        queryset = Product.objects.select_related('category', 'brand').filter(
-            site_configuration=self.request.user.site_configuration
-        )
+        # Utiliser la fonction utilitaire pour obtenir les produits (exclut les excédentaires pour la liste)
+        site_config = self.request.user.site_configuration
+        if site_config:
+            from apps.subscription.services import SubscriptionService
+            queryset = SubscriptionService.get_products_queryset(site_config, exclude_excess=True)
+        else:
+            queryset = Product.objects.none()
         
         # Filtrage par statut de stock
         stock_filter = self.request.GET.get('filter')
@@ -94,6 +98,31 @@ class ProductListView(SiteRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context['search_query'] = self.request.GET.get('search', '')
         context['stock_filter'] = self.request.GET.get('filter', '')
+        
+        # Calculer les statistiques pour le template
+        queryset = self.get_queryset()
+        context['total_products'] = queryset.count()
+        
+        # Calculer la valeur totale du stock
+        from django.db.models import Sum, F
+        total_stock_value = queryset.aggregate(
+            total=Sum(F('quantity') * F('purchase_price'))
+        )['total'] or 0
+        context['total_stock_value'] = total_stock_value
+        
+        # Ajouter les informations sur les produits excédentaires (pour l'avertissement)
+        site_config = self.request.user.site_configuration
+        if site_config:
+            from apps.subscription.services import SubscriptionService
+            excess_product_ids = SubscriptionService.get_excess_product_ids(site_config)
+            
+            # Informations sur le plan pour afficher un avertissement
+            plan_info = SubscriptionService.get_plan_info(site_config)
+            if plan_info and len(excess_product_ids) > 0:
+                context['plan_info'] = plan_info
+                context['has_excess_products'] = True
+                context['excess_products_count'] = len(excess_product_ids)
+        
         return context
 
 class ProductDetailView(SiteFilterMixin, DetailView):
@@ -282,8 +311,16 @@ def cadencier_view(request):
     else:
         end_date = timezone.now()
     
-    # Filtrer les produits
-    products = Product.objects.select_related().all()
+    # Filtrer les produits (exclut les produits excédentaires pour les rapports)
+    user_site = request.user.site_configuration
+    if request.user.is_superuser:
+        products = Product.objects.select_related().all()
+    elif user_site:
+        from apps.subscription.services import SubscriptionService
+        products = SubscriptionService.get_products_queryset(user_site, exclude_excess=True).select_related()
+    else:
+        products = Product.objects.none()
+    
     if product_id:
         products = products.filter(id=product_id)
     
@@ -629,7 +666,13 @@ class TransactionListView(SiteFilterMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['products'] = Product.objects.filter(is_active=True)
+        # Pour les transactions, on inclut tous les produits (même excédentaires) car ils peuvent avoir des transactions
+        user_site = self.request.user.site_configuration
+        if user_site:
+            from apps.subscription.services import SubscriptionService
+            context['products'] = SubscriptionService.get_products_queryset(user_site, exclude_excess=False).filter(is_active=True)
+        else:
+            context['products'] = Product.objects.filter(is_active=True)
         context['selected_product'] = self.request.GET.get('product')
         context['selected_type'] = self.request.GET.get('type')
         context['start_date'] = self.request.GET.get('start_date')
@@ -763,8 +806,16 @@ def inventory_count(request):
         messages.success(request, 'L\'inventaire a été enregistré avec succès.')
         return redirect('inventory:product_list')
     
-    # GET: Afficher le formulaire d'inventaire
-    products = Product.objects.select_related('category', 'brand').all()
+    # GET: Afficher le formulaire d'inventaire (exclut les produits excédentaires pour la liste)
+    user_site = request.user.site_configuration
+    if request.user.is_superuser:
+        products = Product.objects.select_related('category', 'brand').all()
+    elif user_site:
+        from apps.subscription.services import SubscriptionService
+        products = SubscriptionService.get_products_queryset(user_site, exclude_excess=True).select_related('category', 'brand')
+    else:
+        products = Product.objects.none()
+    
     return render(request, 'inventory/inventory_count.html', {
         'products': products
     })
@@ -797,10 +848,19 @@ def stock_count(request):
         messages.success(request, 'Le comptage a été enregistré avec succès.')
         return redirect('inventory:product_list')
     
-    # GET: Afficher le formulaire de comptage
-    products = Product.objects.select_related('category', 'brand').filter(
-        Q(quantity__gt=0) | Q(quantity__lte=F('alert_threshold'))
-    )
+    # GET: Afficher le formulaire de comptage (exclut les produits excédentaires pour la liste)
+    user_site = request.user.site_configuration
+    if request.user.is_superuser:
+        products = Product.objects.select_related('category', 'brand').filter(
+            Q(quantity__gt=0) | Q(quantity__lte=F('alert_threshold'))
+        )
+    elif user_site:
+        from apps.subscription.services import SubscriptionService
+        products = SubscriptionService.get_products_queryset(user_site, exclude_excess=True).select_related('category', 'brand').filter(
+            Q(quantity__gt=0) | Q(quantity__lte=F('alert_threshold'))
+        )
+    else:
+        products = Product.objects.none()
     return render(request, 'inventory/stock_count.html', {
         'products': products
     })
@@ -836,18 +896,16 @@ def check_price(request):
                     messages.info(request, 'Veuillez contacter l\'administrateur.')
                     return render(request, 'inventory/check_price.html')
                 
+                # Utiliser la fonction utilitaire (inclut les produits excédentaires pour la recherche)
+                from apps.subscription.services import SubscriptionService
+                queryset = SubscriptionService.get_products_queryset(user_site, exclude_excess=False).select_related('category', 'brand')
+                
                 # 1. Chercher par CUG
-                product = Product.objects.filter(
-                    site_configuration=user_site,
-                    cug=code
-                ).select_related('category', 'brand').first()
+                product = queryset.filter(cug=code).first()
                 
                 # 2. Si pas trouvé, chercher par code-barres
                 if not product:
-                    product = Product.objects.filter(
-                        site_configuration=user_site,
-                        barcodes__ean__iexact=code
-                    ).select_related('category', 'brand').first()
+                    product = queryset.filter(barcodes__ean__iexact=code).first()
             
             if product:
                 return redirect('inventory:product_detail', pk=product.pk)
@@ -881,7 +939,15 @@ def check_price(request):
 @login_required
 def stock_report(request):
     """Vue pour le rapport détaillé du stock."""
-    products = Product.objects.select_related('category', 'brand').all()
+    # Utiliser la fonction utilitaire (exclut les produits excédentaires pour les rapports)
+    user_site = request.user.site_configuration
+    if request.user.is_superuser:
+        products = Product.objects.select_related('category', 'brand').all()
+    elif user_site:
+        from apps.subscription.services import SubscriptionService
+        products = SubscriptionService.get_products_queryset(user_site, exclude_excess=True)
+    else:
+        products = Product.objects.none()
     
     # Calculer les statistiques
     total_products = products.count()
@@ -914,7 +980,9 @@ def stock_valuation(request):
             # Si pas de site configuré, utiliser des données vides
             products = Product.objects.none()
         else:
-            products = Product.objects.filter(site_configuration=user_site).select_related('category', 'brand')
+            # Utiliser la fonction utilitaire (exclut les produits excédentaires pour les rapports)
+            from apps.subscription.services import SubscriptionService
+            products = SubscriptionService.get_products_queryset(user_site, exclude_excess=True)
     
     # Calculer la valeur par catégorie
     category_values = {}
@@ -1436,10 +1504,13 @@ class ProductQuickScanView(SiteRequiredMixin, View):
         """
         from django.db.models import Q
         
-        # Recherche dans le site de l'utilisateur
-        queryset = Product.objects.filter(
-            site_configuration=self.request.user.site_configuration
-        )
+        # Recherche dans le site de l'utilisateur (inclut les produits excédentaires pour les opérations)
+        site_config = self.request.user.site_configuration
+        if site_config:
+            from apps.subscription.services import SubscriptionService
+            queryset = SubscriptionService.get_products_queryset(site_config, exclude_excess=False)
+        else:
+            queryset = Product.objects.none()
         
         # Recherche par CUG (exacte)
         if search_query.isdigit() and len(search_query) == 5:
@@ -1474,9 +1545,13 @@ class ProductQuickScanView(SiteRequiredMixin, View):
         """
         from django.db.models import Q
         
-        queryset = Product.objects.filter(
-            site_configuration=self.request.user.site_configuration
-        )
+        # Inclut les produits excédentaires pour les suggestions (opération)
+        site_config = self.request.user.site_configuration
+        if site_config:
+            from apps.subscription.services import SubscriptionService
+            queryset = SubscriptionService.get_products_queryset(site_config, exclude_excess=False)
+        else:
+            queryset = Product.objects.none()
         
         # Recherche par nom similaire
         suggestions = queryset.filter(
@@ -1491,11 +1566,15 @@ class LabelGeneratorView(SiteRequiredMixin, View):
     template_name = 'inventory/label_generator.html'
     
     def get(self, request):
-        # Récupérer tous les produits du site avec codes-barres
-        products = Product.objects.filter(
-            site_configuration=request.user.site_configuration,
-            barcodes__isnull=False
-        ).order_by('category__name', 'name')
+        # Récupérer tous les produits du site avec codes-barres (exclut les excédentaires pour la liste)
+        site_config = request.user.site_configuration
+        if site_config:
+            from apps.subscription.services import SubscriptionService
+            products = SubscriptionService.get_products_queryset(site_config, exclude_excess=True).filter(
+                barcodes__isnull=False
+            ).order_by('category__name', 'name')
+        else:
+            products = Product.objects.none()
         
         context = {
             'products': products,

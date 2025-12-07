@@ -597,7 +597,10 @@ export const productService = {
       }
       
       if (error.response?.status === 403) {
-        throw new Error('Accès refusé. Vérifiez vos permissions.');
+        // Préserver les données de l'erreur pour permettre un traitement personnalisé
+        // Ne pas transformer en Error générique pour que les écrans puissent accéder à error.response.data
+        // Les écrans géreront l'affichage du message approprié
+        throw error; // Propager l'erreur originale avec toutes ses données
       }
       
       if (error.response?.status >= 500) {

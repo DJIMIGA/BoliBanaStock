@@ -91,10 +91,10 @@ def get_user_plan(identifier):
             print("\n⚠️  Aucun plan d'abonnement trouvé pour ce site")
             print("   Le plan par défaut 'Gratuit' devrait être assigné automatiquement")
         
-        # Vérifier s'il y a une subscription active
+        # Vérifier s'il y a une subscription active (via le site)
         try:
-            subscription = Subscription.objects.filter(user=user).first()
-            if subscription:
+            if user.site_configuration and hasattr(user.site_configuration, 'subscription'):
+                subscription = user.site_configuration.subscription
                 print(f"\n📋 ABONNEMENT ACTIF:")
                 print(f"   ID: {subscription.id}")
                 print(f"   Statut: {subscription.status}")
@@ -102,23 +102,31 @@ def get_user_plan(identifier):
                 print(f"      Début: {subscription.current_period_start}")
                 print(f"      Fin: {subscription.current_period_end}")
                 print(f"   Annulation à la fin: {'✅ Oui' if subscription.cancel_at_period_end else '❌ Non'}")
+            else:
+                print(f"\n⚠️  Aucun abonnement trouvé pour le site de cet utilisateur")
         except Exception as e:
             print(f"\n⚠️  Erreur lors de la récupération de l'abonnement: {e}")
         
-        # Vérifier les limites d'utilisation
+        # Vérifier les limites d'utilisation (via le site)
         try:
             from apps.subscription.models import UsageLimit
-            usage_limit = UsageLimit.objects.filter(user=user).first()
-            if usage_limit:
+            if user.site_configuration and hasattr(user.site_configuration, 'usage_limit'):
+                usage_limit = user.site_configuration.usage_limit
                 print(f"\n📊 LIMITES D'UTILISATION:")
                 print(f"   Produits créés: {usage_limit.product_count}")
                 print(f"   Transactions ce mois: {usage_limit.transaction_count_this_month}")
                 print(f"   Dernière réinitialisation: {usage_limit.last_transaction_reset or 'Jamais'}")
+            else:
+                print(f"\n⚠️  Aucune limite d'utilisation trouvée pour le site de cet utilisateur")
         except Exception as e:
             print(f"\n⚠️  Erreur lors de la récupération des limites: {e}")
         
         # Vérifier les paiements
         try:
+            subscription = None
+            if user.site_configuration and hasattr(user.site_configuration, 'subscription'):
+                subscription = user.site_configuration.subscription
+            
             if subscription:
                 payments = subscription.payments.all().order_by('-created_at')[:5]
                 if payments.exists():

@@ -38,5 +38,27 @@ with connection.cursor() as cursor:
         """
     )
     print("✅ Column created")
+    
+    # Vérifier et ajouter la contrainte de clé étrangère si elle n'existe pas
+    cursor.execute("""
+        SELECT COUNT(*) 
+        FROM information_schema.table_constraints 
+        WHERE constraint_name = 'core_configuration_subscription_plan_id_fkey'
+        AND table_name = 'core_configuration'
+    """)
+    fk_exists = cursor.fetchone()[0] > 0
+    
+    if not fk_exists:
+        print("🔧 Adding foreign key constraint...")
+        cursor.execute("""
+            ALTER TABLE core_configuration 
+            ADD CONSTRAINT core_configuration_subscription_plan_id_fkey 
+            FOREIGN KEY (subscription_plan_id) 
+            REFERENCES subscription_plan(id) 
+            ON DELETE SET NULL
+        """)
+        print("✅ Foreign key constraint added")
+    else:
+        print("⏭️  Foreign key constraint already exists")
 
 print("✅ Hotfix done")

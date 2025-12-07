@@ -358,11 +358,14 @@ def get_search_suggestions(search_query, user):
     if not user_site:
         return []
     
+    # Utiliser la fonction utilitaire (inclut les produits excédentaires pour la caisse)
+    from apps.subscription.services import SubscriptionService
+    queryset = SubscriptionService.get_products_queryset(user_site, exclude_excess=False)
+    
     suggestions = []
     
     # Suggestion 1: Produits avec des noms similaires
-    similar_products = Product.objects.filter(
-        site_configuration=user_site,
+    similar_products = queryset.filter(
         name__icontains=search_query[:3]  # Premiers caractères
     )[:3]
     
@@ -375,8 +378,7 @@ def get_search_suggestions(search_query, user):
     
     # Suggestion 2: Produits avec des CUG similaires
     if search_query.isdigit() and len(search_query) >= 3:
-        cug_suggestions = Product.objects.filter(
-            site_configuration=user_site,
+        cug_suggestions = queryset.filter(
             cug__icontains=search_query
         )[:2]
         
@@ -389,8 +391,7 @@ def get_search_suggestions(search_query, user):
     
     # Suggestion 3: Produits sans codes-barres (pour encourager l'utilisation des CUG)
     if len(suggestions) < 3:
-        products_without_barcodes = Product.objects.filter(
-            site_configuration=user_site,
+        products_without_barcodes = queryset.filter(
             barcodes__isnull=True
         )[:2]
         
@@ -424,13 +425,14 @@ def find_product_by_barcode(search_query, user):
     
     print(f"🔍 Recherche pour '{search_query}' dans le site: {user_site.site_name}")
     
+    # Utiliser la fonction utilitaire (inclut les produits excédentaires pour la caisse)
+    from apps.subscription.services import SubscriptionService
+    queryset = SubscriptionService.get_products_queryset(user_site, exclude_excess=False)
+    
     # 1. Recherche par CUG (exacte) - PRIORITÉ ÉLEVÉE
     if search_query.isdigit():
         print(f"🔍 Recherche par CUG: {search_query}")
-        product = Product.objects.filter(
-            site_configuration=user_site,
-            cug=search_query
-        ).first()
+        product = queryset.filter(cug=search_query).first()
         if product:
             print(f"✅ Produit trouvé par CUG: {product.name}")
             return product
@@ -439,10 +441,7 @@ def find_product_by_barcode(search_query, user):
     
     # 2. Recherche par EAN dans le modèle Barcode lié
     print(f"🔍 Recherche par EAN: {search_query}")
-    product = Product.objects.filter(
-        site_configuration=user_site,
-        barcodes__ean=search_query
-    ).first()
+    product = queryset.filter(barcodes__ean=search_query).first()
     if product:
         print(f"✅ Produit trouvé par EAN: {product.name}")
         return product
@@ -453,17 +452,13 @@ def find_product_by_barcode(search_query, user):
     print(f"🔍 Recherche par nom: {search_query}")
     
     # Recherche exacte d'abord
-    product = Product.objects.filter(
-        site_configuration=user_site,
-        name__iexact=search_query
-    ).first()
+    product = queryset.filter(name__iexact=search_query).first()
     if product:
         print(f"✅ Produit trouvé par nom exact: {product.name}")
         return product
     
     # Recherche par nom contient
-    product = Product.objects.filter(
-        site_configuration=user_site,
+    product = queryset.filter(
         name__icontains=search_query
     ).first()
     if product:

@@ -647,7 +647,10 @@ class ProductViewSet(viewsets.ModelViewSet):
             return Product.objects.select_related('category', 'brand').all()
         elif user_site:
             # Utilisateur avec site configuré voit seulement son site
-            return Product.objects.filter(site_configuration=user_site).select_related('category', 'brand')
+            # Pour l'API (mobile/caisse), on n'exclut PAS les produits excédentaires
+            # car ils doivent être accessibles dans la caisse
+            from apps.subscription.services import SubscriptionService
+            return SubscriptionService.get_products_queryset(user_site, exclude_excess=False)
         else:
             # Utilisateur sans site configuré (comme mobile) voit tous les produits
             # C'est une solution temporaire pour permettre l'accès mobile
