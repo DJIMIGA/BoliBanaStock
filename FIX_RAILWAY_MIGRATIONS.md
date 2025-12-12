@@ -77,8 +77,23 @@ print(cursor.fetchall())
 
 ## 📋 Migrations à appliquer
 
-- `inventory.0040_add_weight_support_to_products`
+### Migrations Inventory (Décembre 2025)
+
+- `inventory.0040_add_weight_support_to_products` (21 novembre 2025)
+  - Ajout du support poids pour les produits (`sale_unit_type`, `weight_unit`)
+  - Conversion des quantités en DecimalField avec 3 décimales
+  
+- `inventory.0041_add_supplier_to_order` (10 décembre 2025)
+  - Ajout du champ `supplier` au modèle Order
+  
+- `inventory.0042_add_reference_to_order` (10 décembre 2025)
+  - Ajout du champ `reference` unique au modèle Order
+
+### Migrations Sales
+
 - `sales.0008_convert_saleitem_quantity_to_decimal`
+
+> **Note** : Voir [MIGRATIONS_RAILWAY_2025.md](./MIGRATIONS_RAILWAY_2025.md) pour le guide complet des migrations récentes.
 
 ## ⚠️ Important
 
