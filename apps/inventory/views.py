@@ -3,7 +3,7 @@ from django.urls import reverse_lazy, reverse
 from django.db.models import Q, Sum, F
 from django.contrib.auth.mixins import LoginRequiredMixin
 from decimal import Decimal
-from .models import Product, Barcode, Transaction, Category, Brand, Supplier, OrderItem, Order
+from .models import Product, Barcode, Transaction, Category, Brand, Supplier, OrderItem, Order, Customer
 from .forms import ProductForm, CategoryForm, BrandForm, TransactionForm, OrderForm, OrderItemFormSet
 from .mixins import SiteFilterMixin, SiteRequiredMixin
 from django.shortcuts import render, redirect, get_object_or_404
@@ -12,7 +12,9 @@ from django.contrib import messages
 from django.utils import timezone
 from datetime import datetime, timedelta
 from apps.sales.models import Sale, SaleItem
-from django.http import JsonResponse, HttpResponseRedirect
+from django.http import JsonResponse, HttpResponseRedirect, HttpResponse
+from django.template.loader import render_to_string
+from io import BytesIO
 from django.views.decorators.http import require_POST
 from apps.core.utils import cache_result
 from apps.core.storage import storage
@@ -52,6 +54,22 @@ class ProductListView(SiteRequiredMixin, ListView):
             queryset = SubscriptionService.get_products_queryset(site_config, exclude_excess=True)
         else:
             queryset = Product.objects.none()
+        
+        # Filtrage par catégorie
+        category_id = self.request.GET.get('category')
+        if category_id:
+            try:
+                queryset = queryset.filter(category_id=int(category_id))
+            except (ValueError, TypeError):
+                pass
+        
+        # Filtrage par marque
+        brand_id = self.request.GET.get('brand')
+        if brand_id:
+            try:
+                queryset = queryset.filter(brand_id=int(brand_id))
+            except (ValueError, TypeError):
+                pass
         
         # Filtrage par statut de stock
         stock_filter = self.request.GET.get('filter')
@@ -99,6 +117,22 @@ class ProductListView(SiteRequiredMixin, ListView):
         context['search_query'] = self.request.GET.get('search', '')
         context['stock_filter'] = self.request.GET.get('filter', '')
         
+        # Récupérer les catégories et marques du site de l'utilisateur
+        site_config = self.request.user.site_configuration
+        if site_config:
+            # Récupérer les catégories du site
+            context['categories'] = Category.objects.filter(
+                site_configuration=site_config
+            ).order_by('name')
+            
+            # Récupérer les marques du site
+            context['brands'] = Brand.objects.filter(
+                site_configuration=site_config
+            ).order_by('name')
+        else:
+            context['categories'] = Category.objects.none()
+            context['brands'] = Brand.objects.none()
+        
         # Calculer les statistiques pour le template
         queryset = self.get_queryset()
         context['total_products'] = queryset.count()
@@ -110,8 +144,11 @@ class ProductListView(SiteRequiredMixin, ListView):
         )['total'] or 0
         context['total_stock_value'] = total_stock_value
         
+        # Calculer les alertes de stock
+        context['low_stock_count'] = queryset.filter(quantity__lte=F('alert_threshold'), quantity__gt=0).count()
+        context['out_of_stock_count'] = queryset.filter(quantity=0).count()
+        
         # Ajouter les informations sur les produits excédentaires (pour l'avertissement)
-        site_config = self.request.user.site_configuration
         if site_config:
             from apps.subscription.services import SubscriptionService
             excess_product_ids = SubscriptionService.get_excess_product_ids(site_config)
@@ -154,6 +191,18 @@ class ProductCreateView(SiteRequiredMixin, CreateView):
 
     def get_success_url(self):
         return reverse('inventory:product_detail', kwargs={'pk': self.object.pk})
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Ajouter la devise depuis la configuration
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        if user_site and hasattr(user_site, 'devise') and user_site.devise:
+            context['currency'] = user_site.devise
+        else:
+            from apps.core.utils import get_configuration
+            config = get_configuration(self.request.user)
+            context['currency'] = config.devise if config and config.devise else 'FCFA'
+        return context
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
@@ -192,15 +241,22 @@ class ProductCreateView(SiteRequiredMixin, CreateView):
         # Sauvegarder le produit
         product = form.save()
         
-        # Gérer le champ de scan pour les codes-barres EAN
-        scan_value = form.cleaned_data.get('scan_field', '').strip()
-        if scan_value and scan_value.isdigit() and len(scan_value) >= 8:
-            # C'est probablement un code EAN, créer un code-barres
-            Barcode.objects.create(
-                product=product,
-                ean=scan_value,
-                is_primary=True  # Premier code-barres = principal
-            )
+        # Gérer les codes-barres depuis le champ barcodes_data
+        barcodes_data = self.request.POST.get('barcodes_data', '')
+        if barcodes_data:
+            import json
+            try:
+                barcodes_list = json.loads(barcodes_data)
+                for barcode_data in barcodes_list:
+                    Barcode.objects.create(
+                        product=product,
+                        ean=barcode_data.get('ean', '').strip(),
+                        is_primary=barcode_data.get('is_primary', False),
+                        notes=barcode_data.get('notes', '') or ''
+                    )
+            except (json.JSONDecodeError, KeyError) as e:
+                # En cas d'erreur de parsing JSON, ne rien faire
+                pass
         
         messages.success(self.request, f'Produit "{product.name}" créé avec succès !')
         return super().form_valid(form)
@@ -216,22 +272,54 @@ class ProductUpdateView(SiteFilterMixin, UpdateView):
 
     def get_success_url(self):
         return reverse('inventory:product_detail', kwargs={'pk': self.object.pk})
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Ajouter la devise depuis la configuration
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        if user_site and hasattr(user_site, 'devise') and user_site.devise:
+            context['currency'] = user_site.devise
+        else:
+            from apps.core.utils import get_configuration
+            config = get_configuration(self.request.user)
+            context['currency'] = config.devise if config and config.devise else 'FCFA'
+        return context
+
+    def get_form_kwargs(self):
+        """Passe l'instance et l'utilisateur au formulaire"""
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        # Passer l'utilisateur au formulaire pour le filtrage multi-site
-        form.user = self.request.user
-        # S'assurer que tous les champs sont présents dans le formulaire
-        if not hasattr(form, 'fields'):
-            form.fields = self.form_class.Meta.fields
+        # S'assurer que l'instance est bien passée
+        if self.object:
+            form.instance = self.object
         return form
 
     def form_valid(self, form):
-        # Sauvegarder l'ancienne quantité AVANT la mise à jour
-        old_quantity = Decimal(str(self.object.quantity)) if self.object.quantity else Decimal('0')
+        print("=" * 50)
+        print(f"ProductUpdateView.form_valid appelé pour produit {self.object.id}")
+        print("=" * 50)
+        logger.warning(f"=== ProductUpdateView.form_valid appelé pour produit {self.object.id} ===")
+        
+        # Récupérer l'ancienne quantité directement depuis la DB sans modifier self.object
+        product_id = self.object.id
+        old_product = Product.objects.get(pk=product_id)
+        old_quantity = Decimal(str(old_product.quantity)) if old_product.quantity else Decimal('0')
+        print(f"Ancienne quantité (depuis DB): {old_quantity}")
+        logger.warning(f"Ancienne quantité (depuis DB): {old_quantity}")
         
         # Récupérer la nouvelle quantité depuis le formulaire
-        new_quantity = Decimal(str(form.cleaned_data.get('quantity', 0)))
+        new_quantity_raw = form.cleaned_data.get('quantity', None)
+        logger.warning(f"Quantité depuis formulaire (raw): {new_quantity_raw}, type: {type(new_quantity_raw)}")
+        if new_quantity_raw is None:
+            new_quantity = old_quantity
+            logger.warning("Quantité None dans formulaire, utilisation de l'ancienne valeur")
+        else:
+            new_quantity = Decimal(str(new_quantity_raw))
+        logger.warning(f"Nouvelle quantité (calculée): {new_quantity}")
         
         # Gérer l'image avec le stockage du modèle (multisite)
         if 'image' in self.request.FILES:
@@ -241,37 +329,101 @@ class ProductUpdateView(SiteFilterMixin, UpdateView):
             # L'image sera sauvegardée automatiquement par le modèle
             # avec le bon storage (LocalProductImageStorage)
         
-        # Sauvegarder le formulaire (met à jour self.object.quantity)
-        response = super().form_valid(form)
-        
-        # Gérer le champ de scan pour les codes-barres EAN
-        scan_value = form.cleaned_data.get('scan_field', '').strip()
-        if scan_value and scan_value.isdigit() and len(scan_value) >= 8:
-            # C'est probablement un code EAN
-            # Vérifier si ce code-barres existe déjà
-            existing_barcode = self.object.barcodes.filter(ean=scan_value).first()
-            if not existing_barcode:
-                # Créer un nouveau code-barres
-                Barcode.objects.create(
+        # Gérer les codes-barres depuis le champ barcodes_data
+        barcodes_data = self.request.POST.get('barcodes_data', '')
+        if barcodes_data:
+            import json
+            try:
+                barcodes_list = json.loads(barcodes_data)
+                # Supprimer les codes-barres existants qui ne sont plus dans la liste
+                existing_eans = [b.ean for b in self.object.barcodes.all()]
+                new_eans = [b.get('ean', '').strip() for b in barcodes_list]
+                for existing_ean in existing_eans:
+                    if existing_ean not in new_eans:
+                        Barcode.objects.filter(product=self.object, ean=existing_ean).delete()
+                
+                # Ajouter ou mettre à jour les codes-barres
+                for barcode_data in barcodes_list:
+                    ean = barcode_data.get('ean', '').strip()
+                    if ean:
+                        barcode, created = Barcode.objects.get_or_create(
                     product=self.object,
-                    ean=scan_value,
-                    is_primary=not self.object.barcodes.filter(is_primary=True).exists()
-                )
+                            ean=ean,
+                            defaults={
+                                'is_primary': barcode_data.get('is_primary', False),
+                                'notes': barcode_data.get('notes', '') or ''
+                            }
+                        )
+                        if not created:
+                            # Mettre à jour si existe déjà
+                            barcode.is_primary = barcode_data.get('is_primary', False)
+                            barcode.notes = barcode_data.get('notes', '') or ''
+                            barcode.save()
+            except (json.JSONDecodeError, KeyError):
+                # En cas d'erreur, ne rien faire (garder les codes-barres existants)
+                pass
         
-        # Créer une transaction uniquement si la quantité a changé
-        if new_quantity != old_quantity:
-            quantity_diff = new_quantity - old_quantity
+        # Créer une transaction AVANT de sauvegarder, en comparant avec la valeur du formulaire
+        # Normaliser les Decimal pour la comparaison
+        old_quantity_normalized = Decimal(str(old_quantity)).quantize(Decimal('0.001'))
+        new_quantity_normalized = Decimal(str(new_quantity)).quantize(Decimal('0.001'))
+        logger.warning(f"Comparaison: {new_quantity_normalized} != {old_quantity_normalized} ? {new_quantity_normalized != old_quantity_normalized}")
+        print(f"Comparaison: {new_quantity_normalized} != {old_quantity_normalized} ? {new_quantity_normalized != old_quantity_normalized}")
+        
+        # Sauvegarder le formulaire d'abord
+        response = super().form_valid(form)
+        logger.warning(f"Formulaire sauvegardé, self.object.quantity = {self.object.quantity}")
+        
+        # Recharger l'objet pour avoir accès à toutes les propriétés (comme unit_display)
+        self.object.refresh_from_db()
+        
+        # Maintenant vérifier si la quantité a changé après sauvegarde
+        actual_new_quantity = Decimal(str(self.object.quantity)) if self.object.quantity else Decimal('0')
+        actual_new_quantity_normalized = actual_new_quantity.quantize(Decimal('0.001'))
+        
+        logger.warning(f"Quantité réelle après sauvegarde: {actual_new_quantity_normalized}")
+        print(f"Quantité réelle après sauvegarde: {actual_new_quantity_normalized}")
+        
+        if actual_new_quantity_normalized != old_quantity_normalized:
+            quantity_diff = actual_new_quantity_normalized - old_quantity_normalized
+            unit_price = self.object.purchase_price or Decimal('0')
+            total_amount = abs(quantity_diff) * unit_price
             
-            # Utiliser 'adjustment' avec notes "Écart inventaire" pour que ça aille dans démarque inconnue
-            Transaction.objects.create(
-                product=self.object,
-                type='adjustment',
-                quantity=quantity_diff,  # Peut être négatif ou positif
-                unit_price=self.object.purchase_price,
-                notes=f'Écart inventaire - Modification quantité produit: {old_quantity} -> {new_quantity}',
-                user=self.request.user,
-                site_configuration=getattr(self.request.user, 'site_configuration', None)
-            )
+            logger.warning(f"Création transaction: diff={quantity_diff}, unit_price={unit_price}, total={total_amount}")
+            print(f"Création transaction: diff={quantity_diff}, unit_price={unit_price}, total={total_amount}")
+            logger.warning(f"User: {self.request.user}, Site: {getattr(self.request.user, 'site_configuration', None)}")
+            
+            try:
+                # Utiliser l'unité correcte du produit
+                unit_display = self.object.unit_display if hasattr(self.object, 'unit_display') else 'unité(s)'
+                # Formater la quantité selon le type de produit
+                if hasattr(self.object, 'sale_unit_type') and self.object.sale_unit_type == 'quantity':
+                    qty_display = str(int(abs(quantity_diff))) if abs(quantity_diff) % 1 == 0 else f"{abs(quantity_diff):.3f}".rstrip('0').rstrip('.')
+                else:
+                    qty_display = f"{abs(quantity_diff):.3f}".rstrip('0').rstrip('.')
+                sign = "+" if quantity_diff > 0 else "-"
+                
+                # Utiliser 'adjustment' avec notes "Écart inventaire" pour que ça soit filtré dans les rapports
+                transaction = Transaction.objects.create(
+                    product=self.object,
+                    type='adjustment',
+                    quantity=quantity_diff,  # Peut être négatif ou positif
+                    unit_price=unit_price,
+                    total_amount=total_amount,  # Valeur absolue de l'impact
+                    notes=f'Écart inventaire - Modification quantité produit: {old_quantity} -> {new_quantity}',
+                    user=self.request.user,
+                    site_configuration=getattr(self.request.user, 'site_configuration', None)
+                )
+                print(f"=== Transaction créée avec succès: ID={transaction.id}, produit {self.object.id}: {old_quantity} -> {new_quantity} ===")
+                logger.warning(f"=== Transaction créée avec succès: ID={transaction.id}, produit {self.object.id}: {old_quantity} -> {new_quantity} ===")
+                messages.info(self.request, f"Transaction créée: {sign}{qty_display} {unit_display}")
+            except Exception as e:
+                logger.error(f"Erreur lors de la création de la transaction: {str(e)}", exc_info=True)
+                messages.error(self.request, f"Erreur lors de la création de la transaction: {str(e)}")
+        else:
+            # Pas de changement, sauvegarder normalement
+            response = super().form_valid(form)
+            logger.warning(f"Pas de changement de quantité ({old_quantity} == {new_quantity}), pas de transaction créée")
         
         messages.success(self.request, 'Le produit a été mis à jour avec succès.')
         return response
@@ -335,24 +487,29 @@ def cadencier_view(request):
             product=product,
             type='in',
             transaction_date__range=[start_date, end_date]
-        ).aggregate(total=Sum('quantity'))['total'] or 0
+        ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
         
         # Récupérer les sorties (transactions de type 'out')
         outgoing = Transaction.objects.filter(
             product=product,
             type='out',
             transaction_date__range=[start_date, end_date]
-        ).aggregate(total=Sum('quantity'))['total'] or 0
+        ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
+        
+        # Convertir en Decimal pour assurer la cohérence des types
+        incoming = Decimal(str(incoming))
+        outgoing = Decimal(str(outgoing))
+        current_stock = Decimal(str(current_stock))
         
         # Calculer la consommation moyenne par jour
         days = (end_date - start_date).days + 1
-        daily_consumption = outgoing / days if days > 0 else 0
+        daily_consumption = outgoing / Decimal(str(days)) if days > 0 else Decimal('0')
         
         # Calculer le stock minimum requis (consommation moyenne sur 7 jours)
-        minimum_stock = daily_consumption * 7
+        minimum_stock = daily_consumption * Decimal('7')
         
         # Calculer la quantité à commander
-        quantity_to_order = max(0, minimum_stock - current_stock)
+        quantity_to_order = max(Decimal('0'), minimum_stock - current_stock)
         
         product_data.append({
             'product': product,
@@ -645,18 +802,28 @@ class TransactionListView(SiteFilterMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        queryset = Transaction.objects.select_related('product').order_by('-transaction_date')
+        # Inclure les relations sale et customer pour optimiser les requêtes
+        queryset = Transaction.objects.select_related(
+            'product', 'product__category', 'sale', 'sale__customer', 'user'
+        ).order_by('-transaction_date')
         
         # Filtres
         product_id = self.request.GET.get('product')
         type_transaction = self.request.GET.get('type')
         start_date = self.request.GET.get('start_date')
         end_date = self.request.GET.get('end_date')
+        has_sale = self.request.GET.get('has_sale')  # Nouveau filtre pour les ventes
 
         if product_id:
             queryset = queryset.filter(product_id=product_id)
         if type_transaction:
             queryset = queryset.filter(type=type_transaction)
+        if has_sale == 'true':
+            # Filtrer uniquement les transactions liées à des ventes
+            queryset = queryset.filter(sale__isnull=False)
+        elif has_sale == 'false':
+            # Filtrer uniquement les transactions non liées à des ventes
+            queryset = queryset.filter(sale__isnull=True)
         if start_date:
             queryset = queryset.filter(transaction_date__date__gte=start_date)
         if end_date:
@@ -675,6 +842,7 @@ class TransactionListView(SiteFilterMixin, ListView):
             context['products'] = Product.objects.filter(is_active=True)
         context['selected_product'] = self.request.GET.get('product')
         context['selected_type'] = self.request.GET.get('type')
+        context['has_sale'] = self.request.GET.get('has_sale')
         context['start_date'] = self.request.GET.get('start_date')
         context['end_date'] = self.request.GET.get('end_date')
         return context
@@ -687,6 +855,10 @@ class TransactionDetailView(SiteFilterMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['product'] = self.object.product
+        # Précharger la relation sale et customer pour optimiser les requêtes
+        if self.object.sale_id:
+            from apps.sales.models import Sale
+            context['sale'] = Sale.objects.select_related('customer').get(id=self.object.sale_id)
         return context
 
 class TransactionCreateView(SiteRequiredMixin, CreateView):
@@ -756,8 +928,23 @@ class TransactionCreateView(SiteRequiredMixin, CreateView):
             # Plus de vérification de stock insuffisant - on peut descendre en dessous de 0
             product.quantity -= transaction.quantity
         elif transaction.type == 'adjustment':
-            # Ajustement manuel - la quantité est déjà définie dans le produit
-            pass
+            # Ajustement manuel
+            # Si la quantité est positive, on considère que c'est le NOUVEAU STOCK RÉEL (comportement attendu par l'utilisateur)
+            # Mais on doit stocker le DELTA dans la transaction pour que les rapports soient justes
+            if transaction.quantity >= 0:
+                new_stock = transaction.quantity
+                delta = new_stock - product.quantity
+                
+                # Mettre à jour la transaction avec le delta
+                transaction.quantity = delta
+                # Mettre à jour le stock
+                product.quantity = new_stock
+                
+                if not transaction.notes:
+                    transaction.notes = f"Ajustement manuel: Stock défini à {new_stock}"
+            else:
+                # Si négatif, c'est un retrait (delta négatif)
+                product.quantity += transaction.quantity
         
         # Sauvegarder les modifications
         product.save()
@@ -777,6 +964,109 @@ class TransactionDeleteView(SiteFilterMixin, DeleteView):
     template_name = 'inventory/transaction_confirm_delete.html'
     success_url = reverse_lazy('inventory:transaction_list')
 
+class ReceptionView(SiteRequiredMixin, View):
+    """Vue pour gérer les réceptions de marchandise (similaire au mobile)"""
+    template_name = 'inventory/reception.html'
+    
+    def get(self, request):
+        """Afficher la page de réception"""
+        context = {}
+        # Ajouter les informations de plan/abonnement
+        user_site = getattr(request.user, 'site_configuration', None)
+        if user_site and not request.user.is_superuser:
+            from apps.subscription.services import SubscriptionService
+            plan_info = SubscriptionService.get_plan_info(user_site)
+            if plan_info:
+                context['plan_info'] = plan_info
+        
+        # Ajouter la devise depuis la configuration
+        if user_site and hasattr(user_site, 'devise') and user_site.devise:
+            context['currency'] = user_site.devise
+        else:
+            from apps.core.utils import get_configuration
+            config = get_configuration(request.user)
+            context['currency'] = config.devise if config and config.devise else 'FCFA'
+        
+        return render(request, self.template_name, context)
+
+class LossView(SiteRequiredMixin, View):
+    """Vue pour gérer les casses (similaire au mobile)"""
+    template_name = 'inventory/loss.html'
+    
+    def get(self, request):
+        """Afficher la page de casse"""
+        context = {}
+        # Ajouter les informations de plan/abonnement
+        user_site = getattr(request.user, 'site_configuration', None)
+        if user_site and not request.user.is_superuser:
+            from apps.subscription.services import SubscriptionService
+            plan_info = SubscriptionService.get_plan_info(user_site)
+            if plan_info:
+                context['plan_info'] = plan_info
+        return render(request, self.template_name, context)
+
+class InventoryView(SiteRequiredMixin, View):
+    """Vue pour gérer les inventaires (similaire au mobile)"""
+    template_name = 'inventory/inventory.html'
+    
+    def get(self, request):
+        """Afficher la page d'inventaire"""
+        context = {}
+        # Ajouter les informations de plan/abonnement
+        user_site = getattr(request.user, 'site_configuration', None)
+        if user_site and not request.user.is_superuser:
+            from apps.subscription.services import SubscriptionService
+            plan_info = SubscriptionService.get_plan_info(user_site)
+            if plan_info:
+                context['plan_info'] = plan_info
+        return render(request, self.template_name, context)
+
+class StockCountView(SiteRequiredMixin, View):
+    """Vue pour gérer les comptages (similaire au mobile)"""
+    template_name = 'inventory/stock_count.html'
+    
+    def get(self, request):
+        """Afficher la page de comptage"""
+        context = {}
+        # Ajouter les informations de plan/abonnement
+        user_site = getattr(request.user, 'site_configuration', None)
+        if user_site and not request.user.is_superuser:
+            from apps.subscription.services import SubscriptionService
+            plan_info = SubscriptionService.get_plan_info(user_site)
+            if plan_info:
+                context['plan_info'] = plan_info
+        return render(request, self.template_name, context)
+
+class CashRegisterView(SiteRequiredMixin, View):
+    """Vue pour gérer la caisse (similaire au mobile)"""
+    template_name = 'inventory/cash_register.html'
+    
+    def get(self, request):
+        """Afficher la page de caisse"""
+        context = {}
+        # Ajouter les informations de plan/abonnement
+        user_site = getattr(request.user, 'site_configuration', None)
+        if user_site and not request.user.is_superuser:
+            from apps.subscription.services import SubscriptionService
+            plan_info = SubscriptionService.get_plan_info(user_site)
+            if plan_info:
+                context['plan_info'] = plan_info
+        
+        # Récupérer la liste des clients pour le sélecteur
+        from .models import Customer
+        customers = Customer.objects.filter(site_configuration=user_site).order_by('name') if user_site else Customer.objects.none()
+        context['customers'] = customers
+        
+        # Ajouter la devise depuis la configuration
+        if user_site and hasattr(user_site, 'devise') and user_site.devise:
+            context['currency'] = user_site.devise
+        else:
+            from apps.core.utils import get_configuration
+            config = get_configuration(request.user)
+            context['currency'] = config.devise if config and config.devise else 'FCFA'
+        
+        return render(request, self.template_name, context)
+
 @login_required
 def inventory_count(request):
     """Vue pour effectuer un inventaire complet."""
@@ -789,14 +1079,17 @@ def inventory_count(request):
                     product = Product.objects.get(id=product_id)
                     actual_count = int(count)
                     if actual_count != product.quantity:
-                        # Créer une transaction de régularisation
+                        # Créer une transaction de régularisation (type adjustment pour le rapport)
+                        diff = actual_count - product.quantity
                         Transaction.objects.create(
                             product=product,
-                            type='loss' if actual_count < product.quantity else 'in',
-                            quantity=abs(actual_count - product.quantity),
+                            type='adjustment',
+                            quantity=diff, # Delta signé
                             unit_price=product.purchase_price,
-                            notes=f'Régularisation inventaire: {product.quantity} -> {actual_count}',
-                            created_by=request.user
+                            total_amount=abs(diff) * product.purchase_price,
+                            notes=f'Écart inventaire: {product.quantity} -> {actual_count}',
+                            user=request.user,
+                            site_configuration=getattr(request.user, 'site_configuration', None)
                         )
                         # Mettre à jour la quantité
                         product.quantity = actual_count
@@ -936,31 +1229,534 @@ def check_price(request):
 
     return render(request, 'inventory/check_price.html')
 
+def calculate_stock_report_stats(user, period='today'):
+    """
+    Fonction utilitaire pour calculer les statistiques du rapport de stock.
+    Retourne un dictionnaire avec toutes les statistiques.
+    Retourne None en cas d'erreur.
+    """
+    try:
+        from apps.subscription.services import SubscriptionService
+        
+        today = timezone.now()
+        
+        # Déterminer la période
+        if period == 'week':
+            start_date = today - timedelta(days=today.weekday())
+            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == 'month':
+            start_date = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:  # today
+            start_date = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        end_date = today
+
+        # Filtrer les produits et transactions par site
+        user_site = user.site_configuration
+        if user.is_superuser:
+            products = Product.objects.select_related('category', 'brand').all()
+            transactions = Transaction.objects.all()
+        elif user_site:
+            products = SubscriptionService.get_products_queryset(user_site, exclude_excess=True)
+            transactions = Transaction.objects.filter(product__site_configuration=user_site)
+        else:
+            products = Product.objects.none()
+            transactions = Transaction.objects.none()
+
+        # Filtrer les transactions sur la période
+        period_transactions = transactions.filter(transaction_date__range=[start_date, end_date])
+
+        # Calculer les ajustements
+        inventory_keywords = Q(notes__icontains='écart inventaire') | \
+                            Q(notes__icontains='ajustement inventaire') | \
+                            Q(notes__icontains='correction stock') | \
+                            Q(notes__icontains='inventaire')
+        
+        adjustments = period_transactions.filter(
+            Q(type='adjustment') | 
+            (Q(type__in=['in', 'out']) & inventory_keywords)
+        ).select_related('product')
+
+        # Fonction pour déterminer si c'est une unité de poids
+        def is_weight_unit(unit):
+            return unit in ['kg', 'g']
+        
+        # Calculer les totaux positifs et négatifs
+        positive_by_unit = {}
+        negative_by_unit = {}
+        total_pos_val = Decimal('0')
+        total_neg_val = Decimal('0')
+        positive_adjustments = []
+        negative_adjustments = []
+
+        for adj in adjustments:
+            qty = adj.quantity
+            val = adj.total_amount or Decimal('0')
+            
+            product = adj.product
+            unit = product.unit_display if product else 'unité(s)'
+            is_weight = is_weight_unit(unit)
+            key = 'weight' if is_weight else 'quantity'
+            
+            if adj.type == 'out':
+                qty = -abs(qty)
+                val = abs(val)
+            elif adj.type == 'in':
+                qty = abs(qty)
+                val = abs(val)
+            else:
+                val = abs(val)
+
+            if qty > 0:
+                positive_adjustments.append(adj)
+                if key not in positive_by_unit:
+                    positive_by_unit[key] = {'total': Decimal('0'), 'unit': unit, 'count': 0}
+                positive_by_unit[key]['total'] += qty
+                positive_by_unit[key]['count'] += 1
+                total_pos_val += val
+            elif qty < 0:
+                negative_adjustments.append(adj)
+                if key not in negative_by_unit:
+                    negative_by_unit[key] = {'total': Decimal('0'), 'unit': unit, 'count': 0}
+                negative_by_unit[key]['total'] += abs(qty)
+                negative_by_unit[key]['count'] += 1
+                total_neg_val += val
+
+        # Calculer la démarque (Casse)
+        loss_transactions = period_transactions.filter(type='loss').select_related('product')
+        loss_by_unit = {}
+        loss_val = Decimal('0')
+        for tx in loss_transactions:
+            product = tx.product
+            unit = product.unit_display if product else 'unité(s)'
+            is_weight = is_weight_unit(unit)
+            key = 'weight' if is_weight else 'quantity'
+            
+            if key not in loss_by_unit:
+                loss_by_unit[key] = {'total': Decimal('0'), 'unit': unit}
+            loss_by_unit[key]['total'] += tx.quantity
+            loss_val += tx.total_amount or Decimal('0')
+
+        # Recalculer l'affichage des négatifs en incluant la casse
+        negative_display_by_unit = {
+            'weight': negative_by_unit.get('weight', {}).copy() if 'weight' in negative_by_unit else {},
+            'quantity': negative_by_unit.get('quantity', {}).copy() if 'quantity' in negative_by_unit else {}
+        }
+        for key, data in loss_by_unit.items():
+            if key not in negative_display_by_unit or not negative_display_by_unit[key]:
+                negative_display_by_unit[key] = {'total': Decimal('0'), 'unit': data.get('unit', 'unité(s)'), 'count': 0}
+            negative_display_by_unit[key]['total'] += abs(data.get('total', Decimal('0')))
+            if 'count' not in negative_display_by_unit[key]:
+                negative_display_by_unit[key]['count'] = 0
+
+        total_neg_count = len(negative_adjustments) + loss_transactions.count()
+        total_neg_val_with_loss = total_neg_val + loss_val
+
+        # Calculer le bilan financier (aperçu)
+        from apps.sales.models import Sale
+        financial_sales = Sale.objects.filter(sale_date__range=[start_date, end_date])
+        if not user.is_superuser and user_site:
+            financial_sales = financial_sales.filter(site_configuration=user_site)
+        
+        # Calculer les revenus et marges
+        total_revenue = Decimal('0')
+        total_margin = Decimal('0')
+        by_payment_method = {
+            'cash': Decimal('0'),
+            'credit': Decimal('0'),
+            'sarali': Decimal('0'),
+        }
+        
+        for sale in financial_sales.filter(status='completed'):
+            total_revenue += sale.total_amount or Decimal('0')
+            # Calculer la marge totale de la vente
+            sale_margin = Decimal('0')
+            for item in sale.items.all():
+                if item.product:
+                    margin_per_unit = (item.unit_price or Decimal('0')) - (item.product.purchase_price or Decimal('0'))
+                    sale_margin += margin_per_unit * (item.quantity or Decimal('0'))
+            total_margin += sale_margin
+            
+            # Par mode de paiement
+            payment_method = sale.payment_method or 'cash'
+            if payment_method in by_payment_method:
+                by_payment_method[payment_method] += sale.total_amount or Decimal('0')
+        
+        # Coûts et pertes
+        total_losses = loss_val  # Casse
+        total_shrinkage = total_neg_val  # Démarque inconnue (sans casse)
+        total_costs = total_losses + total_shrinkage
+        
+        # Résultat
+        net_profit = total_margin - total_costs  # Profit net = marge - pertes
+        profit_margin = (net_profit / total_revenue * 100) if total_revenue > 0 else Decimal('0')
+
+        return {
+        'pos_adj_count': len(positive_adjustments),
+        'neg_adj_count': total_neg_count,  # ajustements négatifs + casse
+        'total_pos_val': total_pos_val,
+        'total_neg_val': total_neg_val_with_loss,
+        'positive_qty_weight': positive_by_unit.get('weight', {}).get('total', Decimal('0')),
+        'positive_qty_quantity': positive_by_unit.get('quantity', {}).get('total', Decimal('0')),
+        'positive_unit_weight': positive_by_unit.get('weight', {}).get('unit', 'kg'),
+        'positive_unit_quantity': positive_by_unit.get('quantity', {}).get('unit', 'unité(s)'),
+        'negative_qty_weight': negative_display_by_unit.get('weight', {}).get('total', Decimal('0')),
+        'negative_qty_quantity': negative_display_by_unit.get('quantity', {}).get('total', Decimal('0')),
+        'negative_unit_weight': negative_display_by_unit.get('weight', {}).get('unit', 'kg'),
+        'negative_unit_quantity': negative_display_by_unit.get('quantity', {}).get('unit', 'unité(s)'),
+        'loss_count': loss_transactions.count(),
+        'loss_val': loss_val,
+        'loss_qty_weight': loss_by_unit.get('weight', {}).get('total', Decimal('0')),
+        'loss_qty_quantity': loss_by_unit.get('quantity', {}).get('total', Decimal('0')),
+        'loss_unit_weight': loss_by_unit.get('weight', {}).get('unit', 'kg'),
+        'loss_unit_quantity': loss_by_unit.get('quantity', {}).get('unit', 'unité(s)'),
+        # Inconnue reste basée sur les ajustements négatifs (sans casse)
+        'unknown_count': len(negative_adjustments),
+        'unknown_val': total_neg_val,
+        'unknown_qty_weight': negative_by_unit.get('weight', {}).get('total', Decimal('0')),
+        'unknown_qty_quantity': negative_by_unit.get('quantity', {}).get('total', Decimal('0')),
+        'unknown_unit_weight': negative_by_unit.get('weight', {}).get('unit', 'kg'),
+        'unknown_unit_quantity': negative_by_unit.get('quantity', {}).get('unit', 'unité(s)'),
+        # Bilan financier (aperçu)
+        'total_revenue': total_revenue,
+        'total_margin': total_margin,
+        'total_losses': total_losses,
+        'total_shrinkage': total_shrinkage,
+        'total_costs': total_costs,
+        'net_profit': net_profit,
+        'profit_margin': profit_margin,
+        'cash_revenue': by_payment_method['cash'],
+        'credit_revenue': by_payment_method['credit'],
+        'sarali_revenue': by_payment_method['sarali'],
+        }
+    except Exception as e:
+        logger.error(f"Erreur lors du calcul des statistiques du rapport: {str(e)}")
+        return None
+
 @login_required
 def stock_report(request):
     """Vue pour le rapport détaillé du stock."""
-    # Utiliser la fonction utilitaire (exclut les produits excédentaires pour les rapports)
+    # 1. Gestion de la période
+    period = request.GET.get('period', 'today')
+    today = timezone.now()
+    
+    if period == 'week':
+        start_date = today - timedelta(days=today.weekday())
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == 'month':
+        start_date = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:  # today
+        start_date = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+    end_date = today
+
+    # 2. Filtrer les produits et transactions par site
     user_site = request.user.site_configuration
     if request.user.is_superuser:
         products = Product.objects.select_related('category', 'brand').all()
+        transactions = Transaction.objects.all()
     elif user_site:
         from apps.subscription.services import SubscriptionService
         products = SubscriptionService.get_products_queryset(user_site, exclude_excess=True)
+        transactions = Transaction.objects.filter(product__site_configuration=user_site)
     else:
         products = Product.objects.none()
-    
-    # Calculer les statistiques
+        transactions = Transaction.objects.none()
+
+    # 3. Filtrer les transactions sur la période
+    # Note: transaction_date est un DateTimeField
+    period_transactions = transactions.filter(transaction_date__range=[start_date, end_date])
+
+    # 4. Calculer les statistiques globales (état actuel)
     total_products = products.count()
+    total_categories = products.values('category').distinct().count()
+    total_brands = products.values('brand').distinct().count()
     total_value = sum(product.purchase_price * product.quantity for product in products)
     low_stock = products.filter(quantity__lte=F('alert_threshold')).count()
     out_of_stock = products.filter(quantity=0).count()
+
+    # 5. Calculer les ajustements (comme sur mobile)
+    # Filtrer pour ne garder que les ajustements d'inventaire
+    inventory_keywords = Q(notes__icontains='écart inventaire') | \
+                        Q(notes__icontains='ajustement inventaire') | \
+                        Q(notes__icontains='correction stock') | \
+                        Q(notes__icontains='inventaire')
     
+    adjustments = period_transactions.filter(
+        Q(type='adjustment') | 
+        (Q(type__in=['in', 'out']) & inventory_keywords)
+    ).select_related('product')
+
+    # Séparer positifs et négatifs, en tenant compte des unités
+    positive_adjustments = []
+    negative_adjustments = []
+    
+    # Fonction pour déterminer si c'est une unité de poids
+    def is_weight_unit(unit):
+        return unit in ['kg', 'g']
+    
+    # Calculer les totaux positifs séparément par type d'unité
+    positive_by_unit = {}  # {'weight': {'total': X, 'unit': 'kg', 'count': N}, 'quantity': {...}}
+    negative_by_unit = {}
+    
+    total_pos_val = Decimal('0')
+    total_neg_val = Decimal('0')
+
+    for adj in adjustments:
+        qty = adj.quantity
+        val = adj.total_amount or Decimal('0')
+        
+        # Récupérer l'unité du produit
+        product = adj.product
+        unit = product.unit_display if product else 'unité(s)'
+        is_weight = is_weight_unit(unit)
+        key = 'weight' if is_weight else 'quantity'
+        
+        # Normaliser pour 'out'
+        if adj.type == 'out':
+            qty = -abs(qty) # Forcer négatif
+            val = abs(val) # Valeur toujours positive pour la somme
+        elif adj.type == 'in':
+            qty = abs(qty)
+            val = abs(val)
+        else: # adjustment
+            val = abs(val)
+
+        if qty > 0:
+            positive_adjustments.append(adj)
+            # Grouper par type d'unité
+            if key not in positive_by_unit:
+                positive_by_unit[key] = {'total': Decimal('0'), 'unit': unit, 'count': 0}
+            positive_by_unit[key]['total'] += qty
+            positive_by_unit[key]['count'] += 1
+            total_pos_val += val
+        elif qty < 0:
+            negative_adjustments.append(adj)
+            # Grouper par type d'unité
+            if key not in negative_by_unit:
+                negative_by_unit[key] = {'total': Decimal('0'), 'unit': unit, 'count': 0}
+            negative_by_unit[key]['total'] += abs(qty)
+            negative_by_unit[key]['count'] += 1
+            total_neg_val += val
+    
+    # 6. Calculer la démarque (Casse et Inconnue)
+    # Casse (type='loss')
+    loss_transactions = period_transactions.filter(type='loss').select_related('product')
+    
+    # Séparer la casse par type d'unité
+    loss_by_unit = {}
+    loss_val = Decimal('0')
+    for tx in loss_transactions:
+        product = tx.product
+        unit = product.unit_display if product else 'unité(s)'
+        is_weight = is_weight_unit(unit)
+        key = 'weight' if is_weight else 'quantity'
+        
+        if key not in loss_by_unit:
+            loss_by_unit[key] = {'total': Decimal('0'), 'unit': unit}
+        loss_by_unit[key]['total'] += tx.quantity
+        loss_val += tx.total_amount or Decimal('0')
+    
+    # Recalculer l'affichage des négatifs en incluant la casse
+    negative_display_by_unit = {
+        'weight': negative_by_unit.get('weight', {}).copy() if 'weight' in negative_by_unit else {},
+        'quantity': negative_by_unit.get('quantity', {}).copy() if 'quantity' in negative_by_unit else {}
+    }
+    # Ajouter la casse aux écarts négatifs pour l'affichage
+    for key, data in loss_by_unit.items():
+        if key not in negative_display_by_unit or not negative_display_by_unit[key]:
+            negative_display_by_unit[key] = {'total': Decimal('0'), 'unit': data.get('unit', 'unité(s)'), 'count': 0}
+        negative_display_by_unit[key]['total'] += abs(data.get('total', Decimal('0')))
+        if 'count' not in negative_display_by_unit[key]:
+            negative_display_by_unit[key]['count'] = 0
+    
+    # Calculer le nombre total de déclarations négatives (ajustements + casse)
+    total_neg_count = len(negative_adjustments) + loss_transactions.count()
+    # Calculer la valeur totale négative (ajustements + casse)
+    total_neg_val_with_loss = total_neg_val + loss_val
+    
+    has_positive_mixed = len(positive_by_unit) > 1
+    has_negative_mixed = len({k:v for k,v in negative_display_by_unit.items() if v and v.get('total', 0) > 0}) > 1
+    
+    positive_unit = positive_by_unit.get('quantity', {}).get('unit') or positive_by_unit.get('weight', {}).get('unit') or 'unité(s)'
+    negative_unit = negative_display_by_unit.get('quantity', {}).get('unit') or negative_display_by_unit.get('weight', {}).get('unit') or 'unité(s)'
+    
+    total_pos_qty = Decimal('0') if has_positive_mixed else (positive_by_unit.get('quantity', {}).get('total') or positive_by_unit.get('weight', {}).get('total') or Decimal('0'))
+    total_neg_qty = Decimal('0') if has_negative_mixed else (negative_display_by_unit.get('quantity', {}).get('total') or negative_display_by_unit.get('weight', {}).get('total') or Decimal('0'))
+
+    has_loss_mixed = len(loss_by_unit) > 1
+    loss_unit = loss_by_unit.get('quantity', {}).get('unit') or loss_by_unit.get('weight', {}).get('unit') or 'unité(s)'
+    loss_qty = Decimal('0') if has_loss_mixed else (loss_by_unit.get('quantity', {}).get('total') or loss_by_unit.get('weight', {}).get('total') or Decimal('0'))
+    
+    # Démarque inconnue (ajustements négatifs)
+    unknown_shrinkage_qty = total_neg_qty
+    unknown_shrinkage_val = total_neg_val
+    unknown_count = len(negative_adjustments)  # Nombre de transactions d'écarts négatifs
+
+    # 7. Top Produits (par valeur d'écart)
+    # Filtrer toutes les transactions pertinentes (ajustements + casse)
+    relevant_transactions = period_transactions.filter(
+        Q(type='adjustment') | 
+        Q(type='loss') |
+        (Q(type__in=['in', 'out']) & inventory_keywords)
+    ).select_related('product')
+    
+    product_stats = {}
+    for tx in relevant_transactions:
+        pid = tx.product_id
+        if pid not in product_stats:
+            product_stats[pid] = {
+                'product': tx.product,
+                'adjustments_count': 0,
+                'loss_count': 0,
+                'total_abs_qty': Decimal('0'),
+                'total_abs_val': Decimal('0'),
+                'net_qty': Decimal('0')
+            }
+        
+        qty = tx.quantity
+        val = tx.total_amount or Decimal('0')
+        
+        # Compter par type
+        if tx.type == 'loss':
+            product_stats[pid]['loss_count'] += 1
+            # La casse réduit le stock
+            product_stats[pid]['net_qty'] -= abs(qty)
+        else:
+            product_stats[pid]['adjustments_count'] += 1
+            # Pour les ajustements, normaliser selon le type
+            if tx.type == 'out':
+                qty = -abs(qty)
+            product_stats[pid]['net_qty'] += qty
+        
+        product_stats[pid]['total_abs_qty'] += abs(qty)
+        product_stats[pid]['total_abs_val'] += abs(val)
+
+    # Trier par valeur absolue décroissante
+    top_products = sorted(product_stats.values(), key=lambda x: x['total_abs_val'], reverse=True)[:10]
+
+    # 8. Calculer le bilan financier (comme dans le mobile)
+    from apps.sales.models import Sale
+    financial_sales = Sale.objects.filter(sale_date__range=[start_date, end_date])
+    if not request.user.is_superuser and user_site:
+        financial_sales = financial_sales.filter(site_configuration=user_site)
+    
+    # Calculer les revenus et marges
+    total_revenue = Decimal('0')
+    total_margin = Decimal('0')
+    by_payment_method = {
+        'cash': Decimal('0'),
+        'credit': Decimal('0'),
+        'sarali': Decimal('0'),
+        'card': Decimal('0'),
+        'mobile': Decimal('0'),
+        'transfer': Decimal('0'),
+    }
+    
+    for sale in financial_sales.filter(status='completed'):
+        total_revenue += sale.total_amount or Decimal('0')
+        # Calculer la marge totale de la vente
+        sale_margin = Decimal('0')
+        for item in sale.items.all():
+            if item.product:
+                margin_per_unit = (item.unit_price or Decimal('0')) - (item.product.purchase_price or Decimal('0'))
+                sale_margin += margin_per_unit * (item.quantity or Decimal('0'))
+        total_margin += sale_margin
+        
+        # Par mode de paiement
+        payment_method = sale.payment_method or 'cash'
+        if payment_method in by_payment_method:
+            by_payment_method[payment_method] += sale.total_amount or Decimal('0')
+    
+    # Coûts et pertes
+    total_losses = loss_val  # Casse
+    total_shrinkage = total_neg_val  # Démarque inconnue (ajustements négatifs uniquement, sans casse)
+    total_costs = total_losses + total_shrinkage
+    
+    # Résultat
+    gross_profit = total_margin  # Marge brute
+    net_profit = total_margin - total_costs  # Profit net = marge - pertes
+    profit_margin = (net_profit / total_revenue * 100) if total_revenue > 0 else Decimal('0')
+    average_margin_percentage = (total_margin / total_revenue * 100) if total_revenue > 0 else Decimal('0')
+    
+    # Ratio de rotation des stocks
+    stock_turnover_ratio = (total_revenue / total_value) if total_value > 0 else Decimal('0')
+    
+    # Taux de perte et démarque
+    loss_rate = (total_losses / total_value * 100) if total_value > 0 else Decimal('0')
+    shrinkage_rate = (total_shrinkage / total_value * 100) if total_value > 0 else Decimal('0')
+
     context = {
-        'products': products,
+        'period': period,
+        'today': today,
+        # Stats globales
         'total_products': total_products,
+        'total_categories': total_categories,
+        'total_brands': total_brands,
         'total_value': total_value,
         'low_stock': low_stock,
         'out_of_stock': out_of_stock,
+        # Ajustements (inclut aussi la casse pour le total des mouvements)
+        'adjustments_count': adjustments.count() + loss_transactions.count(),
+        'pos_adj_count': len(positive_adjustments),
+        'neg_adj_count': total_neg_count,  # Ajustements négatifs + casse
+        'total_pos_qty': total_pos_qty,
+        'total_neg_qty': total_neg_qty,
+        'total_pos_val': total_pos_val,
+        'total_neg_val': total_neg_val_with_loss,  # Ajustements négatifs + casse
+        'has_positive_mixed': has_positive_mixed,
+        'has_negative_mixed': has_negative_mixed,
+        'positive_unit': positive_unit,
+        'negative_unit': negative_unit,
+        # Totaux séparés par type d'unité (incluant la casse pour les négatifs)
+        'positive_qty_weight': positive_by_unit.get('weight', {}).get('total', Decimal('0')),
+        'positive_qty_quantity': positive_by_unit.get('quantity', {}).get('total', Decimal('0')),
+        'positive_unit_weight': positive_by_unit.get('weight', {}).get('unit', 'kg'),
+        'positive_unit_quantity': positive_by_unit.get('quantity', {}).get('unit', 'unité(s)'),
+        'negative_qty_weight': negative_display_by_unit.get('weight', {}).get('total', Decimal('0')),
+        'negative_qty_quantity': negative_display_by_unit.get('quantity', {}).get('total', Decimal('0')),
+        'negative_unit_weight': negative_display_by_unit.get('weight', {}).get('unit', 'kg'),
+        'negative_unit_quantity': negative_display_by_unit.get('quantity', {}).get('unit', 'unité(s)'),
+        # Démarque
+        'loss_count': loss_transactions.count(),
+        'loss_qty': loss_qty,
+        'loss_val': loss_val,
+        'has_loss_mixed': has_loss_mixed,
+        'loss_unit': loss_unit,
+        'loss_qty_weight': loss_by_unit.get('weight', {}).get('total', Decimal('0')),
+        'loss_qty_quantity': loss_by_unit.get('quantity', {}).get('total', Decimal('0')),
+        'loss_unit_weight': loss_by_unit.get('weight', {}).get('unit', 'kg'),
+        'loss_unit_quantity': loss_by_unit.get('quantity', {}).get('unit', 'unité(s)'),
+        'unknown_qty': unknown_shrinkage_qty,
+        'unknown_val': unknown_shrinkage_val,
+        'unknown_count': unknown_count,
+        'has_unknown_mixed': has_negative_mixed,  # Même logique que négatif
+        'unknown_unit': negative_unit,
+        'unknown_qty_weight': negative_by_unit.get('weight', {}).get('total', Decimal('0')),
+        'unknown_qty_quantity': negative_by_unit.get('quantity', {}).get('total', Decimal('0')),
+        'unknown_unit_weight': negative_by_unit.get('weight', {}).get('unit', 'kg'),
+        'unknown_unit_quantity': negative_by_unit.get('quantity', {}).get('unit', 'unité(s)'),
+        # Top produits
+        'top_products': top_products,
+        # Bilan financier
+        'total_revenue': total_revenue,
+        'total_margin': total_margin,
+        'average_margin_percentage': average_margin_percentage,
+        'total_losses': total_losses,
+        'total_shrinkage': total_shrinkage,
+        'total_costs': total_costs,
+        'gross_profit': gross_profit,
+        'net_profit': net_profit,
+        'profit_margin': profit_margin,
+        'stock_turnover_ratio': stock_turnover_ratio,
+        'loss_rate': loss_rate,
+        'shrinkage_rate': shrinkage_rate,
+        'cash_revenue': by_payment_method['cash'],
+        'credit_revenue': by_payment_method['credit'],
+        'sarali_revenue': by_payment_method['sarali'],
+        'card_revenue': by_payment_method['card'],
+        'mobile_revenue': by_payment_method['mobile'],
+        'transfer_revenue': by_payment_method['transfer'],
     }
     
     return render(request, 'inventory/stock_report.html', context)
@@ -1025,14 +1821,36 @@ class OrderListView(SiteFilterMixin, ListView):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        search_query = self.request.GET.get('search')
+        search_query = self.request.GET.get('search', '').strip()
+        supplier_filter = self.request.GET.get('supplier')
+        status_filter = self.request.GET.get('status')
+        
+        # Recherche améliorée : référence, fournisseur, client
         if search_query:
             queryset = queryset.filter(
-                customer__name__icontains=search_query
-            ) | queryset.filter(
-                customer__first_name__icontains=search_query
+                Q(reference__icontains=search_query) |
+                Q(supplier__name__icontains=search_query) |
+                Q(customer__name__icontains=search_query)
             )
-        return queryset.select_related('customer').prefetch_related('items').order_by('-order_date')
+        
+        if supplier_filter:
+            queryset = queryset.filter(supplier_id=supplier_filter)
+        
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        return queryset.select_related('supplier', 'customer').prefetch_related('items').order_by('-order_date')
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        if user_site:
+            context['suppliers'] = Supplier.objects.filter(site_configuration=user_site).order_by('name')
+        else:
+            context['suppliers'] = Supplier.objects.none()
+        context['status_choices'] = Order.STATUS_CHOICES
+        context['search_query'] = self.request.GET.get('search', '').strip()
+        return context
 
 class OrderCreateView(SiteRequiredMixin, CreateView):
     model = Order
@@ -1040,12 +1858,41 @@ class OrderCreateView(SiteRequiredMixin, CreateView):
     template_name = 'inventory/order_form.html'
     success_url = reverse_lazy('inventory:order_list')
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         if self.request.POST:
             context['formset'] = OrderItemFormSet(self.request.POST)
         else:
             context['formset'] = OrderItemFormSet()
+        # Ajouter les fournisseurs du site
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        if user_site:
+            context['suppliers'] = Supplier.objects.filter(site_configuration=user_site).order_by('name')
+            # Ajouter les catégories et marques du site
+            context['categories'] = Category.objects.filter(
+                site_configuration=user_site,
+                is_active=True
+            ).order_by('name')
+            context['brands'] = Brand.objects.filter(
+                site_configuration=user_site,
+                is_active=True
+            ).order_by('name')
+        else:
+            context['suppliers'] = Supplier.objects.none()
+            context['categories'] = Category.objects.none()
+            context['brands'] = Brand.objects.none()
+        # Ajouter la devise depuis la configuration
+        if user_site and hasattr(user_site, 'devise') and user_site.devise:
+            context['currency'] = user_site.devise
+        else:
+            from apps.core.utils import get_configuration
+            config = get_configuration(self.request.user)
+            context['currency'] = config.devise if config and config.devise else 'FCFA'
         return context
 
     def form_valid(self, form):
@@ -1078,12 +1925,41 @@ class OrderUpdateView(SiteFilterMixin, UpdateView):
     template_name = 'inventory/order_form.html'
     success_url = reverse_lazy('inventory:order_list')
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         if self.request.POST:
             context['formset'] = OrderItemFormSet(self.request.POST, instance=self.object)
         else:
             context['formset'] = OrderItemFormSet(instance=self.object)
+        # Ajouter les fournisseurs du site
+        user_site = getattr(self.request.user, 'site_configuration', None)
+        if user_site:
+            context['suppliers'] = Supplier.objects.filter(site_configuration=user_site).order_by('name')
+            # Ajouter les catégories et marques du site
+            context['categories'] = Category.objects.filter(
+                site_configuration=user_site,
+                is_active=True
+            ).order_by('name')
+            context['brands'] = Brand.objects.filter(
+                site_configuration=user_site,
+                is_active=True
+            ).order_by('name')
+        else:
+            context['suppliers'] = Supplier.objects.none()
+            context['categories'] = Category.objects.none()
+            context['brands'] = Brand.objects.none()
+        # Ajouter la devise depuis la configuration
+        if user_site and hasattr(user_site, 'devise') and user_site.devise:
+            context['currency'] = user_site.devise
+        else:
+            from apps.core.utils import get_configuration
+            config = get_configuration(self.request.user)
+            context['currency'] = config.devise if config and config.devise else 'FCFA'
         return context
 
     def form_valid(self, form):
@@ -1117,6 +1993,107 @@ class OrderDeleteView(SiteFilterMixin, DeleteView):
         except Exception as e:
             messages.error(request, f'Erreur lors de la suppression de la commande : {str(e)}')
             return redirect('inventory:order_list')
+
+@login_required
+def order_share_data(request, pk):
+    """Vue pour récupérer les détails d'une commande en JSON pour le partage"""
+    try:
+        order = get_object_or_404(Order, pk=pk)
+        
+        # Vérifier les permissions (même site ou superuser)
+        if not request.user.is_superuser:
+            user_site = getattr(request.user, 'site_configuration', None)
+            if not user_site or order.site_configuration != user_site:
+                return JsonResponse({'error': 'Accès non autorisé'}, status=403)
+        
+        # Récupérer les items de la commande
+        items = []
+        for item in order.items.select_related('product').all():
+            items.append({
+                'product_name': item.product.name if item.product else 'Produit supprimé',
+                'product_cug': item.product.cug if item.product else '',
+                'quantity': float(item.quantity),
+                'unit_price': float(item.unit_price),
+                'amount': float(item.amount)
+            })
+        
+        data = {
+            'id': order.id,
+            'reference': order.reference or f"#{order.id}",
+            'supplier': order.supplier.name if order.supplier else (order.customer.name if order.customer else ''),
+            'order_date': order.order_date.strftime('%d/%m/%Y %H:%M'),
+            'status': order.get_status_display(),
+            'total_amount': float(order.total_amount),
+            'items': items
+        }
+        
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+def generate_order_pdf(request, pk):
+    """
+    Génère un PDF pour une commande
+    
+    Args:
+        request: Requête HTTP
+        pk: Clé primaire de la commande
+        
+    Returns:
+        HttpResponse: PDF de la commande ou message d'erreur
+    """
+    # Filtrer par site de l'utilisateur
+    user_site = request.user.site_configuration
+    
+    if request.user.is_superuser:
+        order = get_object_or_404(Order, pk=pk)
+    else:
+        if not user_site:
+            messages.error(request, "Aucun site configuré pour cet utilisateur")
+            return HttpResponse("Aucun site configuré", status=400)
+        order = get_object_or_404(Order, pk=pk, site_configuration=user_site)
+    
+    # Récupérer les informations de la configuration du site
+    site_config = order.site_configuration
+    company_name = site_config.nom_societe if site_config and site_config.nom_societe else "BoliBana Stock"
+    address = site_config.adresse if site_config and site_config.adresse else "Bamako, Mali"
+    phone = site_config.telephone if site_config and site_config.telephone else "+223 XX XX XX XX"
+    currency = site_config.devise if site_config and site_config.devise else "FCFA"
+    
+    context = {
+        'order': order,
+        'items': order.items.select_related('product', 'product__category', 'product__brand').all(),
+        'company_name': company_name,
+        'address': address,
+        'phone': phone,
+        'currency': currency,
+        'date': order.order_date.strftime("%d/%m/%Y %H:%M"),
+    }
+    
+    # Importer xhtml2pdf uniquement ici pour éviter l'erreur d'import au chargement du module
+    try:
+        from xhtml2pdf import pisa
+    except Exception as import_error:
+        messages.error(request, "Le module xhtml2pdf n'est pas disponible sur le serveur")
+        return HttpResponse("xhtml2pdf manquant. Veuillez installer la dépendance.", status=500)
+    
+    # Générer le HTML
+    html_string = render_to_string('inventory/order_pdf.html', context)
+    
+    # Créer le PDF
+    result = BytesIO()
+    pdf = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), result)
+    
+    if not pdf.err:
+        # Retourner le PDF
+        reference = order.reference or f"#{order.id}"
+        response = HttpResponse(result.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="commande_{reference}.pdf"'
+        return response
+    
+    messages.error(request, 'Erreur lors de la génération du PDF')
+    return HttpResponse('Erreur lors de la génération du PDF', status=500)
 
 # Gestion des codes-barres
 @login_required
@@ -1851,5 +2828,23 @@ class GetSubcategoriesView(LoginRequiredMixin, View):
             return JsonResponse({'error': 'Rayon non trouvé'}, status=404)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+
+class CustomerListView(SiteFilterMixin, ListView):
+    model = Customer
+    template_name = 'inventory/customer_list.html'
+    context_object_name = 'customers'
+    paginate_by = 20
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search_query = self.request.GET.get('search', '').strip()
+        if search_query:
+            queryset = queryset.filter(
+                Q(name__icontains=search_query) |
+                Q(first_name__icontains=search_query) |
+                Q(phone__icontains=search_query) |
+                Q(email__icontains=search_query)
+            )
+        return queryset.order_by('-created_at')
 
 

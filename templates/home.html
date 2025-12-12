@@ -101,7 +101,7 @@
                     </div>
                 <div class="ml-3 flex-1">
                     <p class="text-xs font-medium text-neutral-500 uppercase tracking-wide">CA du jour</p>
-                    <p class="text-lg font-bold text-neutral-900 mt-1">{{ revenue|intcomma }} FCFA</p>
+                    <p class="text-lg font-bold text-neutral-900 mt-1">{{ revenue|format_currency:site_currency }}</p>
                     <p class="text-xs text-neutral-500 mt-0.5">{{ today_sales }} ventes</p>
                 </div>
             </div>
@@ -112,10 +112,10 @@
     <div class="mt-6">
         <h2 class="text-lg font-bold text-neutral-900 mb-4">Actions rapides</h2>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <a href="{% url 'sales:sale_create' %}" 
+            <a href="{% url 'inventory:cash_register' %}" 
                class="bg-bolibana-500 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 p-4 text-center text-white">
                 <i class="fas fa-cash-register text-2xl mb-2"></i>
-                <p class="text-sm font-semibold">Nouvelle vente</p>
+                <p class="text-sm font-semibold">Caisse</p>
             </a>
             <a href="{% url 'inventory:product_create' %}" 
                class="bg-forest-500 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 p-4 text-center text-white">
@@ -128,12 +128,202 @@
                 <p class="text-sm font-semibold">Scanner</p>
             </a>
             <a href="{% url 'inventory:transaction_list' %}" 
-               class="bg-purple-500 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 p-4 text-center text-white">
+               class="bg-bolibana-500 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 p-4 text-center text-white">
                 <i class="fas fa-exchange-alt text-2xl mb-2"></i>
                 <p class="text-sm font-semibold">Transactions</p>
             </a>
         </div>
     </div>
+
+    <!-- Aperçu du Rapport de Stock -->
+    {% if report_stats %}
+    <div class="mt-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-neutral-900">Aperçu du Rapport (Aujourd'hui)</h2>
+            <a href="{% url 'inventory:stock_report' %}" 
+               class="text-sm text-bolibana-600 hover:text-bolibana-700 font-medium flex items-center">
+                Voir le rapport complet
+                <i class="fas fa-arrow-right ml-1"></i>
+            </a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Écarts Positifs -->
+            <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border-l-4 border-green-500 p-4">
+                <div class="flex items-center mb-3">
+                    <div class="p-2 rounded-lg bg-green-50">
+                        <i class="fas fa-arrow-up text-green-500 text-lg"></i>
+                    </div>
+                    <h3 class="ml-2 text-sm font-semibold text-gray-700">Écarts Positifs</h3>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Déclarations</span>
+                        <span class="font-medium text-green-600">{{ report_stats.pos_adj_count }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Quantité (Poids)</span>
+                        <span class="font-medium text-green-600">+{{ report_stats.positive_qty_weight|smart_quantity }} {{ report_stats.positive_unit_weight }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Quantité (Unités)</span>
+                        <span class="font-medium text-green-600">+{{ report_stats.positive_qty_quantity|smart_quantity }} {{ report_stats.positive_unit_quantity }}</span>
+                    </div>
+                    <div class="flex justify-between pt-2 border-t border-gray-100">
+                        <span class="text-xs font-medium text-gray-700">Valeur</span>
+                        <span class="text-sm font-bold text-green-700">+{{ report_stats.total_pos_val|format_currency:site_currency }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Écarts Négatifs -->
+            <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border-l-4 border-red-500 p-4">
+                <div class="flex items-center mb-3">
+                    <div class="p-2 rounded-lg bg-red-50">
+                        <i class="fas fa-arrow-down text-red-500 text-lg"></i>
+                    </div>
+                    <h3 class="ml-2 text-sm font-semibold text-gray-700">Écarts Négatifs</h3>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Déclarations</span>
+                        <span class="font-medium text-red-600">{{ report_stats.neg_adj_count }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Quantité (Poids)</span>
+                        <span class="font-medium text-red-600">-{{ report_stats.negative_qty_weight|smart_quantity }} {{ report_stats.negative_unit_weight }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Quantité (Unités)</span>
+                        <span class="font-medium text-red-600">-{{ report_stats.negative_qty_quantity|smart_quantity }} {{ report_stats.negative_unit_quantity }}</span>
+                    </div>
+                    <div class="flex justify-between pt-2 border-t border-gray-100">
+                        <span class="text-xs font-medium text-gray-700">Valeur</span>
+                        <span class="text-sm font-bold text-red-700">-{{ report_stats.total_neg_val|format_currency:site_currency }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Démarque & Pertes -->
+            <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border-l-4 border-orange-500 p-4">
+                <div class="flex items-center mb-3">
+                    <div class="p-2 rounded-lg bg-orange-50">
+                        <i class="fas fa-trash-alt text-orange-500 text-lg"></i>
+                    </div>
+                    <h3 class="ml-2 text-sm font-semibold text-gray-700">Démarque & Pertes</h3>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Casse</span>
+                        <span class="font-medium text-orange-600">{{ report_stats.loss_count }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Quantité (Poids)</span>
+                        <span class="font-medium text-orange-600">{{ report_stats.loss_qty_weight|smart_quantity }} {{ report_stats.loss_unit_weight }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Quantité (Unités)</span>
+                        <span class="font-medium text-orange-600">{{ report_stats.loss_qty_quantity|smart_quantity }} {{ report_stats.loss_unit_quantity }}</span>
+                    </div>
+                    <div class="flex justify-between pt-2 border-t border-gray-100">
+                        <span class="text-xs font-medium text-gray-700">Valeur</span>
+                        <span class="text-sm font-bold text-orange-700">{{ report_stats.loss_val|format_currency:site_currency }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Aperçu du Bilan Financier -->
+    {% if report_stats and report_stats.total_revenue is not None %}
+    <div class="mt-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-neutral-900">Aperçu Financier (Aujourd'hui)</h2>
+            <a href="{% url 'inventory:stock_report' %}" 
+               class="text-sm text-bolibana-600 hover:text-bolibana-700 font-medium flex items-center">
+                Voir le rapport complet
+                <i class="fas fa-arrow-right ml-1"></i>
+            </a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Revenus -->
+            <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border-l-4 border-green-500 p-4">
+                <div class="flex items-center mb-3">
+                    <div class="p-2 rounded-lg bg-green-50">
+                        <i class="fas fa-arrow-up text-green-500 text-lg"></i>
+                    </div>
+                    <h3 class="ml-2 text-sm font-semibold text-gray-700">Revenus</h3>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Chiffre d'affaires</span>
+                        <span class="font-medium text-green-600">{{ report_stats.total_revenue|default:0|format_currency:site_currency }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Marge brute</span>
+                        <span class="font-medium text-green-600">{{ report_stats.total_margin|default:0|format_currency:site_currency }}</span>
+                    </div>
+                    <div class="flex justify-between pt-2 border-t border-gray-100">
+                        <span class="text-xs font-medium text-gray-700">Espèces</span>
+                        <span class="text-sm font-bold text-green-700">{{ report_stats.cash_revenue|default:0|format_currency:site_currency }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coûts -->
+            <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border-l-4 border-red-500 p-4">
+                <div class="flex items-center mb-3">
+                    <div class="p-2 rounded-lg bg-red-50">
+                        <i class="fas fa-arrow-down text-red-500 text-lg"></i>
+                    </div>
+                    <h3 class="ml-2 text-sm font-semibold text-gray-700">Coûts</h3>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Casse</span>
+                        <span class="font-medium text-red-600">-{{ report_stats.total_losses|default:0|format_currency:site_currency }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Démarque</span>
+                        <span class="font-medium text-red-600">-{{ report_stats.total_shrinkage|default:0|format_currency:site_currency }}</span>
+                    </div>
+                    <div class="flex justify-between pt-2 border-t border-gray-100">
+                        <span class="text-xs font-medium text-gray-700">Total pertes</span>
+                        <span class="text-sm font-bold text-red-700">-{{ report_stats.total_costs|default:0|format_currency:site_currency }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Résultat -->
+            <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border-l-4 {% if report_stats.net_profit >= 0 %}border-green-500{% else %}border-red-500{% endif %} p-4">
+                <div class="flex items-center mb-3">
+                    <div class="p-2 rounded-lg {% if report_stats.net_profit >= 0 %}bg-green-50{% else %}bg-red-50{% endif %}">
+                        <i class="fas fa-chart-line {% if report_stats.net_profit >= 0 %}text-green-500{% else %}text-red-500{% endif %} text-lg"></i>
+                    </div>
+                    <h3 class="ml-2 text-sm font-semibold text-gray-700">Résultat</h3>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Profit net</span>
+                        <span class="font-medium {% if report_stats.net_profit|default:0 >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                            {{ report_stats.net_profit|default:0|format_currency:site_currency }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-500">Taux de profit</span>
+                        <span class="font-medium {% if report_stats.profit_margin|default:0 >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                            {{ report_stats.profit_margin|default:0|floatformat:1 }}%
+                        </span>
+                    </div>
+                    <div class="flex justify-between pt-2 border-t border-gray-100">
+                        <span class="text-xs font-medium text-gray-700">Marge brute</span>
+                        <span class="text-sm font-bold text-green-700">{{ report_stats.total_margin|default:0|format_currency:site_currency }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Alertes et Statistiques -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">

@@ -8,99 +8,467 @@
 {% block content %}
 <div class="container mx-auto px-4 py-8">
     <div class="max-w-7xl mx-auto">
-        <!-- En-tête -->
+        <!-- En-tête et Filtres -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-neutral-800">Rapport de Stock</h1>
+                <p class="text-neutral-600 mt-1">Analyse détaillée des mouvements et de la valorisation</p>
+            </div>
+            
+            <!-- Filtres de période -->
+            <div class="bg-white rounded-lg shadow-sm p-1 flex">
+                <a href="?period=today" class="px-4 py-2 rounded-md text-sm font-medium transition-colors {% if period == 'today' %}bg-bolibana-600 text-white shadow-sm{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    Aujourd'hui
+                </a>
+                <a href="?period=week" class="px-4 py-2 rounded-md text-sm font-medium transition-colors {% if period == 'week' %}bg-bolibana-600 text-white shadow-sm{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    Semaine
+                </a>
+                <a href="?period=month" class="px-4 py-2 rounded-md text-sm font-medium transition-colors {% if period == 'month' %}bg-bolibana-600 text-white shadow-sm{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    Mois
+                </a>
+            </div>
+        </div>
+
+        <!-- 1. Résumé Global (État actuel) -->
         <div class="mb-8">
-            <h1 class="text-2xl font-bold text-neutral-800">Rapport de Stock</h1>
-            <p class="text-neutral-600 mt-2">État détaillé de votre inventaire</p>
+            <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-chart-pie text-bolibana-600 mr-2"></i>
+                État Actuel du Stock
+            </h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Total Produits -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">Total Produits</p>
+                            <h3 class="text-2xl font-bold text-gray-900 mt-1">{{ total_products }}</h3>
+                            <div class="flex items-center mt-2 text-xs text-gray-500">
+                                <span class="bg-gray-100 px-2 py-0.5 rounded mr-2">{{ total_categories }} Cats</span>
+                                <span class="bg-gray-100 px-2 py-0.5 rounded">{{ total_brands }} Marques</span>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-blue-50 rounded-lg">
+                            <i class="fas fa-box text-blue-600 text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Valeur Stock -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">Valeur Totale</p>
+                            <h3 class="text-2xl font-bold text-gray-900 mt-1">{{ total_value|format_currency:site_currency }}</h3>
+                            <p class="text-xs text-gray-500 mt-2">Prix d'achat moyen</p>
+                        </div>
+                        <div class="p-3 bg-green-50 rounded-lg">
+                            <i class="fas fa-coins text-green-600 text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock Faible -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">Stock Faible</p>
+                            <h3 class="text-2xl font-bold text-yellow-600 mt-1">{{ low_stock }}</h3>
+                            <p class="text-xs text-gray-500 mt-2">Produits à réapprovisionner</p>
+                        </div>
+                        <div class="p-3 bg-yellow-50 rounded-lg">
+                            <i class="fas fa-exclamation-triangle text-yellow-600 text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rupture -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">En Rupture</p>
+                            <h3 class="text-2xl font-bold text-red-600 mt-1">{{ out_of_stock }}</h3>
+                            <p class="text-xs text-gray-500 mt-2">Produits épuisés</p>
+                        </div>
+                        <div class="p-3 bg-red-50 rounded-lg">
+                            <i class="fas fa-times-circle text-red-600 text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- Statistiques -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div class="card">
-                <div class="p-4">
-                    <p class="text-sm font-semibold text-neutral-600">Total Produits</p>
-                    <p class="text-2xl font-bold text-neutral-900">{{ total_products }}</p>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <!-- 2. Ajustements d'Inventaire -->
+            <div>
+                <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-sliders-h text-purple-600 mr-2"></i>
+                    Ajustements ({{ period_label|default:"Période" }})
+                </h2>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="p-5 border-b border-gray-100">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm font-medium text-gray-500">Total Mouvements</span>
+                            <span class="text-lg font-bold text-gray-900">{{ adjustments_count }}</span>
+                        </div>
+                        <div class="mt-2 pt-2 border-t border-gray-100">
+                            <p class="text-xs text-gray-500 mb-1">Éléments collectés :</p>
+                            <div class="flex flex-wrap gap-1.5">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                                    <i class="fas fa-sliders-h mr-1 text-xs"></i>
+                                    Ajustements
+                                </span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                                    <i class="fas fa-trash-alt mr-1 text-xs"></i>
+                                    Casse
+                                </span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                                    <i class="fas fa-clipboard-check mr-1 text-xs"></i>
+                                    Écarts inventaire
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 divide-x divide-gray-100">
+                        <!-- Positifs -->
+                        <div class="p-5">
+                            <div class="flex items-center mb-3">
+                                <span class="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+                                <h4 class="text-sm font-semibold text-gray-700">Écarts Positifs</h4>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-500">Déclarations</span>
+                                    <span class="text-sm font-medium text-green-600">{{ pos_adj_count }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-500">Quantité (Poids)</span>
+                                    <span class="text-sm font-medium text-green-600">+{{ positive_qty_weight|smart_quantity }} {{ positive_unit_weight }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-500">Quantité (Unités)</span>
+                                    <span class="text-sm font-medium text-green-600">+{{ positive_qty_quantity|smart_quantity }} {{ positive_unit_quantity }}</span>
+                                </div>
+                                <div class="flex justify-between pt-2 border-t border-gray-50">
+                                    <span class="text-xs font-medium text-gray-700">Valeur</span>
+                                    <span class="text-sm font-bold text-green-700">+{{ total_pos_val|format_currency:site_currency }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Négatifs -->
+                        <div class="p-5">
+                            <div class="flex items-center mb-3">
+                                <span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
+                                <h4 class="text-sm font-semibold text-gray-700">Écarts Négatifs</h4>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-500">Déclarations</span>
+                                    <span class="text-sm font-medium text-red-600">{{ neg_adj_count }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-500">Quantité (Poids)</span>
+                                    <span class="text-sm font-medium text-red-600">-{{ negative_qty_weight|smart_quantity }} {{ negative_unit_weight }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-500">Quantité (Unités)</span>
+                                    <span class="text-sm font-medium text-red-600">-{{ negative_qty_quantity|smart_quantity }} {{ negative_unit_quantity }}</span>
+                                </div>
+                                <div class="flex justify-between pt-2 border-t border-gray-50">
+                                    <span class="text-xs font-medium text-gray-700">Valeur</span>
+                                    <span class="text-sm font-bold text-red-700">-{{ total_neg_val|format_currency:site_currency }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="card">
-                <div class="p-4">
-                    <p class="text-sm font-semibold text-neutral-600">Valeur Totale</p>
-                    <p class="text-2xl font-bold text-neutral-900">{{ total_value|format_currency }}</p>
-                </div>
-            </div>
-            <div class="card">
-                <div class="p-4">
-                    <p class="text-sm font-semibold text-neutral-600">Stock Faible</p>
-                    <p class="text-2xl font-bold text-bolibana-600">{{ low_stock }}</p>
-                </div>
-            </div>
-            <div class="card">
-                <div class="p-4">
-                    <p class="text-sm font-semibold text-neutral-600">En Rupture</p>
-                    <p class="text-2xl font-bold text-red-600">{{ out_of_stock }}</p>
+
+            <!-- 3. Démarque (Pertes) -->
+            <div>
+                <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-trash-alt text-red-600 mr-2"></i>
+                    Démarque & Pertes
+                </h2>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="p-5 border-b border-gray-100">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm font-medium text-gray-500">Total Pertes (Valeur)</span>
+                            <span class="text-lg font-bold text-red-600">{{ loss_val|add:unknown_val|format_currency:site_currency }}</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 divide-x divide-gray-100">
+                        <!-- Casse (Connue) -->
+                        <div class="p-5 bg-red-50/30">
+                            <div class="flex items-center mb-3">
+                                <i class="fas fa-glass-whiskey text-red-400 mr-2 text-xs"></i>
+                                <h4 class="text-sm font-semibold text-gray-800">Casse (Connue)</h4>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-500">Déclarations</span>
+                                    <span class="text-sm font-medium">{{ loss_count }}</span>
+                                </div>
+                                {% if has_loss_mixed %}
+                                    {% if loss_qty_weight > 0 %}
+                                    <div class="flex justify-between">
+                                        <span class="text-xs text-gray-500">Quantité (Poids)</span>
+                                        <span class="text-sm font-medium">{{ loss_qty_weight|smart_quantity }} {{ loss_unit_weight }}</span>
+                                    </div>
+                                    {% endif %}
+                                    {% if loss_qty_quantity > 0 %}
+                                    <div class="flex justify-between">
+                                        <span class="text-xs text-gray-500">Quantité (Unités)</span>
+                                        <span class="text-sm font-medium">{{ loss_qty_quantity|smart_quantity }} {{ loss_unit_quantity }}</span>
+                                    </div>
+                                    {% endif %}
+                                {% else %}
+                                    <div class="flex justify-between">
+                                        <span class="text-xs text-gray-500">Quantité</span>
+                                        <span class="text-sm font-medium">{{ loss_qty|smart_quantity }} {{ loss_unit }}</span>
+                                    </div>
+                                {% endif %}
+                                <div class="flex justify-between pt-2 border-t border-gray-200/50">
+                                    <span class="text-xs font-medium text-gray-700">Coût</span>
+                                    <span class="text-sm font-bold text-red-700">{{ loss_val|format_currency:site_currency }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Inconnue -->
+                        <div class="p-5 bg-orange-50/30">
+                            <div class="flex items-center mb-3">
+                                <i class="fas fa-question-circle text-orange-400 mr-2 text-xs"></i>
+                                <h4 class="text-sm font-semibold text-gray-800">Inconnue</h4>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-500">Déclarations</span>
+                                    <span class="text-sm font-medium">{{ unknown_count }}</span>
+                                </div>
+                                {% if has_unknown_mixed %}
+                                    {% if unknown_qty_weight > 0 %}
+                                    <div class="flex justify-between">
+                                        <span class="text-xs text-gray-500">Quantité (Poids)</span>
+                                        <span class="text-sm font-medium">{{ unknown_qty_weight|smart_quantity }} {{ unknown_unit_weight }}</span>
+                                    </div>
+                                    {% endif %}
+                                    {% if unknown_qty_quantity > 0 %}
+                                    <div class="flex justify-between">
+                                        <span class="text-xs text-gray-500">Quantité (Unités)</span>
+                                        <span class="text-sm font-medium">{{ unknown_qty_quantity|smart_quantity }} {{ unknown_unit_quantity }}</span>
+                                    </div>
+                                    {% endif %}
+                                {% else %}
+                                    <div class="flex justify-between">
+                                        <span class="text-xs text-gray-500">Quantité</span>
+                                        <span class="text-sm font-medium">{{ unknown_qty|smart_quantity }} {{ unknown_unit }}</span>
+                                    </div>
+                                {% endif %}
+                                <div class="flex justify-between pt-2 border-t border-gray-200/50">
+                                    <span class="text-xs font-medium text-gray-700">Coût Estimé</span>
+                                    <span class="text-sm font-bold text-orange-700">{{ unknown_val|format_currency:site_currency }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Liste des produits -->
-        <div class="card">
-            <div class="p-4">
+        <!-- 4. Bilan Financier -->
+        <div class="mb-8">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-chart-line text-green-600 mr-2"></i>
+                Bilan Financier ({{ period_label|default:"Période" }})
+            </h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Revenus -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="p-5 border-b border-gray-100 bg-green-50">
+                        <h3 class="text-sm font-semibold text-gray-800 flex items-center">
+                            <i class="fas fa-arrow-up text-green-600 mr-2"></i>
+                            Revenus
+                        </h3>
+                    </div>
+                    <div class="p-5 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Chiffre d'affaires</span>
+                            <span class="text-lg font-bold text-gray-900">{{ total_revenue|format_currency:site_currency }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Marge brute</span>
+                            <span class="text-base font-semibold text-green-600">{{ total_margin|format_currency:site_currency }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Taux de marge moyen</span>
+                            <span class="text-base font-medium text-gray-700">{{ average_margin_percentage|floatformat:1 }}%</span>
+                        </div>
+                        <div class="pt-3 border-t border-gray-100">
+                            <p class="text-xs font-medium text-gray-500 mb-2">Par mode de paiement :</p>
+                            <div class="space-y-1.5">
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-gray-500">Espèces</span>
+                                    <span class="font-medium text-gray-700">{{ cash_revenue|format_currency:site_currency }}</span>
+                                </div>
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-gray-500">Crédit</span>
+                                    <span class="font-medium text-gray-700">{{ credit_revenue|format_currency:site_currency }}</span>
+                                </div>
+                                {% if sarali_revenue > 0 %}
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-gray-500">Sarali</span>
+                                    <span class="font-medium text-gray-700">{{ sarali_revenue|format_currency:site_currency }}</span>
+                                </div>
+                                {% endif %}
+                                {% if card_revenue > 0 %}
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-gray-500">Carte</span>
+                                    <span class="font-medium text-gray-700">{{ card_revenue|format_currency:site_currency }}</span>
+                                </div>
+                                {% endif %}
+                                {% if mobile_revenue > 0 %}
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-gray-500">Mobile Money</span>
+                                    <span class="font-medium text-gray-700">{{ mobile_revenue|format_currency:site_currency }}</span>
+                                </div>
+                                {% endif %}
+                                {% if transfer_revenue > 0 %}
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-gray-500">Virement</span>
+                                    <span class="font-medium text-gray-700">{{ transfer_revenue|format_currency:site_currency }}</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coûts et Résultat -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="p-5 border-b border-gray-100 bg-red-50">
+                        <h3 class="text-sm font-semibold text-gray-800 flex items-center">
+                            <i class="fas fa-arrow-down text-red-600 mr-2"></i>
+                            Coûts & Résultat
+                        </h3>
+                    </div>
+                    <div class="p-5 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Casse</span>
+                            <span class="text-base font-semibold text-red-600">-{{ total_losses|format_currency:site_currency }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Démarque inconnue</span>
+                            <span class="text-base font-semibold text-orange-600">-{{ total_shrinkage|format_currency:site_currency }}</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-2 border-t border-gray-100">
+                            <span class="text-sm font-medium text-gray-700">Total pertes</span>
+                            <span class="text-base font-bold text-red-700">-{{ total_costs|format_currency:site_currency }}</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-3 border-t-2 border-gray-200">
+                            <span class="text-base font-semibold text-gray-800">Profit net</span>
+                            <span class="text-xl font-bold {% if net_profit >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                                {{ net_profit|format_currency:site_currency }}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Taux de profit net</span>
+                            <span class="text-base font-medium {% if profit_margin >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                                {{ profit_margin|floatformat:1 }}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Indicateurs -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden lg:col-span-2">
+                    <div class="p-5 border-b border-gray-100 bg-blue-50">
+                        <h3 class="text-sm font-semibold text-gray-800 flex items-center">
+                            <i class="fas fa-chart-bar text-blue-600 mr-2"></i>
+                            Indicateurs
+                        </h3>
+                    </div>
+                    <div class="p-5">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500 mb-1">Valeur du stock</p>
+                                <p class="text-lg font-bold text-gray-900">{{ total_value|format_currency:site_currency }}</p>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500 mb-1">Ratio de rotation</p>
+                                <p class="text-lg font-bold text-gray-900">{{ stock_turnover_ratio|floatformat:2 }}</p>
+                                <p class="text-xs text-gray-400 mt-1">CA / Stock</p>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500 mb-1">Taux de perte</p>
+                                <p class="text-lg font-bold text-red-600">{{ loss_rate|floatformat:2 }}%</p>
+                                <p class="text-xs text-gray-400 mt-1">Casse / Stock</p>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500 mb-1">Taux de démarque</p>
+                                <p class="text-lg font-bold text-orange-600">{{ shrinkage_rate|floatformat:2 }}%</p>
+                                <p class="text-xs text-gray-400 mt-1">Démarque / Stock</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Top Produits (Écarts) -->
+        <div class="mb-8">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-trophy text-yellow-500 mr-2"></i>
+                Top 10 Produits avec Écarts (Valeur Absolue)
+            </h2>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-neutral-200">
-                        <thead>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Produit</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Catégorie</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Quantité</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Prix d'achat</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Valeur</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">État</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produit</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Mouvements</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Écart Net (Qté)</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Impact Valeur (Abs)</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-neutral-200">
-                            {% for product in products %}
-                            <tr class="hover:bg-neutral-50">
-                                <td class="px-4 py-3">
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for item in top_products %}
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ forloop.counter }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex items-center">
-                                        {% if product.image %}
-                                        <img src="{{ product.image.url }}" alt="{{ product.name }}" class="h-8 w-8 rounded-full object-cover">
+                                        {% if item.product.image %}
+                                            <img class="h-8 w-8 rounded-full object-cover mr-3" src="{{ item.product.image.url }}" alt="">
                                         {% else %}
-                                        <div class="h-8 w-8 rounded-full bg-neutral-200 flex items-center justify-center">
-                                            <i class="fas fa-box text-neutral-400"></i>
-                                        </div>
+                                            <div class="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center mr-3 text-gray-400">
+                                                <i class="fas fa-box"></i>
+                                            </div>
                                         {% endif %}
-                                        <div class="ml-3">
-                                            <p class="text-sm font-medium text-neutral-900">{{ product.name }}</p>
-                                            <p class="text-xs text-neutral-500">CUG: {{ product.cug }}</p>
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-900">{{ item.product.name }}</div>
+                                            <div class="text-xs text-gray-500">{{ item.product.cug|default:"-" }}</div>
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-4 py-3 text-sm text-neutral-900">
-                                    {{ product.category.name|default:"Non catégorisé" }}
-                                </td>
-                                <td class="px-4 py-3 text-sm text-neutral-900">
-                                    {{ product.formatted_quantity }} {{ product.unit_display }}
-                                </td>
-                                <td class="px-4 py-3 text-sm text-neutral-900">
-                                    {{ product.purchase_price|format_currency }}
-                                </td>
-                                <td class="px-4 py-3 text-sm text-neutral-900">
-                                    {{ product.purchase_price|multiply:product.quantity|format_currency }}
-                                </td>
-                                <td class="px-4 py-3">
-                                    {% if product.quantity == 0 %}
-                                    <span class="px-2 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-full">
-                                        En rupture
-                                    </span>
-                                    {% elif product.quantity <= product.alert_threshold %}
-                                    <span class="px-2 py-1 text-xs font-medium text-bolibana-700 bg-bolibana-100 rounded-full">
-                                        Stock faible
-                                    </span>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
+                                    {% if item.loss_count > 0 %}
+                                        {{ item.adjustments_count }} ajust. + {{ item.loss_count }} casse
                                     {% else %}
-                                    <span class="px-2 py-1 text-xs font-medium text-forest-700 bg-forest-100 rounded-full">
-                                        OK
-                                    </span>
+                                        {{ item.adjustments_count }}
                                     {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium {% if item.net_qty > 0 %}text-green-600{% elif item.net_qty < 0 %}text-red-600{% else %}text-gray-600{% endif %}">
+                                    {% if item.net_qty > 0 %}+{% endif %}{{ item.net_qty|smart_quantity }} {{ item.product.unit_display }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900">
+                                    {{ item.total_abs_val|format_currency:site_currency }}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-10 text-center text-gray-500">
+                                    <i class="fas fa-search mb-2 text-2xl text-gray-300 block"></i>
+                                    Aucun ajustement sur cette période
                                 </td>
                             </tr>
                             {% endfor %}
@@ -109,6 +477,7 @@
                 </div>
             </div>
         </div>
+
     </div>
 </div>
-{% endblock %} 
+{% endblock %}
