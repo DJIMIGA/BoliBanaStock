@@ -46,6 +46,27 @@ ALLOWED_HOSTS = [
     os.getenv('RAILWAY_STATIC_URL', ''),
 ]
 
+# Ajouter le domaine personnalisé si configuré
+CUSTOM_DOMAIN = os.getenv('CUSTOM_DOMAIN', '')
+if CUSTOM_DOMAIN:
+    # Ajouter le domaine avec et sans www
+    ALLOWED_HOSTS.append(CUSTOM_DOMAIN)
+    if CUSTOM_DOMAIN.startswith('www.'):
+        # Si c'est www.domain.com, ajouter aussi domain.com
+        domain_without_www = CUSTOM_DOMAIN.replace('www.', '')
+        ALLOWED_HOSTS.append(domain_without_www)
+    else:
+        # Si c'est domain.com, ajouter aussi www.domain.com
+        ALLOWED_HOSTS.append(f'www.{CUSTOM_DOMAIN}')
+
+# Permettre aussi les domaines depuis ALLOWED_HOSTS env var (format: domain1.com,domain2.com)
+ALLOWED_HOSTS_ENV = os.getenv('ALLOWED_HOSTS', '')
+if ALLOWED_HOSTS_ENV:
+    for host in ALLOWED_HOSTS_ENV.split(','):
+        host = host.strip()
+        if host and host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(host)
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -99,6 +120,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'apps.core.context_processors.site_configuration',
             ],
         },
     },
@@ -407,6 +429,27 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+# Ajouter le domaine personnalisé aux origines CORS si configuré
+if CUSTOM_DOMAIN:
+    # Ajouter avec https://
+    if not CUSTOM_DOMAIN.startswith('http'):
+        CORS_ALLOWED_ORIGINS.append(f"https://{CUSTOM_DOMAIN}")
+        if CUSTOM_DOMAIN.startswith('www.'):
+            domain_without_www = CUSTOM_DOMAIN.replace('www.', '')
+            CORS_ALLOWED_ORIGINS.append(f"https://{domain_without_www}")
+        else:
+            CORS_ALLOWED_ORIGINS.append(f"https://www.{CUSTOM_DOMAIN}")
+    else:
+        CORS_ALLOWED_ORIGINS.append(CUSTOM_DOMAIN)
+
+# Permettre aussi les origines depuis CORS_ALLOWED_ORIGINS env var (format: https://domain1.com,https://domain2.com)
+CORS_ORIGINS_ENV = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if CORS_ORIGINS_ENV:
+    for origin in CORS_ORIGINS_ENV.split(','):
+        origin = origin.strip()
+        if origin and origin not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(origin)
+
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF settings pour Railway
@@ -414,6 +457,27 @@ CSRF_TRUSTED_ORIGINS = [
     "https://web-production-e896b.up.railway.app",
     "https://e896b.up.railway.app",
 ]
+
+# Ajouter le domaine personnalisé aux origines CSRF si configuré
+if CUSTOM_DOMAIN:
+    # Ajouter avec https://
+    if not CUSTOM_DOMAIN.startswith('http'):
+        CSRF_TRUSTED_ORIGINS.append(f"https://{CUSTOM_DOMAIN}")
+        if CUSTOM_DOMAIN.startswith('www.'):
+            domain_without_www = CUSTOM_DOMAIN.replace('www.', '')
+            CSRF_TRUSTED_ORIGINS.append(f"https://{domain_without_www}")
+        else:
+            CSRF_TRUSTED_ORIGINS.append(f"https://www.{CUSTOM_DOMAIN}")
+    else:
+        CSRF_TRUSTED_ORIGINS.append(CUSTOM_DOMAIN)
+
+# Permettre aussi les origines depuis CSRF_TRUSTED_ORIGINS env var (format: https://domain1.com,https://domain2.com)
+CSRF_ORIGINS_ENV = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if CSRF_ORIGINS_ENV:
+    for origin in CSRF_ORIGINS_ENV.split(','):
+        origin = origin.strip()
+        if origin and origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(origin)
 
 # REST Framework
 REST_FRAMEWORK = {

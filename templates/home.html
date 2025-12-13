@@ -235,7 +235,7 @@
     {% endif %}
 
     <!-- Aperçu du Bilan Financier -->
-    {% if report_stats and report_stats.total_revenue is not None %}
+    {% if report_stats %}
     <div class="mt-6">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-bold text-neutral-900">Aperçu Financier (Aujourd'hui)</h2>
@@ -295,26 +295,34 @@
             </div>
 
             <!-- Résultat -->
-            <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border-l-4 {% if report_stats.net_profit >= 0 %}border-green-500{% else %}border-red-500{% endif %} p-4">
+            {% with net_profit_val=report_stats.net_profit|default:0 profit_margin_val=report_stats.profit_margin|default:0 %}
+            <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border-l-4 {% if net_profit_val >= 0 %}border-green-500{% else %}border-red-500{% endif %} p-4">
                 <div class="flex items-center mb-3">
-                    <div class="p-2 rounded-lg {% if report_stats.net_profit >= 0 %}bg-green-50{% else %}bg-red-50{% endif %}">
-                        <i class="fas fa-chart-line {% if report_stats.net_profit >= 0 %}text-green-500{% else %}text-red-500{% endif %} text-lg"></i>
+                    <div class="p-2 rounded-lg {% if net_profit_val >= 0 %}bg-green-50{% else %}bg-red-50{% endif %}">
+                        <i class="fas fa-chart-line {% if net_profit_val >= 0 %}text-green-500{% else %}text-red-500{% endif %} text-lg"></i>
                     </div>
                     <h3 class="ml-2 text-sm font-semibold text-gray-700">Résultat</h3>
                 </div>
                 <div class="space-y-2">
                     <div class="flex justify-between text-xs">
                         <span class="text-gray-500">Profit net</span>
-                        <span class="font-medium {% if report_stats.net_profit|default:0 >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
-                            {{ report_stats.net_profit|default:0|format_currency:site_currency }}
+                        <span class="font-medium {% if net_profit_val >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                            {{ net_profit_val|format_currency:site_currency }}
                         </span>
                     </div>
                     <div class="flex justify-between text-xs">
                         <span class="text-gray-500">Taux de profit</span>
-                        <span class="font-medium {% if report_stats.profit_margin|default:0 >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
-                            {{ report_stats.profit_margin|default:0|floatformat:1 }}%
+                        <span class="font-medium {% if profit_margin_val >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                            {{ profit_margin_val|floatformat:1 }}%
                         </span>
                     </div>
+                    <div class="flex justify-between pt-2 border-t border-gray-100">
+                        <span class="text-xs font-medium text-gray-700">Marge brute</span>
+                        <span class="text-sm font-bold text-green-700">{{ report_stats.total_margin|default:0|format_currency:site_currency }}</span>
+                    </div>
+                </div>
+            </div>
+            {% endwith %}
                     <div class="flex justify-between pt-2 border-t border-gray-100">
                         <span class="text-xs font-medium text-gray-700">Marge brute</span>
                         <span class="text-sm font-bold text-green-700">{{ report_stats.total_margin|default:0|format_currency:site_currency }}</span>

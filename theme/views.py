@@ -193,8 +193,31 @@ class HomeView(LoginRequiredMixin, TemplateView):
             try:
                 from apps.inventory.views import calculate_stock_report_stats
                 report_stats = calculate_stock_report_stats(self.request.user, period='today')
-                context['report_stats'] = report_stats
+                # S'assurer que report_stats est un dictionnaire avec toutes les clés nécessaires
+                if report_stats is None:
+                    context['report_stats'] = None
+                else:
+                    # S'assurer que toutes les clés financières existent avec des valeurs par défaut
+                    financial_defaults = {
+                        'total_revenue': 0,
+                        'total_margin': 0,
+                        'total_losses': 0,
+                        'total_shrinkage': 0,
+                        'total_costs': 0,
+                        'net_profit': 0,
+                        'profit_margin': 0,
+                        'cash_revenue': 0,
+                        'credit_revenue': 0,
+                        'sarali_revenue': 0,
+                    }
+                    for key, default_value in financial_defaults.items():
+                        if key not in report_stats:
+                            report_stats[key] = default_value
+                    context['report_stats'] = report_stats
             except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Erreur lors du calcul des stats du rapport: {str(e)}", exc_info=True)
                 context['report_stats'] = None
                 context['report_error'] = str(e)
         
