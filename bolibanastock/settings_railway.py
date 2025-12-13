@@ -479,6 +479,28 @@ if CSRF_ORIGINS_ENV:
         if origin and origin not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(origin)
 
+# Ajouter automatiquement les domaines personnalisés depuis ALLOWED_HOSTS aux CSRF_TRUSTED_ORIGINS
+# (sauf localhost et railway.app qui sont déjà gérés)
+for host in ALLOWED_HOSTS:
+    if host and host not in ['localhost', '127.0.0.1'] and '.railway.app' not in host:
+        # Nettoyer le host (enlever les points de début si présents)
+        clean_host = host.lstrip('.')
+        if clean_host and not clean_host.startswith('http'):
+            # Ajouter avec https://
+            origin = f"https://{clean_host}"
+            if origin not in CSRF_TRUSTED_ORIGINS:
+                CSRF_TRUSTED_ORIGINS.append(origin)
+            # Ajouter aussi la version avec/sans www
+            if clean_host.startswith('www.'):
+                domain_without_www = clean_host.replace('www.', '')
+                origin_without_www = f"https://{domain_without_www}"
+                if origin_without_www not in CSRF_TRUSTED_ORIGINS:
+                    CSRF_TRUSTED_ORIGINS.append(origin_without_www)
+            else:
+                origin_with_www = f"https://www.{clean_host}"
+                if origin_with_www not in CSRF_TRUSTED_ORIGINS:
+                    CSRF_TRUSTED_ORIGINS.append(origin_with_www)
+
 # REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
