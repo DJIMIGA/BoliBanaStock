@@ -15,7 +15,56 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS CDN avec configuration personnalisée -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'bolibana': {
+                            50: '#E8EBF0',
+                            100: '#D1D7E1',
+                            200: '#A3AFC3',
+                            300: '#7587A5',
+                            400: '#475F87',
+                            500: '#2B3A67',
+                            600: '#223052',
+                            700: '#1A253E',
+                            800: '#111A29',
+                            900: '#090D15',
+                        },
+                        'gold': {
+                            50: '#FFFEF0',
+                            100: '#FFFDE0',
+                            200: '#FFFBC1',
+                            300: '#FFD700',
+                            400: '#E6C200',
+                            500: '#CCAD00',
+                            600: '#B39900',
+                            700: '#998500',
+                            800: '#807100',
+                            900: '#665D00',
+                        },
+                        'forest': {
+                            50: '#E8F5E9',
+                            100: '#C8E6C9',
+                            200: '#A5D6A7',
+                            300: '#81C784',
+                            400: '#66BB6A',
+                            500: '#4CAF50',
+                            600: '#43A047',
+                            700: '#388E3C',
+                            800: '#2E8B57',
+                            900: '#1B5E20',
+                        },
+                    },
+                },
+            },
+        }
+    </script>
+    
+    <!-- Tailwind CSS Local (fallback si CDN ne charge pas) -->
     <link href="{% static 'css/dist/output.css' %}?v=2.3" rel="stylesheet" id="tailwind-css">
     <!-- Fallback inline styles si le CSS ne charge pas -->
     <style id="fallback-styles">
@@ -63,11 +112,32 @@
         });
     </script>
     
+    <!-- Styles globaux pour les selects/dropdowns -->
+    <style>
+        /* Style global pour tous les selects - Padding amélioré */
+        select,
+        select.form-control,
+        select.form-select,
+        .form-group select {
+            padding: 0.625rem 2.75rem 0.625rem 0.75rem !important;
+            min-height: 2.5rem;
+        }
+        
+        /* Assurer un padding suffisant pour les selects dans tous les contextes */
+        select:not([class*="form-select-custom"]) {
+            padding-top: 0.625rem !important;
+            padding-bottom: 0.625rem !important;
+            padding-left: 0.75rem !important;
+            padding-right: 2.75rem !important;
+        }
+    </style>
+    
     {% block extra_css %}{% endblock %}
 </head>
 <body class="h-full font-sans flex flex-col min-h-screen bg-neutral-100">
     <div class="flex flex-col min-h-screen bg-neutral-100">
         <!-- Header simplifié -->
+        {% block header %}
         <header class="bg-bolibana-500 shadow-lg">
             <div class="mx-auto max-w-[1920px] px-4 sm:px-6 lg:px-8">
                 <div class="flex h-16 items-center justify-between">
@@ -129,9 +199,11 @@
                 </div>
             </div>
         </header>
+        {% endblock header %}
 
         <!-- Main content avec sidebar -->
         <main class="flex-grow bg-neutral-100">
+            {% block full_content %}
             <div class="mx-auto max-w-[1920px] py-6 sm:px-6 lg:px-8">
                 {% if messages %}
                     {% for message in messages %}
@@ -151,19 +223,62 @@
                     </div>
                 </div>
             </div>
+            {% endblock full_content %}
         </main>
 
         <!-- Footer -->
+        {% block footer %}
         <footer class="bg-bolibana-500 text-white mt-auto">
             <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     <!-- À propos -->
                     <div class="space-y-4">
                         <h3 class="text-lg font-semibold text-gold-300">Notre Mission</h3>
                         <p class="text-sm text-neutral-200">
-                            BoliBana Stock est une solution de gestion d'entreprise innovante,
-                            spécialisée dans la gestion de stock et de caisse pour les commerçants maliens.
+                            BoliBana Stock est une solution de gestion d'entreprise innovante, spécialisée dans la gestion de stock, de caisse et de clients pour les commerçants. BoliBana Stock simplifie la gestion quotidienne des commerçants en transformant leur smartphone en outil de gestion complet.
                         </p>
+                        <p class="text-xs text-neutral-300 italic">
+                            L'application s'adresse principalement aux commerçants indépendants, aux propriétaires de petites et moyennes boutiques (détail, épicerie, alimentation) et aux gestionnaires de stocks.
+                        </p>
+                    </div>
+
+                    <!-- Applications -->
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-semibold text-gold-300">Applications</h3>
+                        <div class="space-y-3">
+                            <!-- Application Web -->
+                            <a href="/" class="flex items-center space-x-3 p-2 rounded-lg bg-bolibana-600 hover:bg-bolibana-700 transition-colors">
+                                <svg class="h-6 w-6 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>
+                                </svg>
+                                <div>
+                                    <p class="text-sm font-medium text-white">Application Web</p>
+                                    <p class="text-xs text-neutral-300">Accès en ligne</p>
+                                </div>
+                            </a>
+                            
+                            <!-- Application Mobile iOS -->
+                            <a href="https://apps.apple.com/us/app/bolibana-stock/id6755696074" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-3 p-2 rounded-lg bg-bolibana-600 hover:bg-bolibana-700 transition-colors">
+                                <svg class="h-6 w-6 text-gold-300" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C1.79 15.25 4.23 7.59 9.03 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                                </svg>
+                                <div>
+                                    <p class="text-sm font-medium text-white">App iOS</p>
+                                    <p class="text-xs text-neutral-300">Télécharger sur App Store</p>
+                                </div>
+                            </a>
+                            
+                            <!-- Application Mobile Android -->
+                            <a href="https://play.google.com/store/apps/details?id=com.bolibanastock.mobile" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-3 p-2 rounded-lg bg-bolibana-600 hover:bg-bolibana-700 transition-colors">
+                                <svg class="h-6 w-6 text-gold-300" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993.0001.5511-.4482.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.551 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.0288l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.5758 11.9796 7.5758s-3.6106.6681-4.903.9144L4.9649 4.9872a.4161.4161 0 00-.5676-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.186.8535 12.3074.8535 13.7408c0 .7492.4245 1.4483 1.1556 1.7579l-.3889 2.3148a.4156.4156 0 00.4102.4767h.0211a.4163.4163 0 00.407-.3349l.3506-2.0907c.9118.3208 1.8996.4962 2.9308.4962 3.6307 0 6.7013-2.1966 7.7924-5.1403l3.7728 1.3513a2.1094 2.1094 0 001.5432-.0808c.4996-.2498.8672-.6921 1.0244-1.2244l.7157-2.6405c.0956-.2912-.0196-.6088-.2698-.7916a.6907.6907 0 00-.7852-.0335l-4.563 2.7218a10.588 10.588 0 00-1.1702-.5848l-.003-.0016z"/>
+                                </svg>
+                                <div>
+                                    <p class="text-sm font-medium text-white">App Android</p>
+                                    <p class="text-xs text-neutral-300">Télécharger sur Play Store</p>
+                                </div>
+                            </a>
+                        </div>
                     </div>
 
                     <!-- Fonctionnalités -->
@@ -178,15 +293,45 @@
                             </li>
                             <li class="flex items-center space-x-2 text-neutral-200">
                                 <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+                                </svg>
+                                <span>Scanner de codes-barres intégré</span>
+                            </li>
+                            <li class="flex items-center space-x-2 text-neutral-200">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                                 </svg>
                                 <span>Suivi des ventes et analyses</span>
                             </li>
                             <li class="flex items-center space-x-2 text-neutral-200">
                                 <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                </svg>
+                                <span>Gestion clients et crédit</span>
+                            </li>
+                            <li class="flex items-center space-x-2 text-neutral-200">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                 </svg>
                                 <span>Alertes de stock bas</span>
+                            </li>
+                            <li class="flex items-center space-x-2 text-neutral-200">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+                                </svg>
+                                <span>Programme de fidélité</span>
+                            </li>
+                            <li class="flex items-center space-x-2 text-neutral-200">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                </svg>
+                                <span>Impression d'étiquettes</span>
+                            </li>
+                            <li class="flex items-center space-x-2 text-neutral-200">
+                                <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                </svg>
+                                <span>Multi-site et synchronisation cloud</span>
                             </li>
                         </ul>
                     </div>
@@ -199,13 +344,13 @@
                                 <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                                 </svg>
-                                <span>contact@bolibana-stock.com</span>
+                                <a href="mailto:bolibanastock@gmail.com" class="hover:text-gold-300 transition-colors">bolibanastock@gmail.com</a>
                             </li>
                             <li class="flex items-center space-x-2">
                                 <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
                                 </svg>
-                                <span>+223 XX XX XX XX</span>
+                                <a href="tel:+22372464294" class="hover:text-gold-300 transition-colors">+223 72 46 42 94</a>
                             </li>
                             <li class="flex items-center space-x-2">
                                 <svg class="h-5 w-5 text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -221,11 +366,12 @@
                 <!-- Copyright -->
                 <div class="mt-8 pt-4 border-t border-bolibana-400">
                     <p class="text-center text-sm text-neutral-200">
-                        © {% now "Y" %} BoliBana Stock - Solution de gestion d'entreprise • Stock • Caisse
+                        © {% now "Y" %} BoliBana Stock - Solution de gestion de Stock • Caisse • Client (app web et Mobile)
                     </p>
                 </div>
             </div>
         </footer>
+        {% endblock footer %}
     </div>
 
     <!-- Menu mobile -->
