@@ -5,8 +5,10 @@ builder = "dockerfile"
 startCommand = "./start.sh"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
+healthcheckPath = "/health/"
+healthcheckTimeout = 300
 
 [env]
 PYTHON_VERSION = "3.11"
-DJANGO_SETTINGS_MODULE = "bolibanastock.settings"
+DJANGO_SETTINGS_MODULE = "bolibanastock.settings_railway"
 DJANGO_DEBUG = "False"
